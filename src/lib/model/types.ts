@@ -1,0 +1,69 @@
+/**
+ * Canonical data model for the roadmaps app.
+ *
+ * Ported and formalized from `roadmap_tool_6_6_2.html`, with one deliberate
+ * change (design decision D2): dates are stored as absolute ISO calendar days
+ * (`YYYY-MM-DD`), not as integer offsets from a hardcoded 2026-01-01 origin.
+ * Day<->date conversion lives in `../time/timeline.ts` and is always relative
+ * to a roadmap's own configurable `startDate`.
+ */
+
+/** An absolute calendar day in ISO `YYYY-MM-DD` form (no time, no timezone). */
+export type IsoDate = string;
+
+/** A person a phase or item can be assigned to. Assignees are global. */
+export interface Assignee {
+  id: string;
+  name: string;
+  /** Hex color used for the initials badge. */
+  color: string;
+}
+
+/** A leaf of work inside a phase. A milestone is an item with start === end. */
+export interface Item {
+  id: string;
+  label: string;
+  color: string;
+  startDate: IsoDate;
+  endDate: IsoDate;
+  assigneeId: string | null;
+  notes: string;
+  /** Ids of items this item depends on (predecessors). */
+  dependsOn: string[];
+  isMilestone: boolean;
+}
+
+/** A collapsible group of items. May optionally carry its own date extent. */
+export interface Phase {
+  id: string;
+  name: string;
+  color: string;
+  expanded: boolean;
+  assigneeId: string | null;
+  notes: string;
+  /** Optional explicit phase span; when absent it is derived from children. */
+  startDate: IsoDate | null;
+  endDate: IsoDate | null;
+  children: Item[];
+}
+
+/** A single roadmap with its own configurable timeline window (D2 / timeline-config). */
+export interface Roadmap {
+  id: string;
+  name: string;
+  /** First day of the visible timeline window for this roadmap. */
+  startDate: IsoDate;
+  /** Length of the visible timeline window, in days. */
+  windowDays: number;
+  rows: Phase[];
+}
+
+/** The full persisted application state. */
+export interface AppData {
+  roadmaps: Roadmap[];
+  assignees: Assignee[];
+  activeId: string | null;
+}
+
+/** Defaults applied to roadmaps that don't specify a timeline (timeline-config). */
+export const DEFAULT_WINDOW_DAYS = 730;

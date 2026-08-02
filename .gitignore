@@ -1,0 +1,18 @@
+node_modules/
+dist/
+dist-ssr/
+*.local
+.DS_Store
+.github
+.claude
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# Tauri (added in Fase 1)
+src-tauri/target/
+
+# Test / cache
+coverage/
+.vite/

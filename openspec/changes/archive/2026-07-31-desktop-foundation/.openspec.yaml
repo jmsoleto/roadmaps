@@ -1,0 +1,5 @@
+schema: spec-driven
+created: 2026-07-30
+goal: Convertir el HTML de roadmaps en una app de escritorio Tauri con
+  persistencia SQLite, sin colaboracion en tiempo real (equipo pequeno,
+  offline-first)
