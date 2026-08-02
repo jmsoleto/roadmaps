@@ -30,7 +30,14 @@ export class AppStore {
 
   data = $state<AppData>({ roadmaps: [], assignees: [], activeId: null });
   dayW = $state<number>(DEFAULT_DAY_W);
-  metaView = $state<boolean>(false);
+  /**
+   * True while the "Todos" view (portfolio of every roadmap) is showing. It is
+   * the app's home: the session always starts here, never inside a roadmap, so
+   * this is deliberately not persisted. `data.activeId` therefore means "the
+   * roadmap opened last" — which one to show on leaving "Todos", and whose name
+   * the topbar breadcrumb carries.
+   */
+  metaView = $state<boolean>(true);
   /** Briefly true right after a save, to drive the "guardado ✓" indicator. */
   justSaved = $state<boolean>(false);
   /** True once the initial async load has completed. */

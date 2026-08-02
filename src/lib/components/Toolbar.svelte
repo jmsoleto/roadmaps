@@ -5,10 +5,14 @@
   let { onToday }: { onToday: () => void } = $props();
 </script>
 
+<!-- The "Todos" view scales with `store.dayW` too, so it keeps the zoom control
+     and drops what only applies inside a roadmap. -->
 <div class="toolbar">
-  <button class="btn" onclick={() => store.addPhase()}>+ añadir fase</button>
-  <button class="btn" onclick={() => ui.openAssignees()}>responsables</button>
-  {#if store.activeRoadmap}
+  {#if !store.metaView}
+    <button class="btn" onclick={() => store.addPhase()}>+ añadir fase</button>
+    <button class="btn" onclick={() => ui.openAssignees()}>responsables</button>
+  {/if}
+  {#if !store.metaView && store.activeRoadmap}
     <div class="timeline-cfg" title="ventana temporal de este roadmap">
       <span class="cfg-label">inicio</span>
       <input
@@ -34,7 +38,9 @@
     <div class="zoom-label">{store.dayW}px/d</div>
     <button class="btn sq" title="acercar" onclick={() => store.zoomIn()}>+</button>
   </div>
-  <button class="btn today" onclick={onToday}>ir a hoy</button>
+  {#if !store.metaView}
+    <button class="btn today" onclick={onToday}>ir a hoy</button>
+  {/if}
 </div>
 
 <style>

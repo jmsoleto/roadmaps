@@ -38,16 +38,14 @@
 
 <div class="app">
   <Topbar />
-  {#if !store.metaView}
-    <Toolbar onToday={() => gantt?.scrollToToday()} />
-  {/if}
+  <Toolbar onToday={() => gantt?.scrollToToday()} />
   <div class="gantt-wrapper">
-    {#if store.metaView}
+    <!-- Falling back to "Todos" when there is no active roadmap keeps any
+         degenerate state on the home, which now carries its own empty state. -->
+    {#if store.metaView || !store.activeRoadmap}
       <MetaView />
-    {:else if store.activeRoadmap}
-      <Gantt bind:this={gantt} />
     {:else}
-      <div class="empty">no hay roadmaps</div>
+      <Gantt bind:this={gantt} />
     {/if}
   </div>
   <Drawer />
@@ -59,14 +57,5 @@
     flex: 1;
     overflow: hidden;
     position: relative;
-  }
-  .empty {
-    height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--text-dim);
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 13px;
   }
 </style>

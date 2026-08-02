@@ -1,5 +1,6 @@
 <script lang="ts">
   import { store } from '../store/app.svelte';
+  import { ui } from '../store/ui.svelte';
   import { ROW_H } from '../config';
   import { theme } from '../theme/theme.svelte';
   import { dayIndex, dayToX, fmtDate } from '../time/timeline';
@@ -40,68 +41,174 @@
     const e = dayIndex(metaOrigin, endIso);
     return { left: dayToX(s, store.dayW), width: (e - s) * store.dayW };
   }
+
+  // ---- inline delete (two-step confirm, no browser dialog) ----
+  // "Todos" is the only surface that deletes roadmaps, so this lives here and
+  // not in the topbar: the row is wide enough to show what is about to go, and
+  // the navigation path stays free of destructive controls.
+  let confirmDel = $state<string | null>(null);
+
+  function delRoadmap(id: string) {
+    if (confirmDel !== id) {
+      confirmDel = id;
+      return;
+    }
+    confirmDel = null;
+    store.deleteRoadmap(id);
+    // The detail drawer points at a phase/item that may belong to the roadmap
+    // just removed, so it would stay open over a target that no longer exists.
+    if (ui.drawer.kind === 'detail') ui.closeDrawer();
+  }
+
+  // Any interaction outside the delete buttons drops a pending confirmation.
+  // `pointerdown` rather than `blur`: in WKWebView (Tauri on macOS) buttons
+  // don't take focus when clicked, so blur would never fire. Events born
+  // inside a delete button are left alone so the second press reaches its
+  // own handler instead of just re-arming.
+  $effect(() => {
+    if (confirmDel === null) return;
+    const cancel = (e: PointerEvent) => {
+      if (e.target instanceof Element && e.target.closest('[data-row-del]')) return;
+      confirmDel = null;
+    };
+    window.addEventListener('pointerdown', cancel, true);
+    return () => window.removeEventListener('pointerdown', cancel, true);
+  });
 </script>
 
-<div class="gantt-scroll">
-  <div class="sidebar">
-    <div class="sidebar-head"></div>
-    <div class="sidebar-head-spacer"></div>
-    <div class="sidebar-rows">
-      {#each rows as r (r.rm.id)}
-        <div class="row-label">
-          <span class="dot" style:background={theme.slotColor(r.slot)}></span>
-          <span class="rl-name">{r.rm.name}</span>
-        </div>
-      {/each}
-    </div>
+{#if roadmaps.length === 0}
+  <!-- "Todos" is where the app starts, so a first-time user lands here. A grid
+       of quarters with no rows would explain nothing and offer no way out. -->
+  <div class="empty">
+    <p class="empty-title">Todavía no hay ningún roadmap</p>
+    <p class="empty-hint">Esta vista reúne todos tus roadmaps y es desde donde se gestionan.</p>
+    <button type="button" class="empty-cta" onclick={() => store.addRoadmap()}
+      >+ crear el primero</button
+    >
   </div>
-
-  <div class="grid-area" style:width="{totalWidth}px">
-    <div class="month-header"></div>
-    <div class="sprint-header" style:width="{totalWidth}px">
-      {#each quarters as q (q.year + '-' + q.q)}
-        <div
-          class="sprint-label {q.q % 2 === 1 ? 'a' : 'b'}"
-          style:left="{dayToX(q.start, store.dayW)}px"
-          style:width="{(q.end - q.start) * store.dayW}px"
-        >
-          Q{q.q} '{String(q.year).slice(2)}
-        </div>
-      {/each}
-    </div>
-
-    <div class="rows" style:width="{totalWidth}px" style:height="{totalHeight}px">
-      {#each quarters as q (q.year + '-' + q.q)}
-        <div
-          class="grid-line"
-          style:left="{dayToX(q.start, store.dayW)}px"
-          style:height="{totalHeight}px"
-        ></div>
-      {/each}
-      {#each rows as r, i (r.rm.id)}
-        <div class="track" style:top="{i * ROW_H}px">
-          {#if r.extent}
-            {@const g = geom(r.extent.start, r.extent.end)}
-            <div
-              class="bar"
-              style:left="{g.left}px"
-              style:width="{g.width}px"
-              style:background={theme.slotColor(r.slot)}
-              style:--bar-ink={theme.inkFor(r.slot)}
-              title="{r.rm.name} · {fmtDate(r.extent.start)} → {fmtDate(r.extent.end)}"
+{:else}
+  <div class="gantt-scroll">
+    <div class="sidebar">
+      <div class="sidebar-head"></div>
+      <div class="sidebar-head-spacer"></div>
+      <div class="sidebar-rows">
+        {#each rows as r (r.rm.id)}
+          <div class="row-label">
+            <span class="dot" style:background={theme.slotColor(r.slot)}></span>
+            <input
+              class="rl-input"
+              value={r.rm.name}
+              oninput={(e) => store.renameRoadmap(r.rm.id, e.currentTarget.value)}
+            />
+            <!-- The bar in the grid opens the roadmap too, but a roadmap without
+               dates has no bar; this button is what keeps it reachable. -->
+            <button
+              type="button"
+              class="row-open"
+              onclick={() => store.setActive(r.rm.id)}
+              title="abrir roadmap"
+              aria-label="abrir {r.rm.name}">▸</button
             >
-              <span class="barlabel">{r.rm.name}</span>
-            </div>
-          {:else}
-            <div class="track-hint">sin fechas</div>
-          {/if}
-        </div>
-      {/each}
+            <button
+              type="button"
+              class="row-del"
+              class:confirm={confirmDel === r.rm.id}
+              data-row-del
+              onclick={() => delRoadmap(r.rm.id)}
+              title={confirmDel === r.rm.id ? 'confirmar borrado' : 'borrar roadmap'}
+              >{confirmDel === r.rm.id ? 'borrar?' : '✕'}</button
+            >
+          </div>
+        {/each}
+      </div>
+    </div>
+
+    <div class="grid-area" style:width="{totalWidth}px">
+      <div class="month-header"></div>
+      <div class="sprint-header" style:width="{totalWidth}px">
+        {#each quarters as q (q.year + '-' + q.q)}
+          <div
+            class="sprint-label {q.q % 2 === 1 ? 'a' : 'b'}"
+            style:left="{dayToX(q.start, store.dayW)}px"
+            style:width="{(q.end - q.start) * store.dayW}px"
+          >
+            Q{q.q} '{String(q.year).slice(2)}
+          </div>
+        {/each}
+      </div>
+
+      <div class="rows" style:width="{totalWidth}px" style:height="{totalHeight}px">
+        {#each quarters as q (q.year + '-' + q.q)}
+          <div
+            class="grid-line"
+            style:left="{dayToX(q.start, store.dayW)}px"
+            style:height="{totalHeight}px"
+          ></div>
+        {/each}
+        {#each rows as r, i (r.rm.id)}
+          <div class="track" style:top="{i * ROW_H}px">
+            {#if r.extent}
+              {@const g = geom(r.extent.start, r.extent.end)}
+              <button
+                type="button"
+                class="bar"
+                style:left="{g.left}px"
+                style:width="{g.width}px"
+                style:background={theme.slotColor(r.slot)}
+                style:--bar-ink={theme.inkFor(r.slot)}
+                onclick={() => store.setActive(r.rm.id)}
+                title="{r.rm.name} · {fmtDate(r.extent.start)} → {fmtDate(r.extent.end)}"
+              >
+                <span class="barlabel">{r.rm.name}</span>
+              </button>
+            {:else}
+              <div class="track-hint">sin fechas</div>
+            {/if}
+          </div>
+        {/each}
+      </div>
     </div>
   </div>
-</div>
+{/if}
 
 <style>
+  .empty {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    font-family: 'IBM Plex Mono', monospace;
+    color: var(--text-dim);
+  }
+  .empty-title {
+    margin: 0;
+    font-size: 14px;
+    color: var(--text);
+  }
+  .empty-hint {
+    margin: 0;
+    font-size: 12px;
+    max-width: 380px;
+    text-align: center;
+  }
+  .empty-cta {
+    margin-top: 6px;
+    background: none;
+    border: 1px dashed var(--line);
+    color: var(--text-dim);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    border-radius: 6px;
+    height: 32px;
+    padding: 0 14px;
+    cursor: pointer;
+  }
+  .empty-cta:hover {
+    color: var(--accent);
+    border-color: var(--accent);
+  }
   .gantt-scroll {
     display: flex;
     overflow: auto;
@@ -133,12 +240,55 @@
     padding: 0 10px;
     border-bottom: 1px solid var(--line-weak);
   }
-  .rl-name {
+  /* Same vocabulary as the phase rows in Gantt.svelte: the name is a live
+     input, the row reveals its controls on hover. */
+  .rl-input {
     flex: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    min-width: 0;
+    background: transparent;
+    border: none;
+    color: var(--text);
+    font-family: 'Inter', sans-serif;
     font-size: 13.5px;
+    outline: none;
+  }
+  .row-open,
+  .row-del {
+    opacity: 0;
+    flex-shrink: 0;
+    min-width: 16px;
+    height: 16px;
+    border: none;
+    background: none;
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    color: var(--text-dim);
+    cursor: pointer;
+    padding: 0 4px;
+  }
+  .row-label:hover .row-open,
+  .row-label:hover .row-del,
+  .row-open:focus-visible,
+  .row-del:focus-visible {
+    opacity: 1;
+  }
+  .row-open:hover {
+    color: var(--accent);
+  }
+  .row-del:hover {
+    background: var(--danger);
+    color: var(--ink-on-danger);
+  }
+  .row-del.confirm {
+    opacity: 1;
+    background: var(--danger);
+    color: var(--ink-on-danger);
+    font-size: 9px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-weight: 600;
   }
   .dot {
     width: 11px;
@@ -215,14 +365,19 @@
     font-family: 'IBM Plex Mono', monospace;
     opacity: 0.55;
   }
+  /* A button, not a div: the bar is the obvious target for opening a roadmap,
+     so it has to be reachable by keyboard too. Hence the reset. */
   .bar {
     position: absolute;
     top: 8px;
     height: 36px;
+    border: none;
     border-radius: var(--bar-radius);
     display: flex;
     align-items: center;
     padding: 0 8px;
+    text-align: left;
+    cursor: pointer;
     box-shadow: 0 1px 0 var(--shadow-medium) inset;
   }
   .barlabel {

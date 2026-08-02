@@ -40,6 +40,58 @@ async function storeWith(ids: string[], activeId: string | null) {
   return { store, backend };
 }
 
+describe('vista de arranque', () => {
+  it('arranca en "Todos" aunque haya un roadmap activo persistido', async () => {
+    const { store } = await storeWith(['a', 'b'], 'b');
+    expect(store.metaView).toBe(true);
+    // El activo persistido sobrevive: es "el último abierto", no la vista.
+    expect(store.data.activeId).toBe('b');
+  });
+
+  it('arranca en "Todos" sin ningún roadmap', async () => {
+    const backend = new FakeStorage({ roadmaps: [], assignees: [], activeId: null });
+    const store = new AppStore(backend);
+    await store.init();
+    expect(store.metaView).toBe(true);
+    expect(store.activeRoadmap).toBeNull();
+  });
+
+  it('abrir un roadmap sale de "Todos"', async () => {
+    const { store } = await storeWith(['a', 'b'], 'a');
+    store.setActive('b');
+    expect(store.metaView).toBe(false);
+    expect(store.data.activeId).toBe('b');
+  });
+
+  it('borrar desde "Todos" deja al usuario en "Todos"', async () => {
+    const { store } = await storeWith(['a', 'b'], 'a');
+    store.deleteRoadmap('a');
+    expect(store.metaView).toBe(true);
+    expect(store.data.activeId).toBe('b');
+  });
+});
+
+describe('renameRoadmap', () => {
+  it('renombra el roadmap indicado y no toca los demás', async () => {
+    const { store } = await storeWith(['a', 'b'], 'a');
+    store.renameRoadmap('a', 'Plataforma 2026');
+    expect(store.data.roadmaps.map((r) => r.name)).toEqual(['Plataforma 2026', 'b']);
+  });
+
+  it('ignora un id que no existe', async () => {
+    const { store } = await storeWith(['a', 'b'], 'a');
+    store.renameRoadmap('zzz', 'x');
+    expect(store.data.roadmaps.map((r) => r.name)).toEqual(['a', 'b']);
+  });
+
+  it('persiste el nombre nuevo', async () => {
+    const { store, backend } = await storeWith(['a'], 'a');
+    store.renameRoadmap('a', 'Mobile Q1');
+    await store.flush();
+    expect(backend.saved?.roadmaps.map((r) => r.name)).toEqual(['Mobile Q1']);
+  });
+});
+
 describe('deleteRoadmap', () => {
   it('elimina un roadmap inactivo y mantiene el activo', async () => {
     const { store } = await storeWith(['a', 'b', 'c'], 'a');
