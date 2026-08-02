@@ -9,6 +9,32 @@
     <link rel="icon" type="image/png" href="/favicon.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <title>Roadmaps</title>
+    <!--
+      Paint the stored theme before the first frame.
+
+      The real preference is read asynchronously — over IPC from SQLite on the
+      desktop — which would show a flash of the wrong theme on every launch.
+      This mirror is written by `theme/apply.ts`; the key must match BOOT_KEY.
+    -->
+    <script>
+      (function () {
+        try {
+          var raw = localStorage.getItem('roadmaps:theme:boot');
+          if (!raw) return;
+          var vars = JSON.parse(raw);
+          var root = document.documentElement;
+          for (var name in vars) {
+            if (name.slice(0, 2) === '--') root.style.setProperty(name, vars[name]);
+          }
+          if (vars['--bg']) {
+            var meta = document.querySelector('meta[name="theme-color"]');
+            if (meta) meta.setAttribute('content', vars['--bg']);
+          }
+        } catch (e) {
+          /* A bad mirror costs a flash, never a blank app. */
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="app"></div>

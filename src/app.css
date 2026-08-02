@@ -1,19 +1,57 @@
 /*
- * Design tokens & base styles ported verbatim from roadmap_tool_6_6_2.html
- * to preserve visual parity (Fase 0, task 1.2).
+ * Design tokens & base styles.
+ *
+ * The `:root` block below is the dark preset, resolved (see `theme/presets.ts`
+ * and `theme/resolve.ts`). It is not the source of truth — `theme/apply.ts`
+ * overwrites these at runtime with whichever theme is active — but it is what
+ * paints the very first frame when nothing has been stored yet, so it must stay
+ * in sync with the dark preset.
+ *
+ * The color values are generated, not hand-picked: every one of them either
+ * comes from the preset's base colors or is derived from them.
  */
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap');
 
 :root {
+  /* Base colors: the nine a theme actually picks. */
   --bg: #0b0d10;
-  --panel: #13161b;
-  --panel-2: #181c22;
-  --line: #20252c;
-  --line-strong: #2b323b;
+  --surface: #13161b;
   --text: #e8ecf1;
-  --muted: #7a828f;
-  --cyan: #22d3ee;
+  --text-dim: #7c8491;
+  --accent: #22d3ee;
+  --line: #2b323b;
   --danger: #f87171;
+  --ink-light: #ffffff;
+  --ink-dark: #0b0d10;
+
+  /* Derived colors: computed from the base ones. */
+  --surface-2: #191c22;
+  --line-weak: #20252c;
+  --hover: rgba(232, 236, 241, 0.04);
+  --veil: rgba(232, 236, 241, 0.012);
+  --bar-border: rgba(232, 236, 241, 0.15);
+  --text-mid: #cbd0d7;
+  --wash-accent: rgba(34, 211, 238, 0.02);
+  --tint-accent: rgba(34, 211, 238, 0.09);
+  --tint-accent-soft: rgba(34, 211, 238, 0.15);
+  --tint-selected: rgba(34, 211, 238, 0.25);
+  --tint-danger: rgba(248, 113, 113, 0.12);
+  --weekend: rgba(124, 132, 145, 0.14);
+  --weekend-line: rgba(124, 132, 145, 0.08);
+  --shadow-soft: rgba(1, 1, 1, 0.299);
+  --shadow-medium: rgba(1, 1, 1, 0.399);
+  --shadow-strong: rgba(1, 1, 1, 0.599);
+  --scrim: rgba(1, 1, 1, 0.399);
+  --overlay-bg: rgba(11, 13, 16, 0.65);
+  --ink-on-accent: #0b0d10;
+  --ink-on-danger: #0b0d10;
+
+  /* Geometry: the non-color part of a theme. */
+  --line-width: 1px;
+  --focus-ring: 2px;
+  --bar-radius: 5px;
+
+  /* Layout constants, not part of any theme. */
   --row-h: 52px;
   --day-w: 8px;
 }
@@ -37,11 +75,20 @@ body {
   width: 10px;
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--line-strong);
+  background: var(--line);
   border-radius: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: var(--panel);
+  background: var(--surface);
+}
+
+/*
+ * A visible focus ring, sized by the theme. The app previously signalled focus
+ * with a border color alone, which high contrast themes cannot rely on.
+ */
+:focus-visible {
+  outline: var(--focus-ring) solid var(--accent);
+  outline-offset: 1px;
 }
 
 #app {

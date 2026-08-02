@@ -11,19 +11,26 @@
 /** An absolute calendar day in ISO `YYYY-MM-DD` form (no time, no timezone). */
 export type IsoDate = string;
 
-/** A person a phase or item can be assigned to. Assignees are global. */
+/**
+ * A person a phase or item can be assigned to. Assignees are global.
+ *
+ * `colorSlot` indexes the active theme's bar palette rather than naming a color
+ * outright (theming, design decision D4), which is what lets a change of theme
+ * recolor everything that already exists.
+ */
 export interface Assignee {
   id: string;
   name: string;
-  /** Hex color used for the initials badge. */
-  color: string;
+  /** Position in the active theme's bar palette. */
+  colorSlot: number;
 }
 
 /** A leaf of work inside a phase. A milestone is an item with start === end. */
 export interface Item {
   id: string;
   label: string;
-  color: string;
+  /** Position in the active theme's bar palette. */
+  colorSlot: number;
   startDate: IsoDate;
   endDate: IsoDate;
   assigneeId: string | null;
@@ -37,7 +44,8 @@ export interface Item {
 export interface Phase {
   id: string;
   name: string;
-  color: string;
+  /** Position in the active theme's bar palette. */
+  colorSlot: number;
   expanded: boolean;
   assigneeId: string | null;
   notes: string;

@@ -3,8 +3,8 @@ import { exportRoadmap, parseImport } from './portability';
 import type { Assignee, Roadmap } from '../model/types';
 
 const assignees: Assignee[] = [
-  { id: 'as1', name: 'Ana', color: '#60A5FA' },
-  { id: 'as2', name: 'Beto', color: '#FB923C' },
+  { id: 'as1', name: 'Ana', colorSlot: 3 },
+  { id: 'as2', name: 'Beto', colorSlot: 1 },
 ];
 
 const roadmap: Roadmap = {
@@ -16,7 +16,7 @@ const roadmap: Roadmap = {
     {
       id: 'p1',
       name: 'Fase A',
-      color: '#22D3EE',
+      colorSlot: 0,
       expanded: true,
       assigneeId: null,
       notes: '',
@@ -26,7 +26,7 @@ const roadmap: Roadmap = {
         {
           id: 'i1',
           label: 'Tarea 1',
-          color: '#22D3EE',
+          colorSlot: 0,
           startDate: '2026-01-05',
           endDate: '2026-01-20',
           assigneeId: 'as1',
@@ -37,7 +37,7 @@ const roadmap: Roadmap = {
         {
           id: 'i2',
           label: 'Tarea 2',
-          color: '#22D3EE',
+          colorSlot: 0,
           startDate: '2026-01-21',
           endDate: '2026-02-10',
           assigneeId: 'as2',
@@ -102,6 +102,88 @@ describe('legacy import (day-index format)', () => {
     expect(m.startDate).toBe('2026-01-26');
     expect(m.endDate).toBe('2026-01-26'); // milestone start == end
     expect(m.dependsOn).toEqual(['a']);
+  });
+
+  it('converts the phase hex color to its palette slot', () => {
+    const legacy = JSON.stringify({
+      name: 'Antiguo',
+      rows: [{ id: 'p', label: 'Fase', color: '#E879F9', children: [] }],
+    });
+    const { roadmap: back } = parseImport(legacy);
+    expect(back.rows[0].colorSlot).toBe(2); // #E879F9 is slot 2 of the v1 palette
+  });
+
+  it('lets an item without a color inherit its phase slot', () => {
+    const legacy = JSON.stringify({
+      name: 'Antiguo',
+      rows: [
+        {
+          id: 'p',
+          label: 'Fase',
+          color: '#4ADE80',
+          children: [{ id: 'a', label: 'X', start: 0, end: 3 }],
+        },
+      ],
+    });
+    const { roadmap: back } = parseImport(legacy);
+    expect(back.rows[0].colorSlot).toBe(5);
+    expect(back.rows[0].children[0].colorSlot).toBe(5);
+  });
+});
+
+describe('import of pre-theming exports (hex colors)', () => {
+  it('converts phase, item and assignee colors to slots', () => {
+    const preTheming = JSON.stringify({
+      format: 'roadmaps.v1',
+      exportedAt: '2026-01-01T00:00:00.000Z',
+      roadmap: {
+        id: 'rm1',
+        name: 'Antes de los temas',
+        startDate: '2026-01-01',
+        windowDays: 730,
+        rows: [
+          {
+            id: 'p1',
+            name: 'Fase',
+            color: '#FACC15',
+            expanded: true,
+            assigneeId: null,
+            notes: '',
+            startDate: null,
+            endDate: null,
+            children: [
+              {
+                id: 'i1',
+                label: 'Tarea',
+                color: '#A78BFA',
+                startDate: '2026-01-05',
+                endDate: '2026-01-20',
+                assigneeId: 'as1',
+                notes: '',
+                dependsOn: [],
+                isMilestone: false,
+              },
+            ],
+          },
+        ],
+      },
+      assignees: [{ id: 'as1', name: 'Ana', color: '#34D399' }],
+    });
+
+    const { roadmap: back, assignees: backAssignees } = parseImport(preTheming);
+    expect(back.rows[0].colorSlot).toBe(6);
+    expect(back.rows[0].children[0].colorSlot).toBe(7);
+    expect(backAssignees[0].colorSlot).toBe(9);
+  });
+
+  it('snaps a color that was never in the palette to the nearest slot', () => {
+    const odd = JSON.stringify({
+      format: 'roadmaps.v1',
+      roadmap: { name: 'Raro', rows: [{ id: 'p', name: 'F', color: '#21d2ed', children: [] }] },
+      assignees: [],
+    });
+    const { roadmap: back } = parseImport(odd);
+    expect(back.rows[0].colorSlot).toBe(0); // nearest to #22D3EE
   });
 });
 

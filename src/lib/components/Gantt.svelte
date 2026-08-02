@@ -16,6 +16,7 @@
   import { getVisibleRows, effectiveStart, effectiveEnd } from '../model/derive';
   import { getMinStart } from '../model/constraints';
   import { getInitials, findAssignee } from '../util/assignees';
+  import { theme } from '../theme/theme.svelte';
   import { onDrag, clientToDayOffset } from '../interactions/drag';
   import type { IsoDate, Item, Phase } from '../model/types';
 
@@ -303,7 +304,7 @@
               onclick={() => store.togglePhaseExpanded(v.phase.id)}
               aria-label={v.phase.expanded ? 'plegar fase' : 'desplegar fase'}>▸</button
             >
-            <span class="dot" style:background={v.phase.color}></span>
+            <span class="dot" style:background={theme.slotColor(v.phase.colorSlot)}></span>
             <input
               class="rl-input"
               value={v.phase.name}
@@ -319,7 +320,7 @@
           </div>
         {:else if v.kind === 'item'}
           <div class="row-label item">
-            <span class="dot small" style:background={v.item.color}></span>
+            <span class="dot small" style:background={theme.slotColor(v.item.colorSlot)}></span>
             <input
               class="rl-input"
               value={v.item.label}
@@ -416,7 +417,7 @@
               orient="auto"
               markerUnits="strokeWidth"
             >
-              <path d="M0,0 L6,3.5 L0,7 Z" fill="#22D3EE" />
+              <path d="M0,0 L6,3.5 L0,7 Z" fill="var(--accent)" />
             </marker>
           </defs>
           {#each arrows as a (a.d)}
@@ -451,7 +452,8 @@
               class="bar rollup"
               style:left="{g.left}px"
               style:width="{g.width}px"
-              style:background={v.phase.color}
+              style:background={theme.slotColor(v.phase.colorSlot)}
+              style:--bar-ink={theme.inkFor(v.phase.colorSlot)}
               title="{fmtDate(s)} → {fmtDate(e)} ({v.phase.children.length} items)"
               ondblclick={() => ui.openDetail(v.phase.id, null)}
             >
@@ -466,7 +468,8 @@
               class="bar"
               style:left="{g.left}px"
               style:width="{g.width}px"
-              style:background={v.phase.color}
+              style:background={theme.slotColor(v.phase.colorSlot)}
+              style:--bar-ink={theme.inkFor(v.phase.colorSlot)}
               title="{fmtDate(s)} → {fmtDate(e)}"
               ondblclick={() => ui.openDetail(v.phase.id, null)}
             >
@@ -517,15 +520,18 @@
               >
                 <polygon
                   points="12,1.5 22.5,12 12,22.5 1.5,12"
-                  fill={v.phase.color}
-                  stroke="rgba(0,0,0,.3)"
+                  fill={theme.slotColor(v.phase.colorSlot)}
+                  stroke={theme.inkFor(v.phase.colorSlot)}
+                  stroke-opacity="0.35"
                   stroke-width="1"
                 />
                 <title>{v.item.label} · {fmtDate(v.item.startDate)}</title>
               </svg>
               <span class="m-label">{v.item.label}</span>
-              {#if a}<span class="assignee-badge item" style:background={a.color}
-                  >{getInitials(a.name)}</span
+              {#if a}<span
+                  class="assignee-badge item"
+                  style:background={theme.slotColor(a.colorSlot)}
+                  style:--bar-ink={theme.inkFor(a.colorSlot)}>{getInitials(a.name)}</span
                 >{/if}
               {#if v.item.notes.trim()}<span class="notes-indicator" title="Con notas">●</span>{/if}
             </div>
@@ -538,7 +544,8 @@
               class="bar item-bar"
               style:left="{g.left}px"
               style:width="{g.width}px"
-              style:background={v.phase.color}
+              style:background={theme.slotColor(v.phase.colorSlot)}
+              style:--bar-ink={theme.inkFor(v.phase.colorSlot)}
               title="{v.item.label}&#10;{fmtDate(v.item.startDate)} → {fmtDate(v.item.endDate)}"
               ondblclick={() => ui.openDetail(v.phase.id, v.item.id)}
             >
@@ -553,8 +560,10 @@
                 onpointerdown={(ev) => startMove(ev, v.phase.id, v.item.id, t)}
                 role="presentation">{v.item.label}</span
               >
-              {#if a}<span class="assignee-badge item" style:background={a.color}
-                  >{getInitials(a.name)}</span
+              {#if a}<span
+                  class="assignee-badge item"
+                  style:background={theme.slotColor(a.colorSlot)}
+                  style:--bar-ink={theme.inkFor(a.colorSlot)}>{getInitials(a.name)}</span
                 >{/if}
               {#if v.item.notes.trim()}<span class="notes-indicator" title="Con notas">●</span>{/if}
               <button
@@ -597,17 +606,17 @@
     z-index: 6;
     width: 250px;
     flex-shrink: 0;
-    background: var(--panel);
-    border-right: 1px solid var(--line-strong);
+    background: var(--surface);
+    border-right: 1px solid var(--line);
   }
   .sidebar-head {
     height: 38px;
-    border-bottom: 1px solid var(--line-strong);
+    border-bottom: 1px solid var(--line);
   }
   .sidebar-head-spacer {
     height: 20px;
-    background: var(--panel);
-    border-bottom: 1px solid var(--line-strong);
+    background: var(--surface);
+    border-bottom: 1px solid var(--line);
   }
   .row-label {
     display: flex;
@@ -615,11 +624,11 @@
     gap: 6px;
     height: var(--row-h);
     padding: 0 10px;
-    border-bottom: 1px solid var(--line);
+    border-bottom: 1px solid var(--line-weak);
   }
   .row-label.item {
     padding-left: 28px;
-    background: rgba(255, 255, 255, 0.012);
+    background: var(--veil);
   }
   .row-label.add-actions {
     padding-left: 28px;
@@ -627,8 +636,8 @@
   }
   .add-btn {
     background: transparent;
-    border: 1px dashed var(--line-strong);
-    color: var(--muted);
+    border: 1px dashed var(--line);
+    color: var(--text-dim);
     font-family: 'IBM Plex Mono', monospace;
     font-size: 11.5px;
     padding: 4px 8px;
@@ -636,8 +645,8 @@
     cursor: pointer;
   }
   .add-btn:hover {
-    color: var(--cyan);
-    border-color: var(--cyan);
+    color: var(--accent);
+    border-color: var(--accent);
   }
   .rl-input {
     flex: 1;
@@ -651,7 +660,7 @@
   }
   .row-label.item .rl-input {
     font-size: 13px;
-    color: #cfd3da;
+    color: var(--text-mid);
   }
   .row-del {
     opacity: 0;
@@ -665,7 +674,7 @@
     align-items: center;
     justify-content: center;
     font-size: 13px;
-    color: var(--muted);
+    color: var(--text-dim);
     cursor: pointer;
     padding: 0 4px;
   }
@@ -674,12 +683,12 @@
   }
   .row-del:hover {
     background: var(--danger);
-    color: #fff;
+    color: var(--ink-on-danger);
   }
   .row-del.confirm {
     opacity: 1;
     background: var(--danger);
-    color: #fff;
+    color: var(--ink-on-danger);
     font-size: 9px;
     font-family: 'IBM Plex Mono', monospace;
     font-weight: 600;
@@ -690,7 +699,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    color: var(--muted);
+    color: var(--text-dim);
     cursor: pointer;
     font-size: 9px;
     flex-shrink: 0;
@@ -707,14 +716,14 @@
     visibility: hidden;
   }
   .chev:hover {
-    color: var(--cyan);
+    color: var(--accent);
   }
   .dot {
     width: 11px;
     height: 11px;
     border-radius: 3px;
     flex-shrink: 0;
-    border: 1px solid rgba(255, 255, 255, 0.15);
+    border: var(--line-width) solid var(--bar-border);
   }
   .dot.small {
     width: 8px;
@@ -731,8 +740,8 @@
     top: 0;
     z-index: 4;
     height: 38px;
-    background: var(--panel);
-    border-bottom: 1px solid var(--line-strong);
+    background: var(--surface);
+    border-bottom: 1px solid var(--line);
   }
   .month-label {
     position: absolute;
@@ -743,15 +752,15 @@
     padding-left: 8px;
     font-family: 'IBM Plex Mono', monospace;
     font-size: 12.5px;
-    color: #c5cbd4;
-    border-left: 1px solid var(--line-strong);
+    color: var(--text-mid);
+    border-left: 1px solid var(--line);
     font-weight: 500;
     letter-spacing: 0.02em;
   }
   .month-label.year-start {
-    color: var(--cyan);
+    color: var(--accent);
     font-weight: 700;
-    border-left: 2px solid var(--cyan);
+    border-left: 2px solid var(--accent);
     font-size: 13px;
     letter-spacing: 0.05em;
   }
@@ -760,8 +769,8 @@
     top: 38px;
     z-index: 4;
     height: 20px;
-    background: var(--panel);
-    border-bottom: 1px solid var(--line-strong);
+    background: var(--surface);
+    border-bottom: 1px solid var(--line);
   }
   .sprint-label {
     position: absolute;
@@ -772,23 +781,23 @@
     padding-left: 6px;
     font-family: 'IBM Plex Mono', monospace;
     font-size: 10px;
-    color: var(--muted);
+    color: var(--text-dim);
     letter-spacing: 0.03em;
     white-space: nowrap;
     overflow: hidden;
     box-sizing: border-box;
-    border-right: 1px solid var(--line);
+    border-right: 1px solid var(--line-weak);
   }
   .sprint-label.a {
-    background: rgba(34, 211, 238, 0.09);
+    background: var(--tint-accent);
   }
   .sprint-label.b {
-    background: rgba(255, 255, 255, 0.04);
+    background: var(--hover);
   }
   .sprint-label.current {
-    color: var(--cyan);
+    color: var(--accent);
     font-weight: 700;
-    box-shadow: inset 0 0 0 1px var(--cyan);
+    box-shadow: inset 0 0 0 1px var(--accent);
   }
 
   .rows {
@@ -797,9 +806,9 @@
   .weekend-bg {
     position: absolute;
     top: 0;
-    background: rgba(120, 140, 175, 0.14);
-    border-left: 1px solid rgba(120, 140, 175, 0.08);
-    border-right: 1px solid rgba(120, 140, 175, 0.08);
+    background: var(--weekend);
+    border-left: var(--line-width) solid var(--weekend-line);
+    border-right: var(--line-width) solid var(--weekend-line);
     z-index: 1;
     pointer-events: none;
   }
@@ -807,14 +816,14 @@
     position: absolute;
     top: 0;
     width: 1px;
-    background: var(--line-strong);
+    background: var(--line);
   }
   .grid-line.week {
-    background: var(--line);
+    background: var(--line-weak);
     opacity: 0.55;
   }
   .grid-line.year {
-    background: var(--cyan);
+    background: var(--accent);
     opacity: 0.35;
     width: 2px;
   }
@@ -822,9 +831,9 @@
     position: absolute;
     top: 0;
     width: 2px;
-    background: var(--cyan);
+    background: var(--accent);
     z-index: 3;
-    box-shadow: 0 0 8px var(--cyan);
+    box-shadow: 0 0 8px var(--accent);
     pointer-events: none;
   }
   .today-flag {
@@ -833,7 +842,7 @@
     left: 6px;
     font-family: 'IBM Plex Mono', monospace;
     font-size: 11px;
-    color: var(--cyan);
+    color: var(--accent);
     white-space: nowrap;
     font-weight: 700;
     letter-spacing: 0.05em;
@@ -848,7 +857,7 @@
   }
   .dep-path {
     fill: none;
-    stroke: #22d3ee;
+    stroke: var(--accent);
     stroke-width: 1.6;
   }
   .track {
@@ -856,13 +865,13 @@
     left: 0;
     right: 0;
     height: var(--row-h);
-    border-bottom: 1px solid var(--line);
+    border-bottom: 1px solid var(--line-weak);
   }
   .track.item-track {
-    background: rgba(255, 255, 255, 0.012);
+    background: var(--veil);
   }
   .track.add-track {
-    background: rgba(77, 208, 200, 0.02);
+    background: var(--wash-accent);
   }
   .track-hint {
     position: absolute;
@@ -873,7 +882,7 @@
     display: flex;
     align-items: center;
     font-size: 12px;
-    color: var(--muted);
+    color: var(--text-dim);
     font-family: 'IBM Plex Mono', monospace;
     opacity: 0.55;
     cursor: crosshair;
@@ -883,8 +892,8 @@
     top: 8px;
     height: 36px;
     border-radius: 6px;
-    background: rgba(34, 211, 238, 0.25);
-    border: 1px dashed var(--cyan);
+    background: var(--tint-selected);
+    border: 1px dashed var(--accent);
     z-index: 5;
     pointer-events: none;
   }
@@ -892,10 +901,10 @@
     position: absolute;
     top: 8px;
     height: 36px;
-    border-radius: 6px;
+    border-radius: var(--bar-radius);
     display: flex;
     align-items: center;
-    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.4) inset;
+    box-shadow: 0 1px 0 var(--shadow-medium) inset;
     padding: 0 8px;
     gap: 6px;
     cursor: default;
@@ -912,7 +921,8 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    color: rgba(0, 0, 0, 0.4);
+    color: var(--bar-ink);
+    opacity: 0.4;
     font-size: 11px;
     flex-shrink: 0;
     cursor: grab;
@@ -926,7 +936,7 @@
   .barlabel {
     flex: 1;
     font-size: 13px;
-    color: #0b0d10;
+    color: var(--bar-ink);
     font-weight: 600;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -935,7 +945,8 @@
   }
   .bar-meta {
     font-size: 11px;
-    color: rgba(0, 0, 0, 0.55);
+    color: var(--bar-ink);
+    opacity: 0.55;
     font-family: 'IBM Plex Mono', monospace;
     flex-shrink: 0;
   }
@@ -966,7 +977,7 @@
     width: 30px;
     height: 30px;
     flex-shrink: 0;
-    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.4));
+    filter: drop-shadow(0 1px 2px var(--shadow-medium));
     cursor: grab;
   }
   .milestone svg:active {
@@ -978,7 +989,7 @@
     color: var(--text);
     font-weight: 600;
     white-space: nowrap;
-    background: rgba(11, 13, 16, 0.65);
+    background: var(--overlay-bg);
     padding: 2px 6px;
     border-radius: 3px;
   }
@@ -992,7 +1003,7 @@
     font-family: 'IBM Plex Mono', monospace;
     font-size: 10px;
     font-weight: 600;
-    color: #0b0d10;
+    color: var(--bar-ink);
     flex-shrink: 0;
   }
   .assignee-badge.item {
@@ -1003,7 +1014,7 @@
   }
   .notes-indicator {
     font-size: 10px;
-    color: var(--muted);
+    color: var(--text-dim);
     margin-left: 4px;
   }
 </style>

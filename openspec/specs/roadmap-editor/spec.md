@@ -3,9 +3,7 @@
 ## Purpose
 
 Edición del roadmap en el Gantt: jerarquía fase → item, milestones, dependencias con flechas, drag/resize, drawer de detalle, responsables, sprints, vista meta, multi-roadmap y zoom. Formaliza la paridad funcional con el HTML original (`roadmap_tool_6_6_2.html`); el objetivo es cero regresión percibida.
-
 ## Requirements
-
 ### Requirement: Jerarquía roadmap → fase → item
 El sistema MUST permitir organizar el trabajo en roadmaps que contienen fases, y fases que contienen items, con fases colapsables.
 
@@ -58,11 +56,15 @@ El sistema MUST ofrecer un panel lateral para editar el detalle de una fase o it
 - **THEN** el sistema guarda las notas y muestra un indicador de que el item tiene notas
 
 ### Requirement: Responsables (assignees)
-El sistema MUST permitir gestionar una lista de responsables y asignarlos a fases e items, mostrándolos como badges de iniciales con color.
+El sistema MUST permitir gestionar una lista de responsables y asignarlos a fases e items, mostrándolos como badges de iniciales cuyo color procede de una posición de la paleta de barras del tema activo, con las iniciales pintadas en una tinta legible sobre ese color.
 
 #### Scenario: Asignar un responsable
 - **WHEN** el usuario asigna un responsable a un item
 - **THEN** el sistema muestra el badge del responsable en la fila del item
+
+#### Scenario: Iniciales legibles sobre cualquier color de badge
+- **WHEN** un responsable ocupa una posición de la paleta cuyo color es muy claro o muy oscuro
+- **THEN** el sistema pinta sus iniciales con la tinta del tema que contrasta con ese color
 
 ### Requirement: Cabeceras temporales de sprints y trimestres
 El sistema MUST mostrar una cabecera de sprints (ventanas de 14 días) en la vista de roadmap y una cabecera de trimestres en la vista meta, resaltando el periodo actual.
@@ -91,3 +93,19 @@ El sistema MUST permitir ajustar el nivel de zoom (px por día) y saltar a la fe
 #### Scenario: Ir a hoy
 - **WHEN** el usuario pulsa "ir a hoy"
 - **THEN** el sistema desplaza la vista para que la fecha de hoy sea visible
+
+### Requirement: Color de fases e items por slot de paleta
+El sistema MUST asignar a cada fase e item una posición dentro de la paleta de barras del tema activo, en lugar de un color absoluto, de modo que su color concreto lo determine el tema.
+
+#### Scenario: Crear una fase
+- **WHEN** el usuario crea una fase
+- **THEN** el sistema le asigna la siguiente posición de la paleta y la barra se pinta con el color que esa posición tiene en el tema activo
+
+#### Scenario: Cambiar el color de un elemento
+- **WHEN** el usuario avanza el color de una fase, item o responsable
+- **THEN** el sistema pasa a la siguiente posición de la paleta y recorre todas las posiciones cíclicamente, sin saltar ni volver al principio de forma inesperada
+
+#### Scenario: Un elemento conserva su posición al cambiar de tema
+- **WHEN** el usuario cambia el tema activo
+- **THEN** cada fase, item y responsable conserva su posición en la paleta y adopta el color que esa posición tiene en el tema nuevo
+

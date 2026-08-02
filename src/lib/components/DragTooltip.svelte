@@ -11,8 +11,8 @@
   .drag-tooltip {
     position: fixed;
     padding: 6px 10px;
-    background: var(--panel);
-    border: 1px solid var(--cyan);
+    background: var(--surface);
+    border: 1px solid var(--accent);
     border-radius: 6px;
     font-family: 'IBM Plex Mono', monospace;
     font-size: 12.5px;
@@ -21,8 +21,8 @@
     pointer-events: none;
     white-space: nowrap;
     box-shadow:
-      0 6px 20px rgba(0, 0, 0, 0.6),
-      0 0 0 3px rgba(34, 211, 238, 0.15);
+      0 6px 20px var(--shadow-strong),
+      0 0 0 3px var(--tint-accent-soft);
     opacity: 0;
     transition: opacity 0.1s;
     color: var(--text);

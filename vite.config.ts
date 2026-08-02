@@ -32,6 +32,9 @@ export default defineConfig({
               start_url: base,
               scope: base,
               display: 'standalone',
+              // The dark preset's `bg` (see theme/presets.ts). The manifest is
+              // static, so this is the install-time color; once running, the app
+              // keeps `<meta name="theme-color">` in step with the active theme.
               background_color: '#0b0d10',
               theme_color: '#0b0d10',
               icons: [

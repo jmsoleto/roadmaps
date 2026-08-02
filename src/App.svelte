@@ -65,7 +65,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    color: var(--muted);
+    color: var(--text-dim);
     font-family: 'IBM Plex Mono', monospace;
     font-size: 13px;
   }

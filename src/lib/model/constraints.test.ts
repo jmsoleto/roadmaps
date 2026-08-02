@@ -12,7 +12,7 @@ function item(
   return {
     id,
     label: id,
-    color: '#000',
+    colorSlot: 0,
     startDate: start,
     endDate: milestone ? start : end,
     assigneeId: null,
@@ -26,7 +26,7 @@ function phase(children: Item[]): Phase {
   return {
     id: 'p',
     name: 'p',
-    color: '#000',
+    colorSlot: 0,
     expanded: true,
     assigneeId: null,
     notes: '',

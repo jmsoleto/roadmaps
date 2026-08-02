@@ -8,7 +8,7 @@
  */
 
 import type { AppData, Assignee, Item, Phase, Roadmap, IsoDate } from '../model/types';
-import { DEFAULT_DAY_W, ZOOM_LEVELS, PALETTE } from '../config';
+import { DEFAULT_DAY_W, ZOOM_LEVELS } from '../config';
 import { createStorage, type Storage } from './storage';
 import { seedAppData, newRoadmap } from '../seed';
 import { uid } from '../util/id';
@@ -16,6 +16,8 @@ import { addDays, snapToWorkday, todayIso } from '../time/timeline';
 import { effectiveStart, effectiveEnd } from '../model/derive';
 import { enforceConstraints } from '../model/constraints';
 import { exportRoadmap, parseImport, mergeAssignees } from '../io/portability';
+import { normalizeColors } from '../theme/migrate';
+import { PALETTE_SLOTS } from '../theme/tokens';
 
 const SAVE_DEBOUNCE_MS = 250;
 
@@ -40,7 +42,7 @@ class AppStore {
 
   /** Load persisted state (or seed on first run). Must be awaited before mount. */
   async init(): Promise<void> {
-    const loaded = await this.storage.load();
+    const loaded = normalizeColors(await this.storage.load());
     if (loaded) {
       this.data = loaded;
     } else {
@@ -174,7 +176,7 @@ class AppStore {
     const phase: Phase = {
       id: uid('ph'),
       name: 'Nueva fase',
-      color: PALETTE[rm.rows.length % PALETTE.length],
+      colorSlot: rm.rows.length % PALETTE_SLOTS,
       expanded: true,
       assigneeId: null,
       notes: '',
@@ -245,7 +247,7 @@ class AppStore {
     phase.children.push({
       id: uid('it'),
       label: 'Nuevo item',
-      color: phase.color,
+      colorSlot: phase.colorSlot,
       startDate: start,
       endDate: end,
       assigneeId: null,
@@ -266,7 +268,7 @@ class AppStore {
     phase.children.push({
       id: uid('mi'),
       label: 'Nuevo hito',
-      color: phase.color,
+      colorSlot: phase.colorSlot,
       startDate: date,
       endDate: date,
       assigneeId: null,
@@ -361,7 +363,7 @@ class AppStore {
     const a: Assignee = {
       id: uid('as'),
       name: 'Nuevo responsable',
-      color: PALETTE[this.data.assignees.length % PALETTE.length],
+      colorSlot: this.data.assignees.length % PALETTE_SLOTS,
     };
     this.data.assignees.push(a);
     this.scheduleSave();
@@ -379,8 +381,7 @@ class AppStore {
   cycleAssigneeColor(id: string): void {
     const a = this.data.assignees.find((x) => x.id === id);
     if (a) {
-      const i = (PALETTE as readonly string[]).indexOf(a.color);
-      a.color = PALETTE[(i + 1) % PALETTE.length];
+      a.colorSlot = (a.colorSlot + 1) % PALETTE_SLOTS;
       this.scheduleSave();
     }
   }

@@ -5,6 +5,8 @@
   import { effectiveStart, effectiveEnd } from '../model/derive';
   import { wouldCreateCycle } from '../model/constraints';
   import { getInitials } from '../util/assignees';
+  import { theme } from '../theme/theme.svelte';
+  import ThemeEditor from './ThemeEditor.svelte';
 
   const drawer = $derived(ui.drawer);
   const rm = $derived(store.activeRoadmap);
@@ -20,13 +22,15 @@
 
   const isItem = $derived(!!item);
   const title = $derived(
-    drawer.kind === 'assignees'
-      ? 'RESPONSABLES'
-      : item
-        ? item.isMilestone
-          ? 'DETALLE DE HITO'
-          : 'DETALLE DE ITEM'
-        : 'DETALLE DE FASE',
+    drawer.kind === 'theme'
+      ? 'TEMA'
+      : drawer.kind === 'assignees'
+        ? 'RESPONSABLES'
+        : item
+          ? item.isMilestone
+            ? 'DETALLE DE HITO'
+            : 'DETALLE DE ITEM'
+          : 'DETALLE DE FASE',
   );
 
   const rangeText = $derived.by(() => {
@@ -83,7 +87,13 @@
 ></div>
 
 <div class="drawer" class:show={drawer.kind !== 'none'}>
-  {#if drawer.kind === 'assignees'}
+  {#if drawer.kind === 'theme'}
+    <div class="drawer-head">
+      <div class="drawer-title">{title}</div>
+      <button type="button" class="drawer-close" onclick={() => ui.closeDrawer()}>✕</button>
+    </div>
+    <ThemeEditor />
+  {:else if drawer.kind === 'assignees'}
     <div class="drawer-head">
       <div class="drawer-title">{title}</div>
       <button type="button" class="drawer-close" onclick={() => ui.closeDrawer()}>✕</button>
@@ -98,7 +108,8 @@
           <button
             type="button"
             class="swatch"
-            style:background={a.color}
+            style:background={theme.slotColor(a.colorSlot)}
+            style:--bar-ink={theme.inkFor(a.colorSlot)}
             onclick={() => store.cycleAssigneeColor(a.id)}
             title="click para cambiar color">{getInitials(a.name)}</button
           >
@@ -226,7 +237,7 @@
   .backdrop {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.4);
+    background: var(--scrim);
     z-index: 49;
     display: none;
   }
@@ -239,13 +250,13 @@
     right: -460px;
     width: 420px;
     height: 100vh;
-    background: var(--panel);
-    border-left: 1px solid var(--line-strong);
+    background: var(--surface);
+    border-left: 1px solid var(--line);
     z-index: 50;
     transition: right 0.22s ease;
     padding: 20px 22px;
     overflow-y: auto;
-    box-shadow: -20px 0 40px rgba(0, 0, 0, 0.4);
+    box-shadow: -20px 0 40px var(--shadow-medium);
   }
   .drawer.show {
     right: 0;
@@ -260,12 +271,12 @@
     font-family: 'IBM Plex Mono', monospace;
     font-size: 12px;
     letter-spacing: 0.14em;
-    color: var(--cyan);
+    color: var(--accent);
     font-weight: 600;
   }
   .drawer-close {
     cursor: pointer;
-    color: var(--muted);
+    color: var(--text-dim);
     font-size: 18px;
     line-height: 1;
     padding: 4px 6px;
@@ -275,7 +286,7 @@
   }
   .drawer-close:hover {
     color: var(--danger);
-    background: var(--panel-2);
+    background: var(--surface-2);
   }
   .section {
     margin-bottom: 18px;
@@ -285,7 +296,7 @@
     font-family: 'IBM Plex Mono', monospace;
     font-size: 11px;
     letter-spacing: 0.1em;
-    color: var(--muted);
+    color: var(--text-dim);
     text-transform: uppercase;
     margin-bottom: 7px;
   }
@@ -293,8 +304,8 @@
   .textarea,
   .select {
     width: 100%;
-    background: var(--panel-2);
-    border: 1px solid var(--line-strong);
+    background: var(--surface-2);
+    border: 1px solid var(--line);
     color: var(--text);
     padding: 9px 11px;
     border-radius: 5px;
@@ -306,7 +317,7 @@
   .input:focus,
   .textarea:focus,
   .select:focus {
-    border-color: var(--cyan);
+    border-color: var(--accent);
   }
   .textarea {
     min-height: 90px;
@@ -320,7 +331,7 @@
   .link {
     display: inline-block;
     margin-top: 8px;
-    color: var(--cyan);
+    color: var(--accent);
     font-size: 12px;
     background: none;
     border: none;
@@ -330,7 +341,7 @@
   }
   .hint {
     font-size: 11.5px;
-    color: var(--muted);
+    color: var(--text-dim);
     font-family: 'IBM Plex Mono', monospace;
     line-height: 1.5;
     margin: 0 0 14px;
@@ -349,8 +360,8 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    background: var(--panel-2);
-    border: 1px solid var(--line-strong);
+    background: var(--surface-2);
+    border: 1px solid var(--line);
     border-radius: 4px;
     padding: 4px 8px;
     font-size: 12px;
@@ -358,7 +369,7 @@
   .dep-chip button {
     background: none;
     border: none;
-    color: var(--muted);
+    color: var(--text-dim);
     cursor: pointer;
     padding: 0;
   }
@@ -368,8 +379,8 @@
   .btn-wide {
     width: 100%;
     padding: 8px;
-    background: var(--panel-2);
-    border: 1px solid var(--line-strong);
+    background: var(--surface-2);
+    border: 1px solid var(--line);
     color: var(--text);
     font-family: 'IBM Plex Mono', monospace;
     font-size: 12.5px;
@@ -377,8 +388,8 @@
     cursor: pointer;
   }
   .btn-wide:hover {
-    border-color: var(--cyan);
-    color: var(--cyan);
+    border-color: var(--accent);
+    color: var(--accent);
   }
   .assignees-list {
     display: flex;
@@ -394,7 +405,7 @@
     border: 1px solid transparent;
   }
   .assignee-row:hover {
-    border-color: var(--line-strong);
+    border-color: var(--line);
   }
   .swatch {
     width: 34px;
@@ -405,7 +416,7 @@
     justify-content: center;
     font-family: 'IBM Plex Mono', monospace;
     font-weight: 600;
-    color: #0b0d10;
+    color: var(--bar-ink);
     cursor: pointer;
     border: none;
     flex-shrink: 0;
@@ -421,7 +432,7 @@
   }
   .del {
     cursor: pointer;
-    color: var(--muted);
+    color: var(--text-dim);
     padding: 4px 8px;
     border-radius: 4px;
     background: none;
@@ -429,10 +440,10 @@
   }
   .del:hover {
     color: var(--danger);
-    background: rgba(224, 105, 127, 0.12);
+    background: var(--tint-danger);
   }
   .del.confirm {
-    color: #fff;
+    color: var(--ink-on-danger);
     background: var(--danger);
     font-size: 10px;
     font-family: 'IBM Plex Mono', monospace;
@@ -442,20 +453,20 @@
     width: 100%;
     margin-top: 10px;
     padding: 9px;
-    border: 1px dashed var(--line-strong);
+    border: 1px dashed var(--line);
     background: none;
-    color: var(--muted);
+    color: var(--text-dim);
     border-radius: 6px;
     cursor: pointer;
     font-family: 'IBM Plex Mono', monospace;
     font-size: 12.5px;
   }
   .add-assignee:hover {
-    color: var(--cyan);
-    border-color: var(--cyan);
+    color: var(--accent);
+    border-color: var(--accent);
   }
   .empty-msg {
-    color: var(--muted);
+    color: var(--text-dim);
     font-size: 12.5px;
     font-family: 'IBM Plex Mono', monospace;
   }

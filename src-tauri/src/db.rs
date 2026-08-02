@@ -14,7 +14,8 @@ const LATEST_VERSION: i64 = 1;
 pub struct Assignee {
     pub id: String,
     pub name: String,
-    pub color: String,
+    /// Palette slot, carried as text. See the note on `Phase::color_slot`.
+    pub color_slot: String,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -22,7 +23,8 @@ pub struct Assignee {
 pub struct Item {
     pub id: String,
     pub label: String,
-    pub color: String,
+    /// Palette slot, carried as text. See the note on `Phase::color_slot`.
+    pub color_slot: String,
     pub start_date: String,
     pub end_date: String,
     pub assignee_id: Option<String>,
@@ -36,7 +38,14 @@ pub struct Item {
 pub struct Phase {
     pub id: String,
     pub name: String,
-    pub color: String,
+    /// Index into the active theme's bar palette.
+    ///
+    /// Carried as text, and stored in the pre-existing `color` column, so no
+    /// schema migration is needed. It stays a `String` rather than an integer
+    /// on purpose: rows written before theming hold a hex color, and passing
+    /// that value through untouched lets the frontend map it to the nearest
+    /// slot, where the palette and the color math already live.
+    pub color_slot: String,
     pub expanded: bool,
     pub assignee_id: Option<String>,
     pub notes: String,
@@ -138,7 +147,7 @@ pub fn load(conn: &Connection) -> rusqlite::Result<Option<AppData>> {
             Ok(Assignee {
                 id: r.get(0)?,
                 name: r.get(1)?,
-                color: r.get(2)?,
+                color_slot: r.get(2)?,
             })
         })?;
         for a in rows {
@@ -177,7 +186,7 @@ pub fn load(conn: &Connection) -> rusqlite::Result<Option<AppData>> {
             Ok(Phase {
                 id: r.get(0)?,
                 name: r.get(1)?,
-                color: r.get(2)?,
+                color_slot: r.get(2)?,
                 expanded: r.get::<_, i64>(3)? != 0,
                 assignee_id: r.get(4)?,
                 notes: r.get(5)?,
@@ -199,7 +208,7 @@ pub fn load(conn: &Connection) -> rusqlite::Result<Option<AppData>> {
                 Ok(Item {
                     id: r.get(0)?,
                     label: r.get(1)?,
-                    color: r.get(2)?,
+                    color_slot: r.get(2)?,
                     start_date: r.get(3)?,
                     end_date: r.get(4)?,
                     assignee_id: r.get(5)?,
@@ -249,7 +258,7 @@ pub fn save(conn: &mut Connection, data: &AppData) -> rusqlite::Result<()> {
     for (i, a) in data.assignees.iter().enumerate() {
         tx.execute(
             "INSERT INTO assignees (id, name, color, ord) VALUES (?1, ?2, ?3, ?4)",
-            params![a.id, a.name, a.color, i as i64],
+            params![a.id, a.name, a.color_slot, i as i64],
         )?;
     }
 
@@ -263,7 +272,7 @@ pub fn save(conn: &mut Connection, data: &AppData) -> rusqlite::Result<()> {
                 "INSERT INTO phases (id, roadmap_id, name, color, expanded, assignee_id, notes, start_date, end_date, ord)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
                 params![
-                    p.id, rm.id, p.name, p.color, p.expanded as i64,
+                    p.id, rm.id, p.name, p.color_slot, p.expanded as i64,
                     p.assignee_id, p.notes, p.start_date, p.end_date, pi as i64
                 ],
             )?;
@@ -272,7 +281,7 @@ pub fn save(conn: &mut Connection, data: &AppData) -> rusqlite::Result<()> {
                     "INSERT INTO items (id, phase_id, label, color, start_date, end_date, assignee_id, notes, is_milestone, ord)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
                     params![
-                        it.id, p.id, it.label, it.color, it.start_date, it.end_date,
+                        it.id, p.id, it.label, it.color_slot, it.start_date, it.end_date,
                         it.assignee_id, it.notes, it.is_milestone as i64, ii as i64
                     ],
                 )?;
@@ -364,7 +373,7 @@ mod tests {
                 rows: vec![Phase {
                     id: "p1".into(),
                     name: "Fase".into(),
-                    color: "#22D3EE".into(),
+                    color_slot: "0".into(),
                     expanded: true,
                     assignee_id: None,
                     notes: String::new(),
@@ -374,7 +383,7 @@ mod tests {
                         Item {
                             id: "i1".into(),
                             label: "A".into(),
-                            color: "#22D3EE".into(),
+                            color_slot: "0".into(),
                             start_date: "2026-01-05".into(),
                             end_date: "2026-01-20".into(),
                             assignee_id: Some("as1".into()),
@@ -385,7 +394,7 @@ mod tests {
                         Item {
                             id: "i2".into(),
                             label: "B".into(),
-                            color: "#22D3EE".into(),
+                            color_slot: "0".into(),
                             start_date: "2026-01-21".into(),
                             end_date: "2026-02-10".into(),
                             assignee_id: None,
@@ -399,7 +408,7 @@ mod tests {
             assignees: vec![Assignee {
                 id: "as1".into(),
                 name: "Ana".into(),
-                color: "#60A5FA".into(),
+                color_slot: "3".into(),
             }],
             active_id: Some("rm1".into()),
         };
@@ -425,7 +434,7 @@ mod tests {
             assignees: vec![Assignee {
                 id: "a".into(),
                 name: "X".into(),
-                color: "#fff".into(),
+                color_slot: "0".into(),
             }],
             active_id: None,
         };

@@ -2,7 +2,6 @@
 
 import type { AppData, Roadmap } from './model/types';
 import { DEFAULT_WINDOW_DAYS } from './model/types';
-import { PALETTE } from './config';
 import { uid } from './util/id';
 
 /** January 1st of the current year — a sensible default timeline origin. */
@@ -23,8 +22,8 @@ export function newRoadmap(name: string, startDate = defaultStartDate()): Roadma
 
 /** Sample content so a first-time user sees a populated Gantt. */
 export function seedAppData(): AppData {
-  const ana = { id: uid('as'), name: 'Ana', color: PALETTE[3] };
-  const beto = { id: uid('as'), name: 'Beto', color: PALETTE[1] };
+  const ana = { id: uid('as'), name: 'Ana', colorSlot: 3 };
+  const beto = { id: uid('as'), name: 'Beto', colorSlot: 1 };
 
   const roadmap: Roadmap = {
     id: uid('rm'),
@@ -35,7 +34,7 @@ export function seedAppData(): AppData {
       {
         id: uid('ph'),
         name: 'Descubrimiento',
-        color: PALETTE[0],
+        colorSlot: 0,
         expanded: true,
         assigneeId: null,
         notes: '',
@@ -45,7 +44,7 @@ export function seedAppData(): AppData {
           {
             id: uid('it'),
             label: 'Research inicial',
-            color: PALETTE[0],
+            colorSlot: 0,
             startDate: '2026-01-05',
             endDate: '2026-01-23',
             assigneeId: ana.id,
@@ -56,7 +55,7 @@ export function seedAppData(): AppData {
           {
             id: uid('it'),
             label: 'Kickoff',
-            color: PALETTE[4],
+            colorSlot: 4,
             startDate: '2026-01-26',
             endDate: '2026-01-26',
             assigneeId: null,
@@ -69,7 +68,7 @@ export function seedAppData(): AppData {
       {
         id: uid('ph'),
         name: 'Construcción',
-        color: PALETTE[5],
+        colorSlot: 5,
         expanded: true,
         assigneeId: null,
         notes: '',
@@ -79,7 +78,7 @@ export function seedAppData(): AppData {
           {
             id: uid('it'),
             label: 'MVP',
-            color: PALETTE[5],
+            colorSlot: 5,
             startDate: '2026-02-02',
             endDate: '2026-03-27',
             assigneeId: beto.id,

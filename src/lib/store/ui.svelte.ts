@@ -3,7 +3,8 @@
 export type DrawerState =
   | { kind: 'none' }
   | { kind: 'detail'; phaseId: string; itemId: string | null }
-  | { kind: 'assignees' };
+  | { kind: 'assignees' }
+  | { kind: 'theme' };
 
 class UiStore {
   drawer = $state<DrawerState>({ kind: 'none' });
@@ -20,6 +21,10 @@ class UiStore {
 
   openAssignees(): void {
     this.drawer = { kind: 'assignees' };
+  }
+
+  openTheme(): void {
+    this.drawer = { kind: 'theme' };
   }
 
   closeDrawer(): void {

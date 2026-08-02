@@ -1,6 +1,7 @@
 <script lang="ts">
   import { store } from '../store/app.svelte';
-  import { ROW_H, PALETTE } from '../config';
+  import { ROW_H } from '../config';
+  import { theme } from '../theme/theme.svelte';
   import { dayIndex, dayToX, fmtDate } from '../time/timeline';
   import { getQuarterSegments } from '../time/segments';
   import { getRoadmapExtent } from '../model/derive';
@@ -18,7 +19,7 @@
   const rows = $derived(
     roadmaps.map((rm, idx) => {
       const extent = getRoadmapExtent(rm);
-      return { rm, idx, color: PALETTE[idx % PALETTE.length], extent };
+      return { rm, idx, slot: idx, extent };
     }),
   );
 
@@ -48,7 +49,7 @@
     <div class="sidebar-rows">
       {#each rows as r (r.rm.id)}
         <div class="row-label">
-          <span class="dot" style:background={r.color}></span>
+          <span class="dot" style:background={theme.slotColor(r.slot)}></span>
           <span class="rl-name">{r.rm.name}</span>
         </div>
       {/each}
@@ -85,7 +86,8 @@
               class="bar"
               style:left="{g.left}px"
               style:width="{g.width}px"
-              style:background={r.color}
+              style:background={theme.slotColor(r.slot)}
+              style:--bar-ink={theme.inkFor(r.slot)}
               title="{r.rm.name} · {fmtDate(r.extent.start)} → {fmtDate(r.extent.end)}"
             >
               <span class="barlabel">{r.rm.name}</span>
@@ -111,17 +113,17 @@
     z-index: 6;
     width: 250px;
     flex-shrink: 0;
-    background: var(--panel);
-    border-right: 1px solid var(--line-strong);
+    background: var(--surface);
+    border-right: 1px solid var(--line);
   }
   .sidebar-head {
     height: 38px;
-    border-bottom: 1px solid var(--line-strong);
+    border-bottom: 1px solid var(--line);
   }
   .sidebar-head-spacer {
     height: 20px;
-    background: var(--panel);
-    border-bottom: 1px solid var(--line-strong);
+    background: var(--surface);
+    border-bottom: 1px solid var(--line);
   }
   .row-label {
     display: flex;
@@ -129,7 +131,7 @@
     gap: 6px;
     height: var(--row-h);
     padding: 0 10px;
-    border-bottom: 1px solid var(--line);
+    border-bottom: 1px solid var(--line-weak);
   }
   .rl-name {
     flex: 1;
@@ -143,7 +145,7 @@
     height: 11px;
     border-radius: 3px;
     flex-shrink: 0;
-    border: 1px solid rgba(255, 255, 255, 0.15);
+    border: var(--line-width) solid var(--bar-border);
   }
   .grid-area {
     position: relative;
@@ -154,16 +156,16 @@
     top: 0;
     z-index: 4;
     height: 38px;
-    background: var(--panel);
-    border-bottom: 1px solid var(--line-strong);
+    background: var(--surface);
+    border-bottom: 1px solid var(--line);
   }
   .sprint-header {
     position: sticky;
     top: 38px;
     z-index: 4;
     height: 20px;
-    background: var(--panel);
-    border-bottom: 1px solid var(--line-strong);
+    background: var(--surface);
+    border-bottom: 1px solid var(--line);
   }
   .sprint-label {
     position: absolute;
@@ -174,18 +176,18 @@
     padding-left: 6px;
     font-family: 'IBM Plex Mono', monospace;
     font-size: 10px;
-    color: var(--muted);
+    color: var(--text-dim);
     letter-spacing: 0.03em;
     white-space: nowrap;
     overflow: hidden;
     box-sizing: border-box;
-    border-right: 1px solid var(--line);
+    border-right: 1px solid var(--line-weak);
   }
   .sprint-label.a {
-    background: rgba(34, 211, 238, 0.09);
+    background: var(--tint-accent);
   }
   .sprint-label.b {
-    background: rgba(255, 255, 255, 0.04);
+    background: var(--hover);
   }
   .rows {
     position: relative;
@@ -194,14 +196,14 @@
     position: absolute;
     top: 0;
     width: 1px;
-    background: var(--line-strong);
+    background: var(--line);
   }
   .track {
     position: absolute;
     left: 0;
     right: 0;
     height: var(--row-h);
-    border-bottom: 1px solid var(--line);
+    border-bottom: 1px solid var(--line-weak);
   }
   .track-hint {
     position: absolute;
@@ -209,7 +211,7 @@
     top: 50%;
     transform: translateY(-50%);
     font-size: 12px;
-    color: var(--muted);
+    color: var(--text-dim);
     font-family: 'IBM Plex Mono', monospace;
     opacity: 0.55;
   }
@@ -217,16 +219,16 @@
     position: absolute;
     top: 8px;
     height: 36px;
-    border-radius: 6px;
+    border-radius: var(--bar-radius);
     display: flex;
     align-items: center;
     padding: 0 8px;
-    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.4) inset;
+    box-shadow: 0 1px 0 var(--shadow-medium) inset;
   }
   .barlabel {
     flex: 1;
     font-size: 13px;
-    color: #0b0d10;
+    color: var(--bar-ink);
     font-weight: 600;
     overflow: hidden;
     text-overflow: ellipsis;

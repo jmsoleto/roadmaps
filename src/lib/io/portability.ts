@@ -12,6 +12,7 @@ import type { AppData, Assignee, Item, Phase, Roadmap, IsoDate } from '../model/
 import { DEFAULT_WINDOW_DAYS } from '../model/types';
 import { dateFromDay } from '../time/timeline';
 import { uid } from '../util/id';
+import { toSlot } from '../theme/migrate';
 
 const FORMAT = 'roadmaps.v1';
 const LEGACY_ORIGIN: IsoDate = '2026-01-01';
@@ -65,7 +66,11 @@ function asAssignees(v: unknown): Assignee[] {
     .filter(
       (a): a is Assignee => !!a && typeof a === 'object' && typeof (a as Assignee).id === 'string',
     )
-    .map((a) => ({ id: a.id, name: String(a.name ?? ''), color: String(a.color ?? '#22D3EE') }));
+    .map((a) => ({
+      id: a.id,
+      name: String(a.name ?? ''),
+      colorSlot: toSlot((a as Assignee & { color?: unknown }).color ?? a.colorSlot),
+    }));
 }
 
 /** Accept a current-format roadmap, giving it a fresh id to avoid collisions. */
@@ -80,26 +85,28 @@ function normalizeRoadmap(v: unknown): Roadmap {
   };
 }
 
-function normalizePhase(p: Phase): Phase {
+function normalizePhase(p: Phase & { color?: unknown }): Phase {
+  const colorSlot = toSlot(p.color ?? p.colorSlot);
   return {
     id: p.id ?? uid('ph'),
     name: String(p.name ?? 'Fase'),
-    color: p.color ?? '#22D3EE',
+    colorSlot,
     expanded: p.expanded ?? true,
     assigneeId: p.assigneeId ?? null,
     notes: String(p.notes ?? ''),
     startDate: p.startDate ?? null,
     endDate: p.endDate ?? null,
-    children: Array.isArray(p.children) ? p.children.map((c) => normalizeItem(c, p.color)) : [],
+    children: Array.isArray(p.children) ? p.children.map((c) => normalizeItem(c, colorSlot)) : [],
   };
 }
 
-function normalizeItem(c: Item, phaseColor: string): Item {
+function normalizeItem(c: Item & { color?: unknown }, phaseSlot: number): Item {
   const isMilestone = !!c.isMilestone;
+  const raw = c.color ?? c.colorSlot;
   return {
     id: c.id ?? uid('it'),
     label: String(c.label ?? 'Item'),
-    color: c.color ?? phaseColor,
+    colorSlot: raw === undefined ? phaseSlot : toSlot(raw),
     startDate: c.startDate,
     endDate: isMilestone ? c.startDate : c.endDate,
     assigneeId: c.assigneeId ?? null,
@@ -116,7 +123,7 @@ function fromLegacy(obj: Record<string, unknown>): Roadmap {
 
   const rows: Phase[] = (obj.rows as unknown[]).map((pv) => {
     const p = pv as Record<string, unknown>;
-    const color = String(p.color ?? '#22D3EE');
+    const colorSlot = toSlot(p.color ?? p.colorSlot);
     const children: Item[] = Array.isArray(p.children)
       ? (p.children as unknown[]).map((cv) => {
           const c = cv as Record<string, unknown>;
@@ -126,7 +133,7 @@ function fromLegacy(obj: Record<string, unknown>): Roadmap {
           return {
             id: String(c.id ?? uid('it')),
             label: String(c.label ?? 'Item'),
-            color: String(c.color ?? color),
+            colorSlot: c.color === undefined ? colorSlot : toSlot(c.color),
             startDate: start,
             endDate: end,
             assigneeId: (c.assigneeId as string | null) ?? null,
@@ -139,7 +146,7 @@ function fromLegacy(obj: Record<string, unknown>): Roadmap {
     return {
       id: String(p.id ?? uid('ph')),
       name: String(p.label ?? p.name ?? 'Fase'),
-      color,
+      colorSlot,
       expanded: p.expanded !== false,
       assigneeId: (p.assigneeId as string | null) ?? null,
       notes: String(p.notes ?? ''),

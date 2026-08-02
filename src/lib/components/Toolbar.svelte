@@ -43,12 +43,12 @@
     align-items: center;
     gap: 12px;
     padding: 9px 16px;
-    border-bottom: 1px solid var(--line);
+    border-bottom: 1px solid var(--line-weak);
     flex-shrink: 0;
   }
   .btn {
-    background: var(--panel-2);
-    border: 1px solid var(--line-strong);
+    background: var(--surface-2);
+    border: 1px solid var(--line);
     color: var(--text);
     font-family: 'IBM Plex Mono', monospace;
     font-size: 12.5px;
@@ -57,8 +57,8 @@
     cursor: pointer;
   }
   .btn:hover:not(:disabled) {
-    border-color: var(--cyan);
-    color: var(--cyan);
+    border-color: var(--accent);
+    color: var(--accent);
   }
   .btn:disabled {
     opacity: 0.45;
@@ -77,12 +77,12 @@
   .cfg-label {
     font-family: 'IBM Plex Mono', monospace;
     font-size: 11px;
-    color: var(--muted);
+    color: var(--text-dim);
   }
   .cfg-date,
   .cfg-num {
-    background: var(--panel-2);
-    border: 1px solid var(--line-strong);
+    background: var(--surface-2);
+    border: 1px solid var(--line);
     color: var(--text);
     font-family: 'IBM Plex Mono', monospace;
     font-size: 11.5px;
@@ -96,7 +96,7 @@
   }
   .cfg-date:focus,
   .cfg-num:focus {
-    border-color: var(--cyan);
+    border-color: var(--accent);
   }
   .zoom {
     display: flex;
@@ -107,7 +107,7 @@
   .zoom-label {
     font-family: 'IBM Plex Mono', monospace;
     font-size: 11px;
-    color: var(--muted);
+    color: var(--text-dim);
     min-width: 44px;
     text-align: center;
   }

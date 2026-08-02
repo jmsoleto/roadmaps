@@ -57,6 +57,30 @@ export class LocalStorageBackend implements Storage {
   }
 }
 
+/**
+ * Palette slots travel to SQLite as text.
+ *
+ * The `color` column predates theming and is `TEXT`, so storing the slot there
+ * needs no schema migration (theming, design decision D4). The Rust side keeps
+ * the field a `String` so a pre-theming hex value survives the trip back and
+ * the frontend can map it to the nearest slot — which is where the palette and
+ * the color math live. This function is the other half of that arrangement.
+ */
+function slotsAsText(data: AppData): unknown {
+  return {
+    ...data,
+    assignees: data.assignees.map((a) => ({ ...a, colorSlot: String(a.colorSlot) })),
+    roadmaps: data.roadmaps.map((rm) => ({
+      ...rm,
+      rows: rm.rows.map((p) => ({
+        ...p,
+        colorSlot: String(p.colorSlot),
+        children: p.children.map((c) => ({ ...c, colorSlot: String(c.colorSlot) })),
+      })),
+    })),
+  };
+}
+
 /** SQLite-backed desktop backend, via Tauri commands (see src-tauri/src/db.rs). */
 export class TauriBackend implements Storage {
   private async invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
@@ -64,12 +88,17 @@ export class TauriBackend implements Storage {
     return invoke<T>(cmd, args);
   }
 
+  /**
+   * Slots come back as text (and, on a database written before theming, as hex
+   * colors). Both are normalized by `normalizeColors` at the store's load
+   * boundary, so nothing is converted here.
+   */
   load(): Promise<AppData | null> {
     return this.invoke<AppData | null>('load_app_data');
   }
 
   save(data: AppData): Promise<void> {
-    return this.invoke<void>('save_app_data', { data });
+    return this.invoke<void>('save_app_data', { data: slotsAsText(data) });
   }
 
   getPref(key: string): Promise<string | null> {
