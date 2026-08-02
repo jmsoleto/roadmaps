@@ -1,9 +1,5 @@
-# desktop-shell
+## MODIFIED Requirements
 
-## Purpose
-
-Empaquetado y ciclo de vida de la aplicación de escritorio (Tauri): ventana, arranque offline, persistencia del estado de sesión y guardado seguro al cerrar.
-## Requirements
 ### Requirement: Aplicación de escritorio empaquetada
 
 El sistema MUST poder empaquetarse como una aplicación de escritorio (Tauri) que se ejecuta sin conexión a internet y sin depender de un servidor externo.
@@ -24,18 +20,3 @@ El empaquetado de escritorio NO está firmado ni notarizado por Apple, por lo qu
 
 - **WHEN** se necesita que otra persona use la aplicación en su propio equipo
 - **THEN** se le proporciona la URL de la aplicación web, no el binario de escritorio, que macOS bloquearía por cuarentena al no estar notarizado
-
-### Requirement: Persistencia del estado de ventana y sesión
-El sistema MUST recordar entre sesiones el roadmap activo y las preferencias de vista (p. ej. nivel de zoom).
-
-#### Scenario: Reabrir en el último estado
-- **WHEN** el usuario cierra la aplicación con un roadmap y un nivel de zoom concretos y la vuelve a abrir
-- **THEN** la aplicación restaura ese roadmap activo y ese nivel de zoom
-
-### Requirement: Guardado seguro al cerrar
-El sistema MUST persistir cualquier cambio pendiente antes de cerrarse, sin pérdida de datos.
-
-#### Scenario: Cierre con cambios pendientes
-- **WHEN** el usuario realiza un cambio y cierra la ventana antes de que expire el autosave debounced
-- **THEN** el cambio se escribe en el almacenamiento local antes de que la aplicación termine
-

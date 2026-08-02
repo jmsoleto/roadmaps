@@ -1,0 +1,5 @@
+schema: spec-driven
+created: 2026-08-02
+goal: "Distribuir la app sin firma de Apple: publicar el frontend como PWA en
+  GitHub Pages, ya que notarizar el .app cuesta 99 $/año y macOS bloquea por
+  cuarentena el binario sin firmar en cualquier otro Mac"
