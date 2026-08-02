@@ -6,10 +6,23 @@ import {
   dayIndex,
   dateFromDay,
   fmtDate,
+  isIsoDate,
   isWeekend,
   snapToWorkday,
   snapForward,
 } from './timeline';
+
+describe('isIsoDate', () => {
+  it('accepts only YYYY-MM-DD strings', () => {
+    expect(isIsoDate('2026-07-01')).toBe(true);
+    expect(isIsoDate('2026-7-1')).toBe(false);
+    expect(isIsoDate('2026-07-01T00:00:00Z')).toBe(false);
+    expect(isIsoDate('01/07/2026')).toBe(false);
+    expect(isIsoDate(182)).toBe(false);
+    expect(isIsoDate(null)).toBe(false);
+    expect(isIsoDate(undefined)).toBe(false);
+  });
+});
 
 describe('parse / format round-trip', () => {
   it('parses and formats back to the same ISO day', () => {

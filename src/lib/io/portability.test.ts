@@ -131,6 +131,134 @@ describe('legacy import (day-index format)', () => {
   });
 });
 
+describe('legacy import (ISO date format, schemaVersion 1)', () => {
+  // Shape of the later `roadmap_tool` exports: same fields as the day-index
+  // format, but `start`/`end` are already absolute days.
+  const isoLegacy = JSON.stringify({
+    schemaVersion: 1,
+    name: 'Plan',
+    assignees: [{ id: 'assg-1', name: 'Sergio Martin', color: '#22D3EE' }],
+    rows: [
+      {
+        id: 'row-1',
+        label: 'APP',
+        color: '#FB923C',
+        expanded: true,
+        assigneeId: null,
+        notes: '',
+        start: null,
+        end: null,
+        children: [
+          {
+            id: 'item-1',
+            label: 'Wallet en Perfil',
+            isMilestone: false,
+            start: '2026-06-28',
+            end: '2026-07-12',
+            assigneeId: 'assg-1',
+            notes: '',
+            dependsOn: [],
+          },
+          {
+            id: 'item-2',
+            label: 'Entrega',
+            isMilestone: true,
+            start: '2026-09-20',
+            end: '2026-09-20',
+            assigneeId: null,
+            notes: '',
+            dependsOn: ['item-1'],
+          },
+        ],
+      },
+    ],
+  });
+
+  it('keeps absolute ISO dates instead of collapsing them to the origin', () => {
+    const { roadmap: back } = parseImport(isoLegacy);
+    const [a, b] = back.rows[0].children;
+    expect(a.startDate).toBe('2026-06-28');
+    expect(a.endDate).toBe('2026-07-12');
+    expect(b.isMilestone).toBe(true);
+    expect(b.startDate).toBe('2026-09-20');
+    expect(b.endDate).toBe('2026-09-20');
+    expect(b.dependsOn).toEqual(['item-1']);
+  });
+
+  it('imports the assignees the document declares, so assignments still resolve', () => {
+    const { roadmap: back, assignees } = parseImport(isoLegacy);
+    expect(assignees).toEqual([{ id: 'assg-1', name: 'Sergio Martin', colorSlot: 0 }]);
+    const assigned = back.rows[0].children[0].assigneeId;
+    expect(assignees.some((a) => a.id === assigned)).toBe(true);
+  });
+
+  it('reads each date by its own value, so a mixed document survives', () => {
+    const mixed = JSON.stringify({
+      name: 'Mixto',
+      rows: [
+        {
+          id: 'p',
+          label: 'Fase',
+          children: [
+            { id: 'a', label: 'Índice', start: 4, end: 22 },
+            { id: 'b', label: 'ISO', start: '2026-03-02', end: '2026-03-16' },
+          ],
+        },
+      ],
+    });
+    const [a, b] = parseImport(mixed).roadmap.rows[0].children;
+    expect([a.startDate, a.endDate]).toEqual(['2026-01-05', '2026-01-23']);
+    expect([b.startDate, b.endDate]).toEqual(['2026-03-02', '2026-03-16']);
+  });
+
+  it('treats an unreadable date as absent without touching the other items', () => {
+    const broken = JSON.stringify({
+      name: 'Roto',
+      rows: [
+        {
+          id: 'p',
+          label: 'Fase',
+          children: [
+            { id: 'a', label: 'Malo', start: '01/07/2026', end: 'mañana' },
+            { id: 'b', label: 'Bueno', start: '2026-07-01', end: '2026-07-31' },
+          ],
+        },
+      ],
+    });
+    const [a, b] = parseImport(broken).roadmap.rows[0].children;
+    expect(a.startDate).toBe('2026-01-01'); // default for a dateless item
+    expect(a.endDate).toBe('2026-01-01');
+    expect(b.startDate).toBe('2026-07-01'); // unaffected
+    expect(b.endDate).toBe('2026-07-31');
+  });
+});
+
+describe('timeline window of an imported legacy roadmap', () => {
+  const withDates = (start: string, end: string) =>
+    JSON.stringify({
+      name: 'X',
+      rows: [{ id: 'p', label: 'F', children: [{ id: 'a', label: 'I', start, end }] }],
+    });
+
+  it('is left at the default when the content fits in it', () => {
+    const { roadmap } = parseImport(withDates('2026-06-28', '2026-12-27'));
+    expect(roadmap.startDate).toBe('2026-01-01');
+    expect(roadmap.windowDays).toBe(730);
+  });
+
+  it('starts at the month of the content when it begins before the default', () => {
+    const { roadmap } = parseImport(withDates('2025-03-17', '2025-09-30'));
+    expect(roadmap.startDate).toBe('2025-03-01');
+    expect(roadmap.windowDays).toBe(730); // default already reaches past the end
+  });
+
+  it('widens enough to cover content that runs past the default window', () => {
+    const { roadmap } = parseImport(withDates('2026-01-05', '2029-06-30'));
+    expect(roadmap.startDate).toBe('2026-01-01');
+    expect(roadmap.windowDays).toBe(1277); // 2026-01-01 .. 2029-06-30 inclusive
+  });
+});
+
 describe('import of pre-theming exports (hex colors)', () => {
   it('converts phase, item and assignee colors to slots', () => {
     const preTheming = JSON.stringify({

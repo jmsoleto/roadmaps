@@ -3,14 +3,16 @@
  *
  * Export produces a self-contained JSON document with the roadmap and the
  * assignees it references. Import accepts both this current format and the
- * legacy single-file format from `roadmap_tool_6_6_2.html`, whose dates are
- * integer day offsets from 2026-01-01 — those are converted to absolute ISO
- * dates on the way in.
+ * legacy single-file format from `roadmap_tool_6_6_2.html`, which comes in two
+ * date dialects: integer day offsets from 2026-01-01 (the original tool) and
+ * absolute ISO days (its later `schemaVersion: 1` exports). Both are normalized
+ * to absolute ISO dates on the way in, deciding per value rather than per
+ * document version, so a file that mixes the two still imports correctly.
  */
 
 import type { AppData, Assignee, Item, Phase, Roadmap, IsoDate } from '../model/types';
 import { DEFAULT_WINDOW_DAYS } from '../model/types';
-import { dateFromDay } from '../time/timeline';
+import { dateFromDay, dayIndex, isIsoDate } from '../time/timeline';
 import { uid } from '../util/id';
 import { toSlot } from '../theme/migrate';
 
@@ -55,7 +57,7 @@ export function parseImport(text: string): { roadmap: Roadmap; assignees: Assign
     return { roadmap: normalizeRoadmap(obj.roadmap), assignees: asAssignees(obj.assignees) };
   }
   if (Array.isArray(obj.rows)) {
-    return { roadmap: fromLegacy(obj), assignees: [] };
+    return { roadmap: fromLegacy(obj), assignees: asAssignees(obj.assignees) };
   }
   throw new Error('Formato no reconocido.');
 }
@@ -116,11 +118,20 @@ function normalizeItem(c: Item & { color?: unknown }, phaseSlot: number): Item {
   };
 }
 
-/** Convert the legacy day-index format into the current ISO-date model. */
-function fromLegacy(obj: Record<string, unknown>): Roadmap {
-  const day = (n: unknown): IsoDate | null =>
-    typeof n === 'number' ? dateFromDay(LEGACY_ORIGIN, n) : null;
+/**
+ * Read one legacy date in either dialect: a finite number is a day offset from
+ * `LEGACY_ORIGIN`, an ISO day is already absolute. Anything else — including a
+ * string that isn't a valid day — counts as "no date", and the caller decides
+ * what that means for a phase (stays null) or an item (gets a default).
+ */
+function legacyDate(v: unknown): IsoDate | null {
+  if (typeof v === 'number' && Number.isFinite(v)) return dateFromDay(LEGACY_ORIGIN, v);
+  if (isIsoDate(v)) return v;
+  return null;
+}
 
+/** Convert a legacy document (either date dialect) into the current model. */
+function fromLegacy(obj: Record<string, unknown>): Roadmap {
   const rows: Phase[] = (obj.rows as unknown[]).map((pv) => {
     const p = pv as Record<string, unknown>;
     const colorSlot = toSlot(p.color ?? p.colorSlot);
@@ -128,8 +139,8 @@ function fromLegacy(obj: Record<string, unknown>): Roadmap {
       ? (p.children as unknown[]).map((cv) => {
           const c = cv as Record<string, unknown>;
           const isMilestone = !!c.isMilestone;
-          const start = day(c.start) ?? LEGACY_ORIGIN;
-          const end = isMilestone ? start : (day(c.end) ?? start);
+          const start = legacyDate(c.start) ?? LEGACY_ORIGIN;
+          const end = isMilestone ? start : (legacyDate(c.end) ?? start);
           return {
             id: String(c.id ?? uid('it')),
             label: String(c.label ?? 'Item'),
@@ -150,8 +161,8 @@ function fromLegacy(obj: Record<string, unknown>): Roadmap {
       expanded: p.expanded !== false,
       assigneeId: (p.assigneeId as string | null) ?? null,
       notes: String(p.notes ?? ''),
-      startDate: day(p.start),
-      endDate: day(p.end),
+      startDate: legacyDate(p.start),
+      endDate: legacyDate(p.end),
       children,
     };
   });
@@ -159,10 +170,35 @@ function fromLegacy(obj: Record<string, unknown>): Roadmap {
   return {
     id: uid('rm'),
     name: String(obj.name ?? 'Roadmap importado'),
-    startDate: LEGACY_ORIGIN,
-    windowDays: DEFAULT_WINDOW_DAYS,
+    ...fitWindow(rows),
     rows,
   };
+}
+
+/**
+ * The timeline window for a document that doesn't carry one of its own.
+ *
+ * Legacy day offsets are counted from `LEGACY_ORIGIN`, so the default window
+ * always fits them; absolute ISO dates carry no such guarantee, and content
+ * outside the window renders nowhere. So the default is kept whenever the
+ * content fits in it, and only widened — from the first of the month, since the
+ * grid is drawn by months — when it doesn't.
+ */
+function fitWindow(rows: Phase[]): { startDate: IsoDate; windowDays: number } {
+  const dates: IsoDate[] = [];
+  for (const p of rows) {
+    if (p.startDate) dates.push(p.startDate);
+    if (p.endDate) dates.push(p.endDate);
+    for (const c of p.children) dates.push(c.startDate, c.endDate);
+  }
+  const fallback = { startDate: LEGACY_ORIGIN, windowDays: DEFAULT_WINDOW_DAYS };
+  if (dates.length === 0) return fallback;
+
+  const min = dates.reduce((a, b) => (a < b ? a : b));
+  const max = dates.reduce((a, b) => (a > b ? a : b));
+  const startDate = min < LEGACY_ORIGIN ? `${min.slice(0, 8)}01` : LEGACY_ORIGIN;
+  const needed = dayIndex(startDate, max) + 1;
+  return { startDate, windowDays: Math.max(DEFAULT_WINDOW_DAYS, needed) };
 }
 
 /** Merge imported assignees into the app, skipping ids that already exist. */

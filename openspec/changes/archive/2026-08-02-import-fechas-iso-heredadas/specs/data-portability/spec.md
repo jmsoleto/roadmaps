@@ -1,15 +1,4 @@
-# data-portability
-
-## Purpose
-
-Import/export de roadmaps en JSON como backup e intercambio manual, aceptando el formato actual y el heredado, preservando la integridad referencial.
-## Requirements
-### Requirement: Exportar un roadmap a JSON
-El sistema MUST permitir exportar un roadmap a un archivo JSON autocontenido apto como backup e intercambio manual.
-
-#### Scenario: Exportar el roadmap activo
-- **WHEN** el usuario pulsa exportar sobre el roadmap activo
-- **THEN** el sistema genera un archivo JSON con las fases, items, milestones, dependencias, notas y responsables referenciados del roadmap
+## MODIFIED Requirements
 
 ### Requirement: Importar un roadmap desde JSON
 El sistema MUST permitir importar un roadmap desde un archivo JSON, tanto del formato actual como del formato heredado, convirtiendo a posiciones de paleta los colores que el documento exprese como valores de color absolutos.
@@ -51,35 +40,7 @@ El sistema MUST preservar la integridad referencial (dependencias y responsables
 - **WHEN** el usuario importa un JSON heredado que declara una lista de responsables a la que sus items hacen referencia
 - **THEN** el sistema incorpora esos responsables a los ya existentes y las asignaciones de los items siguen resolviéndose tras la importación
 
-### Requirement: Exportar un tema a JSON
-El sistema MUST permitir exportar un tema propio como archivo JSON autocontenido, independiente del export de roadmaps.
-
-#### Scenario: Exportar un tema propio
-- **WHEN** el usuario exporta un tema propio
-- **THEN** el sistema genera un archivo JSON con el nombre del tema, sus colores base, su paleta de barras y las sobrescrituras que tenga
-
-#### Scenario: El tema no viaja dentro del export de un roadmap
-- **WHEN** el usuario exporta un roadmap
-- **THEN** el archivo generado no contiene información de tema
-
-### Requirement: Importar un tema desde JSON
-El sistema MUST permitir importar un tema desde un archivo JSON, tolerando que el documento no contenga todos los tokens del contrato vigente.
-
-#### Scenario: Importar un tema completo
-- **WHEN** el usuario importa un archivo de tema válido
-- **THEN** el sistema lo añade a sus temas propios y permite seleccionarlo
-
-#### Scenario: Importar un tema al que le faltan tokens
-- **WHEN** el usuario importa un tema que solo declara sus colores base
-- **THEN** el sistema deriva el resto de tokens y el tema resulta utilizable en toda la interfaz
-
-#### Scenario: Importar un tema con tokens desconocidos
-- **WHEN** el usuario importa un tema que declara tokens que la versión actual no reconoce
-- **THEN** el sistema ignora esos tokens e importa el resto sin error
-
-#### Scenario: Importar un archivo que no es un tema
-- **WHEN** el usuario intenta importar como tema un archivo que no lo es
-- **THEN** el sistema rechaza la importación con un mensaje de error y no altera los temas existentes
+## ADDED Requirements
 
 ### Requirement: Ventana temporal utilizable en el roadmap importado
 El sistema MUST dar al roadmap importado una ventana temporal en la que su contenido sea visible, cuando el documento importado no especifique una.
@@ -91,4 +52,3 @@ El sistema MUST dar al roadmap importado una ventana temporal en la que su conte
 #### Scenario: El contenido importado cabe en la ventana por defecto
 - **WHEN** el usuario importa un documento sin ventana temporal propia cuyas fechas caben en el rango por defecto
 - **THEN** el sistema conserva la ventana por defecto sin modificarla
-

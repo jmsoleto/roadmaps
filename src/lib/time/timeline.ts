@@ -29,9 +29,14 @@ export const MONTHS_ES = [
 
 const ISO_RE = /^\d{4}-\d{2}-\d{2}$/;
 
+/** True for a string in ISO `YYYY-MM-DD` day form — the one place that decides. */
+export function isIsoDate(v: unknown): v is IsoDate {
+  return typeof v === 'string' && ISO_RE.test(v);
+}
+
 /** Parse an ISO `YYYY-MM-DD` day into a UTC-midnight epoch millisecond value. */
 export function parseIso(iso: IsoDate): number {
-  if (!ISO_RE.test(iso)) throw new Error(`invalid ISO date: ${iso}`);
+  if (!isIsoDate(iso)) throw new Error(`invalid ISO date: ${iso}`);
   const [y, m, d] = iso.split('-').map(Number);
   const ts = Date.UTC(y, m - 1, d);
   if (Number.isNaN(ts)) throw new Error(`invalid ISO date: ${iso}`);
