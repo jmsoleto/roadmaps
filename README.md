@@ -43,6 +43,41 @@ npm run build
 npm run tauri build
 ```
 
+## Distribución web (GitHub Pages)
+
+La app de escritorio no está firmada ni notarizada por Apple, así que en otro Mac
+macOS la bloquea por cuarentena. La vía de distribución soportada es la **web app**,
+que no necesita firma ni instalación:
+
+**https://jmsoleto.github.io/roadmaps/**
+
+Cada push a `main` la despliega vía `.github/workflows/pages.yml`. Para activarlo una
+sola vez: _Settings → Pages → Source: **GitHub Actions**_.
+
+Es una PWA: desde el navegador se puede instalar como ventana propia (Chrome/Edge:
+icono de instalar en la barra de direcciones; Safari: _Archivo → Añadir al Dock_) y
+funciona sin conexión gracias al service worker.
+
+```bash
+npm run build:pages     # build con base /roadmaps/
+npm run preview:pages   # servir ese build en http://localhost:4173/roadmaps/
+```
+
+El service worker solo se genera en el build web; el build de Tauri lo omite
+(se detecta con `TAURI_ENV_PLATFORM`, que Tauri exporta a `beforeBuildCommand`).
+
+### Diferencias respecto a la app de escritorio
+
+|                      | Escritorio (Tauri)               | Web / PWA                    |
+| -------------------- | -------------------------------- | ---------------------------- |
+| Persistencia         | SQLite en el directorio de datos | `localStorage` del navegador |
+| Alcance de los datos | Compartidos por toda la app      | Por navegador y por perfil   |
+| Distribución         | Requiere firma/notarización      | Una URL                      |
+
+En web los datos viven en el `localStorage` de ese navegador: no se sincronizan entre
+máquinas y se pierden si se borran los datos del sitio. Para mover un roadmap entre
+navegadores o hacer copia de seguridad, usa **exportar** / **importar** JSON.
+
 ## Calidad
 
 ```bash
@@ -56,6 +91,8 @@ cd src-tauri && cargo test   # tests de la capa SQLite
 ## Estructura
 
 ```
+.github/workflows/       Despliegue de la web app a GitHub Pages
+public/                  Iconos y assets estáticos de la PWA
 src/                     Frontend Svelte
   lib/model/             Modelo de datos, derivaciones y restricciones (deps)
   lib/time/              Conversión día↔fecha, segmentos (sprints/trimestres/meses)

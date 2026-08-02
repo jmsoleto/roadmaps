@@ -3,7 +3,6 @@ dist/
 dist-ssr/
 *.local
 .DS_Store
-.github
 .claude
 # Editor
 .vscode/*
@@ -16,3 +15,6 @@ src-tauri/target/
 # Test / cache
 coverage/
 .vite/
+
+# PWA service worker generated in dev
+dev-dist/
