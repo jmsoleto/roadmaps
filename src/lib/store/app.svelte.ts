@@ -24,7 +24,7 @@ const SAVE_DEBOUNCE_MS = 250;
 const minIso = (a: IsoDate, b: IsoDate): IsoDate => (a < b ? a : b);
 const maxIso = (a: IsoDate, b: IsoDate): IsoDate => (a > b ? a : b);
 
-class AppStore {
+export class AppStore {
   private storage: Storage;
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
 
