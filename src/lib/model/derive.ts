@@ -1,5 +1,6 @@
 /** Pure derivations over the data model (no reactivity, easy to test). */
 
+import { addDays, dayIndex } from '../time/timeline';
 import type { Item, Phase, Roadmap, IsoDate } from './types';
 
 /** A flattened, render-ready row: a phase header, one of its items, or its "add" row. */
@@ -52,4 +53,41 @@ export function getRoadmapExtent(rm: Roadmap): { start: IsoDate; end: IsoDate } 
   }
   if (min === null || max === null) return null;
   return { start: min, end: max };
+}
+
+/** Days of breathing room left of today when today would otherwise be the origin. */
+const META_LEAD_DAYS = 30;
+/** Days of slack past the last thing the window has to cover. */
+const META_TAIL_DAYS = 30;
+/** Shortest window the "Todos" view ever shows. */
+const META_MIN_DAYS = 365;
+
+/**
+ * The derived timeline window of the "Todos" view: where its grid starts and
+ * how many days it spans.
+ *
+ * Unlike a roadmap's own window, which the user configures and the roadmap view
+ * therefore respects as-is, this one is computed on every render and never
+ * persisted. So it is stretched at both ends to always contain `today` — which
+ * is what lets that view mark today with no visibility guard. When today already
+ * falls inside the roadmaps' own range, neither end moves.
+ *
+ * `today` is a parameter rather than a `todayIso()` call so this stays pure.
+ */
+export function getMetaWindow(
+  roadmaps: Roadmap[],
+  today: IsoDate,
+): { origin: IsoDate; windowDays: number } {
+  // The lead only ever wins when every roadmap starts after today; otherwise the
+  // earliest roadmap takes the minimum and nothing shifts.
+  const origin = roadmaps.map((r) => r.startDate).reduce(minIso, addDays(today, -META_LEAD_DAYS));
+
+  let windowDays = Math.max(META_MIN_DAYS, dayIndex(origin, today) + META_TAIL_DAYS);
+  for (const rm of roadmaps) {
+    const extent = getRoadmapExtent(rm);
+    if (extent) {
+      windowDays = Math.max(windowDays, dayIndex(origin, extent.end) + META_TAIL_DAYS);
+    }
+  }
+  return { origin, windowDays };
 }

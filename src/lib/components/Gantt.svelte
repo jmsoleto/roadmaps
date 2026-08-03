@@ -63,6 +63,29 @@
     if (scrollEl) scrollEl.scrollLeft = Math.max(0, today * dayW - 200);
   }
 
+  // Opening a roadmap looks at its first day — the start the user configured —
+  // whether or not anything is scheduled there.
+  //
+  // `App.svelte` doesn't key the branch that mounts this component, so switching
+  // roadmaps from the topbar picker (or creating/importing one from inside
+  // another) reuses this instance and would otherwise carry over a scroll offset
+  // that means nothing in the new roadmap. An effect covers that and the plain
+  // mount in one piece, since it runs on mount too.
+  //
+  // Comparing against the last roadmap scrolled for, rather than just resetting,
+  // is what keeps this to once per roadmap: `rm` is derived from the store, so
+  // the effect must never be able to yank the view back to day 0 in the middle
+  // of editing — dragging a bar has to leave the viewport where it is.
+  //
+  // Horizontal only: the browser already clamps `scrollTop` on its own when the
+  // new roadmap has fewer rows.
+  let scrolledFor: string | undefined;
+  $effect(() => {
+    if (scrolledFor === rm.id) return;
+    scrolledFor = rm.id;
+    if (scrollEl) scrollEl.scrollLeft = 0;
+  });
+
   // ---- drag tooltip ----
   function tip(ev: PointerEvent, lo: number, hi: number) {
     ui.showTooltip(ev.clientX + 16, ev.clientY - 44, `${fmtDate(iso(lo))} → ${fmtDate(iso(hi))}`);
@@ -827,12 +850,16 @@
     opacity: 0.35;
     width: 2px;
   }
+  /* Above the sticky headers (4), not just the grid, because `.today-flag` below
+     hangs above this element and would otherwise be painted over by the opaque
+     month header. Still below the sticky sidebar (6), which has to keep covering
+     the timeline as it scrolls past. */
   .today-line {
     position: absolute;
     top: 0;
     width: 2px;
     background: var(--accent);
-    z-index: 3;
+    z-index: 5;
     box-shadow: 0 0 8px var(--accent);
     pointer-events: none;
   }

@@ -9,7 +9,12 @@
   import Drawer from './lib/components/Drawer.svelte';
   import DragTooltip from './lib/components/DragTooltip.svelte';
 
-  let gantt: Gantt | undefined;
+  let gantt = $state<Gantt | undefined>(undefined);
+  let meta = $state<MetaView | undefined>(undefined);
+
+  // Which view is on screen. Both the toolbar's "ir a hoy" and the markup below
+  // need the answer, and they must not be able to disagree.
+  const showMeta = $derived(store.metaView || !store.activeRoadmap);
 
   onMount(() => {
     // Browser fallback: best-effort flush on unload.
@@ -38,12 +43,14 @@
 
 <div class="app">
   <Topbar />
-  <Toolbar onToday={() => gantt?.scrollToToday()} />
+  <!-- Both views mark today, so "ir a hoy" goes to whichever one is mounted.
+       The two branches are exclusive, so only one reference is ever live. -->
+  <Toolbar onToday={() => (showMeta ? meta : gantt)?.scrollToToday()} />
   <div class="gantt-wrapper">
     <!-- Falling back to "Todos" when there is no active roadmap keeps any
          degenerate state on the home, which now carries its own empty state. -->
-    {#if store.metaView || !store.activeRoadmap}
-      <MetaView />
+    {#if showMeta}
+      <MetaView bind:this={meta} />
     {:else}
       <Gantt bind:this={gantt} />
     {/if}

@@ -1,21 +1,23 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { store } from '../store/app.svelte';
   import { ui } from '../store/ui.svelte';
   import { ROW_H } from '../config';
   import { theme } from '../theme/theme.svelte';
-  import { dayIndex, dayToX, fmtDate } from '../time/timeline';
+  import { dayIndex, dayToX, fmtDate, todayIso } from '../time/timeline';
   import { getQuarterSegments } from '../time/segments';
-  import { getRoadmapExtent } from '../model/derive';
+  import { getMetaWindow, getRoadmapExtent } from '../model/derive';
   import type { IsoDate } from '../model/types';
+
+  let scrollEl = $state<HTMLDivElement | undefined>(undefined);
 
   const roadmaps = $derived(store.data.roadmaps);
 
-  // Common meta timeline: origin = earliest roadmap start, window covers all extents.
-  const metaOrigin = $derived.by<IsoDate>(() =>
-    roadmaps
-      .map((r) => r.startDate)
-      .reduce((a, b) => (a < b ? a : b), roadmaps[0]?.startDate ?? '2026-01-01'),
-  );
+  // Common meta timeline, stretched to always contain today — see `getMetaWindow`.
+  const meta = $derived(getMetaWindow(roadmaps, todayIso()));
+  const metaOrigin = $derived(meta.origin);
+  const windowDays = $derived(meta.windowDays);
+  const today = $derived(dayIndex(metaOrigin, todayIso()));
 
   const rows = $derived(
     roadmaps.map((rm, idx) => {
@@ -23,14 +25,6 @@
       return { rm, idx, slot: idx, extent };
     }),
   );
-
-  const windowDays = $derived.by(() => {
-    let max = 365;
-    for (const r of rows) {
-      if (r.extent) max = Math.max(max, dayIndex(metaOrigin, r.extent.end) + 30);
-    }
-    return max;
-  });
 
   const totalWidth = $derived(windowDays * store.dayW);
   const totalHeight = $derived(Math.max(roadmaps.length * ROW_H, 200));
@@ -41,6 +35,19 @@
     const e = dayIndex(metaOrigin, endIso);
     return { left: dayToX(s, store.dayW), width: (e - s) * store.dayW };
   }
+
+  // Same 200px lead-in as the Gantt: both views put a 250px sticky sidebar over
+  // the left edge of the scroll port, so this lands today clear of it.
+  export function scrollToToday() {
+    if (scrollEl) scrollEl.scrollLeft = Math.max(0, today * store.dayW - 200);
+  }
+
+  // "Todos" is the app's landing view, and the question it answers is "how are
+  // things going right now" — so entering it looks at today rather than at
+  // whatever the calendar origin happens to be. The grid width comes from inline
+  // styles, already applied by the time this runs, so the container is scrollable
+  // without waiting for a tick.
+  onMount(scrollToToday);
 
   // ---- inline delete (two-step confirm, no browser dialog) ----
   // "Todos" is the only surface that deletes roadmaps, so this lives here and
@@ -87,7 +94,7 @@
     >
   </div>
 {:else}
-  <div class="gantt-scroll">
+  <div class="gantt-scroll" bind:this={scrollEl}>
     <div class="sidebar">
       <div class="sidebar-head"></div>
       <div class="sidebar-head-spacer"></div>
@@ -145,6 +152,16 @@
             style:height="{totalHeight}px"
           ></div>
         {/each}
+        <!-- No visibility guard, unlike the Gantt: `metaOrigin` and `windowDays`
+             are built to contain today, so the condition would always hold and
+             would only invite the question of when it doesn't. -->
+        <div
+          class="today-line"
+          style:left="{dayToX(today, store.dayW)}px"
+          style:height="{totalHeight}px"
+        >
+          <div class="today-flag">HOY</div>
+        </div>
         {#each rows as r, i (r.rm.id)}
           <div class="track" style:top="{i * ROW_H}px">
             {#if r.extent}
@@ -347,6 +364,30 @@
     top: 0;
     width: 1px;
     background: var(--line);
+  }
+  /* Same marker as the roadmap view, down to the z-index: the two views should
+     read as one app. Above the sticky headers (4), so `.today-flag` — which hangs
+     above this element — isn't painted over by the opaque quarter header, and
+     below the sticky sidebar (6), which has to keep covering the timeline. */
+  .today-line {
+    position: absolute;
+    top: 0;
+    width: 2px;
+    background: var(--accent);
+    z-index: 5;
+    box-shadow: 0 0 8px var(--accent);
+    pointer-events: none;
+  }
+  .today-flag {
+    position: absolute;
+    top: -34px;
+    left: 6px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--accent);
+    white-space: nowrap;
+    font-weight: 700;
+    letter-spacing: 0.05em;
   }
   .track {
     position: absolute;

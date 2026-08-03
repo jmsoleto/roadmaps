@@ -5,8 +5,10 @@
   let { onToday }: { onToday: () => void } = $props();
 </script>
 
-<!-- The "Todos" view scales with `store.dayW` too, so it keeps the zoom control
-     and drops what only applies inside a roadmap. -->
+<!-- The "Todos" view scales with `store.dayW` too and marks today just like the
+     roadmap view, so it keeps the zoom control and "ir a hoy" — zooming out can
+     push the marker off screen, and this is what brings it back — and drops only
+     what applies inside a roadmap. -->
 <div class="toolbar">
   {#if !store.metaView}
     <button class="btn" onclick={() => store.addPhase()}>+ añadir fase</button>
@@ -38,9 +40,7 @@
     <div class="zoom-label">{store.dayW}px/d</div>
     <button class="btn sq" title="acercar" onclick={() => store.zoomIn()}>+</button>
   </div>
-  {#if !store.metaView}
-    <button class="btn today" onclick={onToday}>ir a hoy</button>
-  {/if}
+  <button class="btn today" onclick={onToday}>ir a hoy</button>
 </div>
 
 <style>
