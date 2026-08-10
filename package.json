@@ -13,13 +13,11 @@
     "lint": "prettier --check . && eslint .",
     "format": "prettier --write .",
     "test": "vitest run",
-    "test:watch": "vitest",
-    "tauri": "tauri"
+    "test:watch": "vitest"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
     "@sveltejs/vite-plugin-svelte": "^4.0.0",
-    "@tauri-apps/cli": "^2.11.4",
     "@tsconfig/svelte": "^5.0.4",
     "eslint": "^9.13.0",
     "eslint-plugin-svelte": "^2.46.0",
@@ -33,7 +31,5 @@
     "vite-plugin-pwa": "^1.3.0",
     "vitest": "^2.1.4"
   },
-  "dependencies": {
-    "@tauri-apps/api": "^2.11.1"
-  }
+  "dependencies": {}
 }

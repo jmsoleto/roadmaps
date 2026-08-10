@@ -4,5 +4,3 @@ coverage/
 openspec/
 .claude/
 package-lock.json
-src-tauri/gen/
-src-tauri/target/

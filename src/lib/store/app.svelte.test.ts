@@ -3,7 +3,7 @@ import { AppStore } from './app.svelte';
 import type { Storage } from './storage';
 import type { AppData } from '../model/types';
 
-/** In-memory backend so the store can be exercised without Tauri or localStorage. */
+/** In-memory backend so the store can be exercised without a real localStorage. */
 class FakeStorage implements Storage {
   saved: AppData | null = null;
   constructor(private initial: AppData | null = null) {}

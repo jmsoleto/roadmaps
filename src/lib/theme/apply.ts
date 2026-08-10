@@ -2,10 +2,10 @@
  * Writing a resolved theme to the document.
  *
  * Also keeps the boot mirror in `localStorage` up to date (design decision D8).
- * The canonical store is SQLite on the desktop and `localStorage` on the web,
- * but either way the preference is read asynchronously, which would paint the
- * first frame with the wrong theme. The mirror lets the inline script in
- * `index.html` apply the right colors before anything is drawn.
+ * The canonical preference lives behind the async `Storage` seam and is not
+ * read until the bundle runs, which would paint the first frame with the wrong
+ * theme. The mirror lets the inline script in `index.html` apply the right
+ * colors before anything is drawn.
  */
 
 import { CSS_VAR, CSS_VAR_GEOMETRY, type ResolvedTheme } from './tokens';

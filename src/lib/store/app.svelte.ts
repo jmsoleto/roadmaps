@@ -4,7 +4,7 @@
  * Holds the full `AppData` plus view state (zoom, meta view). Mutations go
  * through methods that schedule a debounced save, mirroring the original
  * `queueSave`/`flushSaves` behavior. Persistence is delegated to the
- * `Storage` seam, so the SQLite backend can replace it later untouched.
+ * `Storage` seam, so a different backend can replace it later untouched.
  */
 
 import type { AppData, Assignee, Item, Phase, Roadmap, IsoDate } from '../model/types';

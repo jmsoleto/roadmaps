@@ -5,12 +5,12 @@
  * always one of `PALETTE_V1`, since the app never offered a free color picker.
  * They now store a slot index instead.
  *
- * The conversion happens at the load boundary rather than as a schema
- * migration, which is possible because the SQLite columns are already `TEXT`
- * and the transport is JSON. One pass covers all four sources of old data:
- * an existing SQLite file, browser `localStorage`, `roadmaps.v1` exports
- * already in the wild, and legacy `roadmap_tool_6_6_2.html` files. The next
- * autosave writes slots and the conversion never runs again.
+ * The conversion happens at the load boundary rather than as a migration of the
+ * stored format, which is possible because the transport is JSON. One pass
+ * covers every source of old data: browser `localStorage` written before
+ * theming, `roadmaps.v1` exports already in the wild, and legacy
+ * `roadmap_tool_6_6_2.html` files. The next autosave writes slots and the
+ * conversion never runs again.
  */
 
 import { isHex, nearestIndex } from './color';

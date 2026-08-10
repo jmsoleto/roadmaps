@@ -30,6 +30,6 @@ export default [
     },
   },
   {
-    ignores: ['dist/', 'node_modules/', 'coverage/', 'openspec/', 'src-tauri/'],
+    ignores: ['dist/', 'node_modules/', 'coverage/', 'openspec/'],
   },
 ];

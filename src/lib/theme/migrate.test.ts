@@ -23,7 +23,7 @@ describe('toSlot', () => {
     expect(toSlot(7)).toBe(7);
   });
 
-  it('reads a slot stored as text, which is how SQLite hands it back', () => {
+  it('reads a slot stored as text, which is how some legacy documents carry it', () => {
     expect(toSlot('3')).toBe(3);
     expect(toSlot(' 5 ')).toBe(5);
   });

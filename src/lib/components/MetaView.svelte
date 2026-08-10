@@ -68,8 +68,8 @@
   }
 
   // Any interaction outside the delete buttons drops a pending confirmation.
-  // `pointerdown` rather than `blur`: in WKWebView (Tauri on macOS) buttons
-  // don't take focus when clicked, so blur would never fire. Events born
+  // `pointerdown` rather than `blur`: in WebKit (Safari) buttons don't take
+  // focus when clicked, so blur would never fire. Events born
   // inside a delete button are left alone so the second press reaches its
   // own handler instead of just re-arming.
   $effect(() => {

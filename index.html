@@ -12,9 +12,10 @@
     <!--
       Paint the stored theme before the first frame.
 
-      The real preference is read asynchronously — over IPC from SQLite on the
-      desktop — which would show a flash of the wrong theme on every launch.
-      This mirror is written by `theme/apply.ts`; the key must match BOOT_KEY.
+      This runs before the bundle has loaded and before the app has read the
+      canonical preference, so without it every launch would flash the default
+      theme. This mirror is written by `theme/apply.ts`; the key must match
+      BOOT_KEY.
     -->
     <script>
       (function () {

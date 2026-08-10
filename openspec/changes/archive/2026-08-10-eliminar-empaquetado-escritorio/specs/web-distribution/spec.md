@@ -1,9 +1,5 @@
-# web-distribution
+## MODIFIED Requirements
 
-## Purpose
-
-Publicación del frontend como aplicación web / PWA en una URL pública: instalable, operativa sin conexión y sin requerir firma de código ni instalación. Es la única vía de distribución de la aplicación.
-## Requirements
 ### Requirement: Distribución como web app sin firma ni instalación
 
 El sistema MUST poder distribuirse como una aplicación web accesible desde una URL pública, sin requerir firma de código, notarización ni instalación por parte del usuario.
@@ -32,39 +28,6 @@ El sistema MUST permitir configurar la ruta base desde la que se sirve el fronte
 - **WHEN** se construye o se sirve el frontend sin indicar ruta base, como en desarrollo y en la previsualización local
 - **THEN** los assets se referencian desde la raíz y la aplicación carga sin peticiones fallidas
 
-### Requirement: Aplicación web instalable y operativa sin conexión
-
-El sistema MUST publicarse como PWA instalable, con manifest e iconos propios, y MUST seguir funcionando sin conexión a internet una vez visitada por primera vez.
-
-#### Scenario: Instalación como ventana propia
-
-- **WHEN** el usuario instala la aplicación desde el navegador
-- **THEN** se abre en ventana propia, con nombre e icono de la aplicación, sin la interfaz del navegador alrededor
-
-#### Scenario: Arranque sin conexión
-
-- **WHEN** el usuario ha abierto la aplicación al menos una vez y la vuelve a abrir sin conexión a internet
-- **THEN** la aplicación carga desde la caché local y muestra sus roadmaps
-
-#### Scenario: Actualización tras un despliegue
-
-- **WHEN** se publica una versión nueva y el usuario vuelve a abrir la aplicación con conexión
-- **THEN** la aplicación se actualiza a la versión nueva sin requerir ninguna acción del usuario
-
-### Requirement: Publicación automática
-
-El sistema MUST publicar la aplicación web automáticamente al integrar cambios en la rama principal, y MUST bloquear la publicación si la batería de tests no pasa.
-
-#### Scenario: Cambio integrado en la rama principal
-
-- **WHEN** se integra un cambio en la rama principal y los tests pasan
-- **THEN** la aplicación web publicada se actualiza con ese cambio sin intervención manual
-
-#### Scenario: Tests en rojo
-
-- **WHEN** se integra un cambio en la rama principal y la batería de tests falla
-- **THEN** la publicación no se lleva a cabo y la versión publicada anteriormente permanece intacta
-
 ### Requirement: Persistencia y portabilidad en la vía web
 
 El sistema MUST persistir los roadmaps en el almacenamiento local del navegador, y MUST ofrecer export/import JSON como mecanismo de copia de seguridad y de trasvase entre navegadores, perfiles y máquinas.
@@ -79,3 +42,10 @@ El sistema MUST persistir los roadmaps en el almacenamiento local del navegador,
 - **WHEN** el usuario exporta un roadmap desde un navegador y lo importa en otro navegador, en otro perfil o en otra máquina
 - **THEN** el roadmap se reconstruye íntegro, con sus responsables y dependencias
 
+## REMOVED Requirements
+
+### Requirement: Aislamiento de la caché en el empaquetado de escritorio
+
+**Reason**: El requisito protegía contra registrar el service worker dentro del shell de escritorio, cuyos assets ya eran locales y donde una capa de caché solo habría añadido obsolescencia. Al retirarse el empaquetado de escritorio (ver `desktop-shell`) no queda ningún build del que aislar la caché: la aplicación web es el único artefacto, y el service worker forma parte de ella siempre.
+
+**Migration**: Ninguna para el usuario. En el build deja de existir la condición que excluía el service worker, de modo que todo build produce la PWA completa.

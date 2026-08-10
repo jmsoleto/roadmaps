@@ -3,7 +3,7 @@
  * live preview. Follows the shape of `store/ui.svelte.ts`.
  *
  * Persistence rides on the existing preference seam (`getPref`/`setPref`), so
- * neither the SQLite schema nor the storage interface had to change.
+ * the storage interface did not have to change.
  */
 
 import { createStorage, type Storage } from '../store/storage';

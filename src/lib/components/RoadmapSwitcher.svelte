@@ -105,8 +105,8 @@
   });
 
   // Close on any interaction outside the switcher. `pointerdown` in capture
-  // rather than `blur`: in WKWebView (Tauri on macOS) buttons don't take focus
-  // when clicked, so blur would never fire. Events born inside the switcher are
+  // rather than `blur`: in WebKit (Safari) buttons don't take focus when
+  // clicked, so blur would never fire. Events born inside the switcher are
   // left alone, so pressing the trigger while open reaches its own handler and
   // closes instead of being closed here and reopened.
   $effect(() => {

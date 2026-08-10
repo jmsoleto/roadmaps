@@ -1,30 +1,4 @@
-# local-persistence
-
-## Purpose
-
-Almacenamiento local en el navegador bajo una clave versionada, fechas absolutas como formato canónico, autosave con agrupación de escrituras, persistencia del estado de sesión y de las preferencias de tema, y volcado de los cambios pendientes al cerrar.
-## Requirements
-### Requirement: Fechas absolutas como formato canónico
-El sistema MUST almacenar las fechas de fases, items y milestones como fechas absolutas (ISO `YYYY-MM-DD`), no como índices relativos a una fecha de inicio fija.
-
-#### Scenario: Persistir un item con fechas
-- **WHEN** el usuario crea un item con inicio y fin
-- **THEN** el sistema guarda `start_date` y `end_date` como fechas ISO absolutas
-
-#### Scenario: Milestone con fecha única
-- **WHEN** el usuario marca un item como milestone
-- **THEN** el sistema fuerza que `start_date` sea igual a `end_date`
-
-### Requirement: Persistencia de la preferencia de tema y de los temas propios
-El sistema MUST persistir el tema activo y la colección de temas propios en el mismo almacén que el resto de preferencias, de forma que sobrevivan al cierre de la aplicación.
-
-#### Scenario: El tema sobrevive al reinicio
-- **WHEN** el usuario selecciona un tema y cierra la aplicación
-- **THEN** al volver a abrirla la aplicación se muestra con ese mismo tema
-
-#### Scenario: Los temas propios sobreviven al reinicio
-- **WHEN** el usuario crea varios temas propios y reinicia la aplicación
-- **THEN** todos siguen disponibles para seleccionarlos, con sus nombres y colores
+## MODIFIED Requirements
 
 ### Requirement: Copia de arranque del tema activo
 
@@ -55,6 +29,8 @@ El sistema MUST convertir a posiciones de paleta los colores de fases, items y r
 
 - **WHEN** la aplicación carga datos cuyos colores ya son posiciones de paleta
 - **THEN** el sistema los usa tal cual, sin alterarlos
+
+## ADDED Requirements
 
 ### Requirement: Almacenamiento local en el navegador
 
@@ -111,3 +87,22 @@ La garantía alcanza hasta donde alcanza la plataforma: el cierre iniciado por e
 - **WHEN** el usuario realiza un cambio y cierra la pestaña o la ventana antes de que expire la agrupación del autosave
 - **THEN** el cambio se escribe en el almacén antes de que la página se descargue, y al volver a abrir la aplicación el cambio está ahí
 
+## REMOVED Requirements
+
+### Requirement: Almacenamiento en SQLite con esquema versionado
+
+**Reason**: El almacén SQLite solo era alcanzable a través del empaquetado de escritorio, que se retira en este mismo cambio (ver `desktop-shell`). Con él desaparecen el esquema versionado y las migraciones, que existían para hacer evolucionar unas tablas que ya no hay. Lo sustituye el requisito "Almacenamiento local en el navegador", que describe el almacén que la aplicación publicada usa de verdad; el versionado del esquema se sustituye por una clave de almacenamiento versionada, que cumple el mismo papel de identificar el formato de los datos guardados.
+
+**Migration**: Para el usuario de la aplicación web no hay migración: sus datos ya vivían en el almacenamiento del navegador y siguen leyéndose con la misma clave y el mismo formato. Quien tuviera datos únicamente en la base SQLite del escritorio debe exportarlos a JSON antes de aplicar este cambio e importarlos en la aplicación web.
+
+### Requirement: Autosave transaccional
+
+**Reason**: El adjetivo "transaccional" nombraba la transacción SQLite que envolvía cada guardado. Sin base de datos no hay transacción que nombrar, pero la propiedad que interesaba —que un guardado no pueda dejar el almacén a medias— sí se conserva, por otra vía: el estado se serializa completo y se escribe de una sola vez. Lo sustituye el requisito "Autosave con agrupación de escrituras", que conserva el escenario de ráfaga intacto y expresa esa garantía sin apelar a un mecanismo inexistente.
+
+**Migration**: Ninguna. El comportamiento observable no cambia.
+
+### Requirement: Migración única desde localStorage/JSON
+
+**Reason**: El requisito se retira por duplicación, no por obsolescencia. Su mitad "desde localStorage" se vuelve circular al desaparecer SQLite: el almacén de destino **es** el almacenamiento del navegador. La mitad que seguía siendo útil —importar el formato heredado de la herramienta HTML original, convirtiendo los índices de día con base `2026-01-01` en fechas absolutas— está cubierta íntegra y con más detalle en `data-portability`, que además contempla los dos dialectos de fecha del formato heredado y el caso de un documento que los mezcle.
+
+**Migration**: Ninguna. El comportamiento no cambia: importar un JSON heredado sigue funcionando exactamente igual. Ver el requisito "Importar un roadmap desde JSON" en `data-portability`.

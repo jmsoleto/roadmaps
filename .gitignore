@@ -9,9 +9,6 @@ dist-ssr/
 !.vscode/extensions.json
 .idea/
 
-# Tauri (added in Fase 1)
-src-tauri/target/
-
 # Test / cache
 coverage/
 .vite/

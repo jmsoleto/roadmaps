@@ -1,7 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { store } from './lib/store/app.svelte';
-  import { isTauri } from './lib/store/storage';
   import Topbar from './lib/components/Topbar.svelte';
   import Toolbar from './lib/components/Toolbar.svelte';
   import Gantt from './lib/components/Gantt.svelte';
@@ -17,27 +16,16 @@
   const showMeta = $derived(store.metaView || !store.activeRoadmap);
 
   onMount(() => {
-    // Browser fallback: best-effort flush on unload.
+    // Flush the pending autosave before the page goes away (local-persistence).
+    //
+    // `flush` runs synchronously up to its `localStorage.setItem`, so the write
+    // lands inside this handler rather than racing the unload. What this does
+    // not cover is the browser discarding the tab without warning, where the
+    // event never fires at all.
     const flush = () => void store.flush();
     window.addEventListener('beforeunload', flush);
 
-    // Tauri: flush pending autosave before the window actually closes (desktop-shell).
-    let unlisten: (() => void) | undefined;
-    if (isTauri()) {
-      import('@tauri-apps/api/window').then(async ({ getCurrentWindow }) => {
-        const win = getCurrentWindow();
-        unlisten = await win.onCloseRequested(async (event) => {
-          event.preventDefault();
-          await store.flush();
-          await win.destroy();
-        });
-      });
-    }
-
-    return () => {
-      window.removeEventListener('beforeunload', flush);
-      unlisten?.();
-    };
+    return () => window.removeEventListener('beforeunload', flush);
   });
 </script>
 
