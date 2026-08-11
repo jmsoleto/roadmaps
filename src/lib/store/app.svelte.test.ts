@@ -30,6 +30,7 @@ const roadmap = (id: string) => ({
 const dataWith = (ids: string[], activeId: string | null): AppData => ({
   roadmaps: ids.map(roadmap),
   assignees: [{ id: 'as1', name: 'Ana', colorSlot: 0 }],
+  blockers: [],
   activeId,
 });
 
@@ -49,7 +50,12 @@ describe('vista de arranque', () => {
   });
 
   it('arranca en "Todos" sin ningún roadmap', async () => {
-    const backend = new FakeStorage({ roadmaps: [], assignees: [], activeId: null });
+    const backend = new FakeStorage({
+      roadmaps: [],
+      assignees: [],
+      blockers: [],
+      activeId: null,
+    });
     const store = new AppStore(backend);
     await store.init();
     expect(store.metaView).toBe(true);

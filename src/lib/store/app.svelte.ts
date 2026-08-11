@@ -7,7 +7,7 @@
  * `Storage` seam, so a different backend can replace it later untouched.
  */
 
-import type { AppData, Assignee, Item, Phase, Roadmap, IsoDate } from '../model/types';
+import type { AppData, Assignee, Blocker, Item, Phase, Roadmap, IsoDate } from '../model/types';
 import { DEFAULT_DAY_W, ZOOM_LEVELS } from '../config';
 import { createStorage, type Storage } from './storage';
 import { seedAppData, newRoadmap } from '../seed';
@@ -15,8 +15,15 @@ import { uid } from '../util/id';
 import { addDays, snapToWorkday, todayIso } from '../time/timeline';
 import { effectiveStart, effectiveEnd } from '../model/derive';
 import { enforceConstraints } from '../model/constraints';
-import { exportRoadmap, parseImport, mergeAssignees } from '../io/portability';
+import {
+  countBlockerUsage,
+  countUnresolvedEquivalents,
+  equivalenceKey,
+  featureSuggestions,
+} from '../model/blockers';
+import { exportRoadmap, parseImport, mergeAssignees, mergeBlockers } from '../io/portability';
 import { normalizeColors } from '../theme/migrate';
+import { normalizeBlockers } from '../model/normalize';
 import { PALETTE_SLOTS } from '../theme/tokens';
 
 const SAVE_DEBOUNCE_MS = 250;
@@ -28,7 +35,7 @@ export class AppStore {
   private storage: Storage;
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
 
-  data = $state<AppData>({ roadmaps: [], assignees: [], activeId: null });
+  data = $state<AppData>({ roadmaps: [], assignees: [], blockers: [], activeId: null });
   dayW = $state<number>(DEFAULT_DAY_W);
   /**
    * True while the "Todos" view (portfolio of every roadmap) is showing. It is
@@ -49,7 +56,7 @@ export class AppStore {
 
   /** Load persisted state (or seed on first run). Must be awaited before mount. */
   async init(): Promise<void> {
-    const loaded = normalizeColors(await this.storage.load());
+    const loaded = normalizeBlockers(normalizeColors(await this.storage.load()));
     if (loaded) {
       this.data = loaded;
     } else {
@@ -108,13 +115,26 @@ export class AppStore {
   exportActive(): string | null {
     const rm = this.activeRoadmap;
     if (!rm) return null;
-    return exportRoadmap($state.snapshot(rm), $state.snapshot(this.data.assignees));
+    return exportRoadmap(
+      $state.snapshot(rm),
+      $state.snapshot(this.data.assignees),
+      $state.snapshot(this.data.blockers),
+    );
   }
 
   /** Import a roadmap from JSON text (current or legacy format). */
   importFromText(text: string): void {
-    const { roadmap, assignees } = parseImport(text);
+    const { roadmap, assignees, blockers } = parseImport(text);
     mergeAssignees(this.data, assignees);
+    // Merge before pruning: the document brings its own catalog entries along,
+    // and its assignments have to resolve against the post-merge catalog.
+    mergeBlockers(this.data, blockers);
+    const known = new Set(this.data.blockers.map((b) => b.id));
+    for (const phase of roadmap.rows) {
+      for (const item of phase.children) {
+        item.blockers = item.blockers.filter((a) => known.has(a.blockerId));
+      }
+    }
     this.data.roadmaps.push(roadmap);
     this.data.activeId = roadmap.id;
     this.metaView = false;
@@ -260,6 +280,7 @@ export class AppStore {
       assigneeId: null,
       notes: '',
       dependsOn: [],
+      blockers: [],
       isMilestone: false,
     });
     phase.expanded = true;
@@ -281,6 +302,7 @@ export class AppStore {
       assigneeId: null,
       notes: '',
       dependsOn: [],
+      blockers: [],
       isMilestone: true,
     });
     phase.expanded = true;
@@ -362,6 +384,124 @@ export class AppStore {
       item.dependsOn = item.dependsOn.filter((d) => d !== depId);
       this.commit();
     }
+  }
+
+  // ---- blockers (global catalog) ----
+  //
+  // None of these go through `commit()`, and that is the point: `commit()` runs
+  // `enforceConstraints`, which moves dates. A blocker says an item cannot be
+  // finished, not when it happens, so it must never shift the timeline.
+
+  addBlocker(): Blocker {
+    const b: Blocker = {
+      id: uid('bl'),
+      name: 'Nuevo bloqueo',
+      owner: '',
+      email: '',
+    };
+    this.data.blockers.push(b);
+    this.scheduleSave();
+    return b;
+  }
+
+  updateBlocker(id: string, patch: Partial<Omit<Blocker, 'id'>>): void {
+    const b = this.data.blockers.find((x) => x.id === id);
+    if (!b) return;
+    if (patch.name !== undefined) b.name = patch.name;
+    if (patch.owner !== undefined) b.owner = patch.owner;
+    if (patch.email !== undefined) b.email = patch.email;
+    this.scheduleSave();
+  }
+
+  /** How many items reference this blocker — the reach shown before deleting (D7). */
+  blockerUsage(id: string): number {
+    return countBlockerUsage(this.data, id);
+  }
+
+  /** Remove a blocker and every assignment of it, across all roadmaps (D7). */
+  deleteBlocker(id: string): void {
+    for (const rm of this.data.roadmaps) {
+      for (const p of rm.rows) {
+        for (const c of p.children) {
+          if (c.blockers.some((a) => a.blockerId === id)) {
+            c.blockers = c.blockers.filter((a) => a.blockerId !== id);
+          }
+        }
+      }
+    }
+    this.data.blockers = this.data.blockers.filter((x) => x.id !== id);
+    this.scheduleSave();
+  }
+
+  // ---- blocker assignments (on an item) ----
+
+  addItemBlocker(phaseId: string, itemId: string, blockerId: string, feature: string): void {
+    const item = this.findItem(phaseId, itemId);
+    if (!item || !this.data.blockers.some((b) => b.id === blockerId)) return;
+    item.blockers.push({ id: uid('ib'), blockerId, feature, resolved: false });
+    this.scheduleSave();
+  }
+
+  removeItemBlocker(phaseId: string, itemId: string, assignmentId: string): void {
+    const item = this.findItem(phaseId, itemId);
+    if (!item) return;
+    item.blockers = item.blockers.filter((a) => a.id !== assignmentId);
+    this.scheduleSave();
+  }
+
+  setItemBlockerFeature(phaseId: string, itemId: string, assignmentId: string, feature: string) {
+    const a = this.findItem(phaseId, itemId)?.blockers.find((x) => x.id === assignmentId);
+    if (a) {
+      a.feature = feature;
+      this.scheduleSave();
+    }
+  }
+
+  /** Resolve (or unresolve) exactly one assignment. Never touches the others. */
+  setItemBlockerResolved(
+    phaseId: string,
+    itemId: string,
+    assignmentId: string,
+    resolved: boolean,
+  ): void {
+    const a = this.findItem(phaseId, itemId)?.blockers.find((x) => x.id === assignmentId);
+    if (a) {
+      a.resolved = resolved;
+      this.scheduleSave();
+    }
+  }
+
+  /**
+   * How many other assignments describe the same wait and are still pending.
+   * Drives the propagation offer; zero means no offer is shown (D3).
+   */
+  unresolvedEquivalents(blockerId: string, feature: string, excludeId: string): number {
+    return countUnresolvedEquivalents(this.data, blockerId, feature, excludeId);
+  }
+
+  /**
+   * Mark every assignment equivalent to this one as resolved, app-wide.
+   *
+   * Only ever called from the explicit offer — resolving one assignment must
+   * not silently reach into other roadmaps (D3).
+   */
+  resolveEquivalentBlockers(blockerId: string, feature: string): void {
+    const key = equivalenceKey(blockerId, feature);
+    for (const rm of this.data.roadmaps) {
+      for (const p of rm.rows) {
+        for (const c of p.children) {
+          for (const a of c.blockers) {
+            if (equivalenceKey(a.blockerId, a.feature) === key) a.resolved = true;
+          }
+        }
+      }
+    }
+    this.scheduleSave();
+  }
+
+  /** Feature names already used with this blocker, for the assign-time datalist. */
+  blockerFeatureSuggestions(blockerId: string): string[] {
+    return featureSuggestions(this.data, blockerId);
   }
 
   // ---- assignees (global catalog) ----

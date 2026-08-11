@@ -15,6 +15,13 @@
   import { getMonthSegments, getSprintSegments } from '../time/segments';
   import { getVisibleRows, effectiveStart, effectiveEnd } from '../model/derive';
   import { getMinStart } from '../model/constraints';
+  import {
+    countBlockedChildren,
+    findBlocker,
+    isItemBlocked,
+    isPhaseBlocked,
+    pendingBlockers,
+  } from '../model/blockers';
   import { getInitials, findAssignee } from '../util/assignees';
   import { theme } from '../theme/theme.svelte';
   import { onDrag, clientToDayOffset } from '../interactions/drag';
@@ -276,6 +283,31 @@
     else store.deleteItem(phaseId, itemId!);
   }
 
+  // ---- external dependencies ----
+
+  /**
+   * Both tallies, each shown on its own badge.
+   *
+   * Pending and resolved are reported side by side rather than one replacing the
+   * other: an item waiting on one thing and already served another is a
+   * different situation from either alone, and the bar should say so without
+   * being opened. A count of zero simply renders no badge (D4).
+   */
+  function blockerCounts(item: Item): { pending: number; resolved: number; title: string } | null {
+    if (item.blockers.length === 0) return null;
+    const lines = item.blockers.map((a) => {
+      const b = findBlocker(store.data.blockers, a.blockerId);
+      const who = b?.owner ? ` (${b.owner})` : '';
+      return `${a.resolved ? '✓' : '⚠'} ${b?.name ?? '—'}${who}: ${a.feature || 'sin detallar'}`;
+    });
+    const pending = pendingBlockers(item).length;
+    return {
+      pending,
+      resolved: item.blockers.length - pending,
+      title: `Dependencias externas\n${lines.join('\n')}`,
+    };
+  }
+
   // ---- dependency arrows ----
   const itemRowIndex = $derived.by(() => {
     const m = new Map<string, number>();
@@ -310,6 +342,41 @@
     return out;
   });
 </script>
+
+<!--
+  The two tallies of external dependencies, side by side.
+
+  The glyphs are drawn rather than typed: ⚠ and ✓ from the mono face are thin
+  outlines that dissolve at badge size, which is what made the first version
+  unreadable. As paths they carry their own weight and stay crisp at any zoom.
+
+  One snippet because this renders in four places — pending and resolved, on a
+  bar and on a milestone — and the two contexts differ only in where the plate
+  gets its color from.
+-->
+{#snippet depBadges(
+  dep: { pending: number; resolved: number; title: string } | null,
+  onBar: boolean,
+)}
+  {#if dep && dep.pending > 0}
+    <span class="dep-badge pending" class:on-bar={onBar} title={dep.title}>
+      <svg class="dep-icon" viewBox="0 0 16 16" fill-rule="evenodd" aria-hidden="true">
+        <path
+          d="M8 1 15.5 14.5H.5L8 1Zm0 4.1a.9.9 0 0 0-.9.98l.27 2.9a.63.63 0 0 0 1.26 0l.27-2.9A.9.9 0 0 0 8 5.1Zm0 5.3a.95.95 0 1 0 0 1.9.95.95 0 0 0 0-1.9Z"
+        />
+      </svg>
+      <span class="dep-n">{dep.pending}</span>
+    </span>
+  {/if}
+  {#if dep && dep.resolved > 0}
+    <span class="dep-badge done" class:on-bar={onBar} title={dep.title}>
+      <svg class="dep-icon stroked" viewBox="0 0 16 16" aria-hidden="true">
+        <path d="M2.5 8.6 6.4 12.5 13.5 4.2" />
+      </svg>
+      <span class="dep-n">{dep.resolved}</span>
+    </span>
+  {/if}
+{/snippet}
 
 <div class="gantt-scroll" bind:this={scrollEl}>
   <div class="sidebar">
@@ -428,6 +495,25 @@
         </div>
       {/if}
 
+      <!-- Hatch pattern for blocked milestones. It lives in its own zero-size svg
+           rather than in the arrows one below, which only renders when there are
+           arrows to draw — a blocked diamond must not depend on that. `color` is
+           set per use to the bar ink of the slot, so `currentColor` picks up the
+           right contrast on any palette and any theme (D6). -->
+      <svg class="defs-only" width="0" height="0" aria-hidden="true">
+        <defs>
+          <pattern
+            id="blockHatch"
+            width="4"
+            height="4"
+            patternUnits="userSpaceOnUse"
+            patternTransform="rotate(45)"
+          >
+            <rect width="2" height="4" fill="currentColor" opacity="0.34" />
+          </pattern>
+        </defs>
+      </svg>
+
       {#if arrows.length}
         <svg class="deps-svg" width={totalWidth} height={totalHeight}>
           <defs>
@@ -470,14 +556,18 @@
 
           {#if v.kind === 'phase' && v.phase.children.length > 0 && s !== null && e !== null}
             {@const g = barGeom(s, e)}
+            {@const blockedKids = countBlockedChildren(v.phase)}
             <!-- svelte-ignore a11y_no_static_element_interactions -->
             <div
               class="bar rollup"
+              class:blocked-soft={isPhaseBlocked(v.phase)}
               style:left="{g.left}px"
               style:width="{g.width}px"
               style:background={theme.slotColor(v.phase.colorSlot)}
               style:--bar-ink={theme.inkFor(v.phase.colorSlot)}
-              title="{fmtDate(s)} → {fmtDate(e)} ({v.phase.children.length} items)"
+              title="{fmtDate(s)} → {fmtDate(e)} ({v.phase.children.length} items){blockedKids
+                ? `\n⚠ ${blockedKids} item${blockedKids === 1 ? '' : 's'} con dependencias externas pendientes`
+                : ''}"
               ondblclick={() => ui.openDetail(v.phase.id, null)}
             >
               <span class="barlabel">{v.phase.name}</span>
@@ -530,6 +620,7 @@
             </div>
           {:else if v.kind === 'item' && v.item.isMilestone}
             {@const a = findAssignee(store.data.assignees, v.item.assigneeId)}
+            {@const dep = blockerCounts(v.item)}
             <div
               class="milestone"
               style:left="{milestoneLeft(v.item.startDate)}px"
@@ -537,6 +628,7 @@
               role="presentation"
             >
               <svg
+                class="m-diamond"
                 viewBox="0 0 24 24"
                 onpointerdown={(ev) => startMilestoneMove(ev, v.phase, v.item)}
                 role="presentation"
@@ -548,7 +640,19 @@
                   stroke-opacity="0.35"
                   stroke-width="1"
                 />
-                <title>{v.item.label} · {fmtDate(v.item.startDate)}</title>
+                <!-- A diamond is SVG, not a div, so the striping is a pattern fill
+                     laid over the slot color rather than the bars' CSS gradient.
+                     Same ink, same look. -->
+                {#if isItemBlocked(v.item)}
+                  <polygon
+                    points="12,1.5 22.5,12 12,22.5 1.5,12"
+                    fill="url(#blockHatch)"
+                    style:color={theme.inkFor(v.phase.colorSlot)}
+                  />
+                {/if}
+                <title
+                  >{v.item.label} · {fmtDate(v.item.startDate)}{dep ? `\n${dep.title}` : ''}</title
+                >
               </svg>
               <span class="m-label">{v.item.label}</span>
               {#if a}<span
@@ -556,20 +660,25 @@
                   style:background={theme.slotColor(a.colorSlot)}
                   style:--bar-ink={theme.inkFor(a.colorSlot)}>{getInitials(a.name)}</span
                 >{/if}
+              {@render depBadges(dep, false)}
               {#if v.item.notes.trim()}<span class="notes-indicator" title="Con notas">●</span>{/if}
             </div>
           {:else if v.kind === 'item'}
             {@const g = barGeom(v.item.startDate, v.item.endDate)}
             {@const a = findAssignee(store.data.assignees, v.item.assigneeId)}
             {@const t = itemTarget(v.phase, v.item)}
+            {@const dep = blockerCounts(v.item)}
             <!-- svelte-ignore a11y_no_static_element_interactions -->
             <div
               class="bar item-bar"
+              class:blocked={isItemBlocked(v.item)}
               style:left="{g.left}px"
               style:width="{g.width}px"
               style:background={theme.slotColor(v.phase.colorSlot)}
               style:--bar-ink={theme.inkFor(v.phase.colorSlot)}
-              title="{v.item.label}&#10;{fmtDate(v.item.startDate)} → {fmtDate(v.item.endDate)}"
+              title="{v.item.label}&#10;{fmtDate(v.item.startDate)} → {fmtDate(v.item.endDate)}{dep
+                ? `\n${dep.title}`
+                : ''}"
               ondblclick={() => ui.openDetail(v.phase.id, v.item.id)}
             >
               <button
@@ -588,6 +697,7 @@
                   style:background={theme.slotColor(a.colorSlot)}
                   style:--bar-ink={theme.inkFor(a.colorSlot)}>{getInitials(a.name)}</span
                 >{/if}
+              {@render depBadges(dep, true)}
               {#if v.item.notes.trim()}<span class="notes-indicator" title="Con notas">●</span>{/if}
               <button
                 type="button"
@@ -942,6 +1052,29 @@
   .bar.rollup {
     cursor: default;
   }
+
+  /* Blocked striping.
+     Drawn in `--bar-ink`, the per-bar ink already computed from the slot color,
+     so it contrasts on any palette in any theme without a new theme token (D6).
+     A pseudo-element under the bar's content, and click-through, so the grip,
+     the label and the resize handles keep working exactly as before. */
+  .bar.blocked::before,
+  .bar.blocked-soft::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    background: repeating-linear-gradient(45deg, var(--bar-ink) 0 2px, transparent 2px 6px);
+  }
+  .bar.blocked::before {
+    opacity: 0.3;
+  }
+  /* The phase rollup is a derived signal, not a fact about the phase, so it
+     stays quieter than the items it comes from (D5). */
+  .bar.blocked-soft::before {
+    opacity: 0.15;
+  }
   .grip {
     width: 14px;
     align-self: stretch;
@@ -1000,14 +1133,18 @@
     display: flex;
     align-items: center;
   }
-  .milestone svg {
+  /* Scoped to the diamond by class, not to every `svg` in the row: the badges
+     alongside it are svg too, and `.milestone svg` outranked their own sizing —
+     which is what blew them up to 30px and gave them the diamond's drop shadow
+     and grab cursor. */
+  .milestone .m-diamond {
     width: 30px;
     height: 30px;
     flex-shrink: 0;
     filter: drop-shadow(0 1px 2px var(--shadow-medium));
     cursor: grab;
   }
-  .milestone svg:active {
+  .milestone .m-diamond:active {
     cursor: grabbing;
   }
   .milestone .m-label {
@@ -1043,5 +1180,92 @@
     font-size: 10px;
     color: var(--text-dim);
     margin-left: 4px;
+  }
+  /* Counts, not names: an external dependency's name never fits on a short bar.
+     The full list lives in the tooltip and in the drawer.
+
+     Pending and resolved are two badges that can sit side by side, so each has
+     to carry on its own. Sized to the assignee badge beside it rather than to
+     the notes dot, and the icon is a drawn path — the typographic ⚠ and ✓ are
+     hairline outlines that vanish at this size. */
+  .dep-badge {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 20px;
+    padding: 0 7px;
+    border-radius: 5px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1;
+    flex-shrink: 0;
+    margin-left: 5px;
+    background: var(--overlay-bg);
+    cursor: help;
+  }
+  .dep-icon {
+    width: 13px;
+    height: 13px;
+    flex-shrink: 0;
+    fill: currentColor;
+  }
+  /* The tick is a stroke, the warning triangle a filled path with the mark
+     punched out by `fill-rule: evenodd` — set on the element so it applies to
+     the fill above. */
+  .dep-icon.stroked {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2.4;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .dep-n {
+    /* Tabular-ish: the badge must not jiggle as a count goes 9 → 10. */
+    min-width: 7px;
+    text-align: center;
+  }
+  .dep-badge.pending {
+    color: var(--danger);
+  }
+  .dep-badge.done {
+    color: var(--text-dim);
+  }
+
+  /* On a bar the plate would sit on an arbitrary palette color, so it is drawn
+     from the bar's own ink at low alpha — the one color guaranteed to read
+     against this bar, whatever the slot and whatever the theme. Off the bar (a
+     milestone floats over the grid) the themed plate and colors apply. */
+  .dep-badge.on-bar {
+    background: none;
+    color: var(--bar-ink);
+  }
+  .dep-badge.on-bar::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: var(--bar-ink);
+    opacity: 0.22;
+  }
+  /* The plate is a positioned pseudo-element, so it paints over plain in-flow
+     content; both children are lifted above it. */
+  .dep-badge.on-bar > * {
+    position: relative;
+  }
+  /* Resolved keeps the count so a once-blocked item stays distinguishable from
+     one that never was (D4), but it stops competing with what is still pending. */
+  .dep-badge.on-bar.done {
+    opacity: 0.72;
+  }
+  .dep-badge.on-bar.done::before {
+    opacity: 0.12;
+  }
+  .defs-only {
+    position: absolute;
+    width: 0;
+    height: 0;
+    overflow: hidden;
   }
 </style>

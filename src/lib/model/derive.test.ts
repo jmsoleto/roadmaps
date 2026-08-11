@@ -15,6 +15,7 @@ function item(start: string, end: string): Item {
     assigneeId: null,
     notes: '',
     dependsOn: [],
+    blockers: [],
     isMilestone: false,
   };
 }

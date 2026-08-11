@@ -25,6 +25,42 @@ export interface Assignee {
   colorSlot: number;
 }
 
+/**
+ * Something outside the roadmap that stops items from being completed, and who
+ * to chase about it. Blockers are global: one entry serves every roadmap.
+ *
+ * Distinct from `Item.dependsOn`, which is an intra-phase predecessor and moves
+ * dates. A blocker never moves anything — it describes why work can't finish.
+ */
+export interface Blocker {
+  id: string;
+  /** The area or team that owes something, e.g. "Checkout". */
+  name: string;
+  /**
+   * Who to chase. Free text, deliberately *not* an `Assignee` id: whoever
+   * blocks you usually sits outside the team that edits the roadmap.
+   */
+  owner: string;
+  /** Optional contact address; empty string when not given. */
+  email: string;
+}
+
+/**
+ * One item's wait on one blocker, naming what it is waiting for.
+ *
+ * `resolved` lives here rather than on the `Blocker` or on a shared deliverable
+ * (design decision D2): each assignment is resolved on its own. Assignments that
+ * describe the same real wait are reconciled by offer, never automatically —
+ * see `equivalenceKey` in `./blockers.ts`.
+ */
+export interface ItemBlocker {
+  id: string;
+  blockerId: string;
+  /** The concrete thing expected, e.g. "Creación de formulario de compra". */
+  feature: string;
+  resolved: boolean;
+}
+
 /** A leaf of work inside a phase. A milestone is an item with start === end. */
 export interface Item {
   id: string;
@@ -37,6 +73,8 @@ export interface Item {
   notes: string;
   /** Ids of items this item depends on (predecessors). */
   dependsOn: string[];
+  /** External waits on this item. Never affects its dates. */
+  blockers: ItemBlocker[];
   isMilestone: boolean;
 }
 
@@ -70,6 +108,8 @@ export interface Roadmap {
 export interface AppData {
   roadmaps: Roadmap[];
   assignees: Assignee[];
+  /** Global blocker catalog, shared by every roadmap. */
+  blockers: Blocker[];
   activeId: string | null;
 }
 

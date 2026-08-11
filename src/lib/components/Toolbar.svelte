@@ -14,6 +14,10 @@
     <button class="btn" onclick={() => store.addPhase()}>+ añadir fase</button>
     <button class="btn" onclick={() => ui.openAssignees()}>responsables</button>
   {/if}
+  <!-- Unlike "responsables", this one stays put in "Todos": the catalog of
+       external dependencies is global, and "Todos" is where you'd register
+       something that is about to hit several roadmaps (D8). -->
+  <button class="btn" onclick={() => ui.openBlockers()}>dependencias externas</button>
   {#if !store.metaView && store.activeRoadmap}
     <div class="timeline-cfg" title="ventana temporal de este roadmap">
       <span class="cfg-label">inicio</span>

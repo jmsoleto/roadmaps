@@ -32,6 +32,7 @@ const roadmap: Roadmap = {
           assigneeId: 'as1',
           notes: 'nota',
           dependsOn: [],
+          blockers: [],
           isMilestone: false,
         },
         {
@@ -43,6 +44,7 @@ const roadmap: Roadmap = {
           assigneeId: 'as2',
           notes: '',
           dependsOn: ['i1'],
+          blockers: [],
           isMilestone: false,
         },
       ],
@@ -52,7 +54,7 @@ const roadmap: Roadmap = {
 
 describe('export → import round-trip', () => {
   it('preserves structure, dependencies and referenced assignees', () => {
-    const json = exportRoadmap(roadmap, assignees);
+    const json = exportRoadmap(roadmap, assignees, []);
     const { roadmap: back, assignees: backAssignees } = parseImport(json);
 
     // Only referenced assignees are exported (both are used here).
@@ -67,7 +69,7 @@ describe('export → import round-trip', () => {
   });
 
   it('gives the imported roadmap a fresh id', () => {
-    const json = exportRoadmap(roadmap, assignees);
+    const json = exportRoadmap(roadmap, assignees, []);
     const { roadmap: back } = parseImport(json);
     expect(back.id).not.toBe('rm1');
   });

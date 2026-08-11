@@ -4,6 +4,7 @@ export type DrawerState =
   | { kind: 'none' }
   | { kind: 'detail'; phaseId: string; itemId: string | null }
   | { kind: 'assignees' }
+  | { kind: 'blockers' }
   | { kind: 'theme' };
 
 class UiStore {
@@ -21,6 +22,10 @@ class UiStore {
 
   openAssignees(): void {
     this.drawer = { kind: 'assignees' };
+  }
+
+  openBlockers(): void {
+    this.drawer = { kind: 'blockers' };
   }
 
   openTheme(): void {

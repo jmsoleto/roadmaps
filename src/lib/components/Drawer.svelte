@@ -4,6 +4,7 @@
   import { fmtDate } from '../time/timeline';
   import { effectiveStart, effectiveEnd } from '../model/derive';
   import { wouldCreateCycle } from '../model/constraints';
+  import { findBlocker } from '../model/blockers';
   import { getInitials } from '../util/assignees';
   import { theme } from '../theme/theme.svelte';
   import ThemeEditor from './ThemeEditor.svelte';
@@ -26,11 +27,13 @@
       ? 'TEMA'
       : drawer.kind === 'assignees'
         ? 'RESPONSABLES'
-        : item
-          ? item.isMilestone
-            ? 'DETALLE DE HITO'
-            : 'DETALLE DE ITEM'
-          : 'DETALLE DE FASE',
+        : drawer.kind === 'blockers'
+          ? 'DEPENDENCIAS EXTERNAS'
+          : item
+            ? item.isMilestone
+              ? 'DETALLE DE HITO'
+              : 'DETALLE DE ITEM'
+            : 'DETALLE DE FASE',
   );
 
   const rangeText = $derived.by(() => {
@@ -77,6 +80,81 @@
     confirmDelAssignee = null;
     store.deleteAssignee(id);
   }
+
+  // ---- blockers ----
+
+  // Deleting a catalog entry destroys hand-written feature names across every
+  // roadmap, so the confirmation carries the reach (D7). Two steps like the
+  // assignee list, but never silent about what goes.
+  let confirmDelBlocker = $state<string | null>(null);
+  function delBlocker(id: string) {
+    if (confirmDelBlocker !== id) {
+      confirmDelBlocker = id;
+      return;
+    }
+    confirmDelBlocker = null;
+    store.deleteBlocker(id);
+  }
+
+  $effect(() => {
+    if (confirmDelBlocker === null) return;
+    const cancel = (e: PointerEvent) => {
+      if (e.target instanceof Element && e.target.closest('[data-blocker-del]')) return;
+      confirmDelBlocker = null;
+    };
+    window.addEventListener('pointerdown', cancel, true);
+    return () => window.removeEventListener('pointerdown', cancel, true);
+  });
+
+  /** Blockers not yet assigned to this item, offered in the "add" picker. */
+  const blockerCandidates = $derived(item ? store.data.blockers : []);
+
+  // The feature typed for the new assignment, and which blocker it is for. Kept
+  // together so switching blocker re-targets the suggestions without stale text.
+  let newBlockerId = $state('');
+  let newFeature = $state('');
+  const featureOptions = $derived(
+    newBlockerId ? store.blockerFeatureSuggestions(newBlockerId) : [],
+  );
+
+  function addBlockerToItem() {
+    if (!phase || !item || !newBlockerId) return;
+    store.addItemBlocker(phase.id, item.id, newBlockerId, newFeature.trim());
+    newBlockerId = '';
+    newFeature = '';
+  }
+
+  // The assignment whose resolution just offered to spread, and how far it
+  // reaches. Cleared on any other action so a stale offer can never fire (D3).
+  let spread = $state<{ assignmentId: string; count: number } | null>(null);
+
+  function toggleResolved(assignmentId: string, resolved: boolean) {
+    if (!phase || !item) return;
+    store.setItemBlockerResolved(phase.id, item.id, assignmentId, resolved);
+    const a = item.blockers.find((x) => x.id === assignmentId);
+    // Only ever offered on resolve: propagating "blocked again" into roadmaps
+    // the user isn't looking at is a bigger move than the one they made.
+    if (resolved && a) {
+      const count = store.unresolvedEquivalents(a.blockerId, a.feature, a.id);
+      spread = count > 0 ? { assignmentId, count } : null;
+    } else {
+      spread = null;
+    }
+  }
+
+  function applySpread(blockerId: string, feature: string) {
+    store.resolveEquivalentBlockers(blockerId, feature);
+    spread = null;
+  }
+
+  // A different item means a different set of assignments; an offer aimed at the
+  // previous one must not survive the switch.
+  $effect(() => {
+    void drawer;
+    spread = null;
+    newBlockerId = '';
+    newFeature = '';
+  });
 </script>
 
 <div
@@ -132,6 +210,66 @@
     </div>
     <button type="button" class="add-assignee" onclick={() => store.addAssignee()}
       >+ añadir responsable</button
+    >
+  {:else if drawer.kind === 'blockers'}
+    <div class="drawer-head">
+      <div class="drawer-title">{title}</div>
+      <button type="button" class="drawer-close" onclick={() => ui.closeDrawer()}>✕</button>
+    </div>
+    <p class="hint">
+      Una dependencia externa es algo ajeno al roadmap que impide completar un item. El catálogo es
+      compartido entre todos tus roadmaps: dala de alta una vez y asígnala donde haga falta.
+    </p>
+    <div class="blockers-list">
+      {#each store.data.blockers as b (b.id)}
+        {@const usage = store.blockerUsage(b.id)}
+        <div class="blocker-card">
+          <div class="blocker-row">
+            <input
+              class="name-input strong"
+              value={b.name}
+              placeholder="nombre de la dependencia"
+              oninput={(e) => store.updateBlocker(b.id, { name: e.currentTarget.value })}
+            />
+            <button
+              type="button"
+              class="del"
+              class:confirm={confirmDelBlocker === b.id}
+              data-blocker-del
+              onclick={() => delBlocker(b.id)}
+              title="borrar dependencia externa"
+              >{confirmDelBlocker === b.id
+                ? usage > 0
+                  ? `borrar? (${usage} item${usage === 1 ? '' : 's'})`
+                  : 'borrar?'
+                : '✕'}</button
+            >
+          </div>
+          <div class="blocker-fields">
+            <input
+              class="sub-input"
+              value={b.owner}
+              placeholder="responsable"
+              oninput={(e) => store.updateBlocker(b.id, { owner: e.currentTarget.value })}
+            />
+            <input
+              class="sub-input"
+              type="email"
+              value={b.email}
+              placeholder="correo (opcional)"
+              oninput={(e) => store.updateBlocker(b.id, { email: e.currentTarget.value })}
+            />
+          </div>
+          {#if usage > 0}
+            <div class="blocker-usage">afecta a {usage} item{usage === 1 ? '' : 's'}</div>
+          {/if}
+        </div>
+      {:else}
+        <div class="empty-msg">Aún no hay dependencias externas. Añade una para empezar.</div>
+      {/each}
+    </div>
+    <button type="button" class="add-assignee" onclick={() => store.addBlocker()}
+      >+ añadir dependencia externa</button
     >
   {:else if drawer.kind === 'detail' && phase}
     <div class="drawer-head">
@@ -202,6 +340,94 @@
           {item.isMilestone
             ? 'este hito ocurre cuando terminen todas sus dependencias'
             : 'este item empieza cuando terminen todas sus dependencias'}
+        </div>
+      </div>
+
+      <!-- Separate from "Depende de" above, and deliberately different in shape:
+           that one moves dates between items of this phase, this one records
+           something outside the roadmap that stops the work finishing. -->
+      <div class="section blockers-section">
+        <span class="label">Dependencias externas</span>
+        <div class="blk-list">
+          {#each item.blockers as a (a.id)}
+            {@const b = findBlocker(store.data.blockers, a.blockerId)}
+            <div class="blk" class:resolved={a.resolved}>
+              <label class="blk-check">
+                <input
+                  type="checkbox"
+                  checked={a.resolved}
+                  onchange={(e) => toggleResolved(a.id, e.currentTarget.checked)}
+                />
+                <span class="blk-body">
+                  <span class="blk-name">{b ? b.name : '—'}</span>
+                  <span class="blk-feature">{a.feature || 'sin funcionalidad indicada'}</span>
+                  {#if b}
+                    <span class="blk-owner"
+                      >{b.owner || 'sin responsable'}{b.email ? ` · ${b.email}` : ''}</span
+                    >
+                  {/if}
+                </span>
+              </label>
+              <button
+                type="button"
+                class="blk-del"
+                title="retirar dependencia externa"
+                onclick={() => store.removeItemBlocker(phase.id, item.id, a.id)}>✕</button
+              >
+            </div>
+            {#if spread && spread.assignmentId === a.id}
+              <div class="blk-spread">
+                <span>sin resolver en {spread.count} item{spread.count === 1 ? '' : 's'} más</span>
+                <button type="button" onclick={() => applySpread(a.blockerId, a.feature)}
+                  >marcar todas</button
+                >
+              </div>
+            {/if}
+          {/each}
+        </div>
+
+        {#if store.data.blockers.length > 0}
+          <div class="blk-add">
+            <select
+              class="select"
+              value={newBlockerId}
+              onchange={(e) => {
+                newBlockerId = e.currentTarget.value;
+                newFeature = '';
+              }}
+            >
+              <option value="">+ añadir dependencia externa…</option>
+              {#each blockerCandidates as b (b.id)}
+                <option value={b.id}>{b.name}{b.owner ? ` · ${b.owner}` : ''}</option>
+              {/each}
+            </select>
+            {#if newBlockerId}
+              <input
+                class="input"
+                list="blk-features"
+                placeholder="¿qué se espera? p. ej. formulario de compra"
+                value={newFeature}
+                oninput={(e) => (newFeature = e.currentTarget.value)}
+                onkeydown={(e) => e.key === 'Enter' && addBlockerToItem()}
+              />
+              <!-- Suggestions are the feature names already recorded against this
+                   blocker anywhere in the app: nudges toward one wording without
+                   preventing a new one (D3). -->
+              <datalist id="blk-features">
+                {#each featureOptions as f (f)}
+                  <option value={f}></option>
+                {/each}
+              </datalist>
+              <button type="button" class="btn-wide" onclick={addBlockerToItem}>añadir</button>
+            {/if}
+          </div>
+        {/if}
+
+        <button type="button" class="link" onclick={() => ui.openBlockers()}
+          >gestionar dependencias externas →</button
+        >
+        <div class="hint sm">
+          no cambian las fechas: marcan que el item no puede cerrarse hasta que lleguen
         </div>
       </div>
     {/if}
@@ -469,5 +695,157 @@
     color: var(--text-dim);
     font-size: 12.5px;
     font-family: 'IBM Plex Mono', monospace;
+  }
+
+  /* ---- blockers ---- */
+
+  .blockers-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .blocker-card {
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+  }
+  .blocker-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .name-input.strong {
+    font-weight: 600;
+  }
+  .blocker-fields {
+    display: flex;
+    gap: 7px;
+  }
+  .sub-input {
+    flex: 1;
+    min-width: 0;
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    color: var(--text-mid);
+    padding: 6px 8px;
+    border-radius: 4px;
+    font-size: 12.5px;
+    outline: none;
+  }
+  .sub-input:focus {
+    border-color: var(--accent);
+  }
+  .blocker-usage {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+
+  /* Both sections now carry the word "dependencia", so the separation has to do
+     more work than a hairline: a full rule and real breathing room, backed by
+     the two hint texts, which say opposite things — one moves dates, the other
+     explicitly does not. */
+  .blockers-section {
+    border-top: 1px solid var(--line);
+    padding-top: 18px;
+    margin-top: 22px;
+  }
+  .blk-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 8px;
+  }
+  .blk {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    padding: 7px 9px;
+  }
+  /* Resolved stays on the list as a record of who blocked what (D4) — dimmed,
+     not removed. */
+  .blk.resolved {
+    opacity: 0.6;
+  }
+  .blk.resolved .blk-feature {
+    text-decoration: line-through;
+  }
+  .blk-check {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    cursor: pointer;
+  }
+  .blk-check input {
+    margin-top: 2px;
+    accent-color: var(--accent);
+    flex-shrink: 0;
+  }
+  .blk-body {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+  }
+  .blk-name {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .blk-feature {
+    font-size: 12.5px;
+    color: var(--text-mid);
+  }
+  .blk-owner {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10.5px;
+    color: var(--text-dim);
+  }
+  .blk-del {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    padding: 0 2px;
+    flex-shrink: 0;
+  }
+  .blk-del:hover {
+    color: var(--danger);
+  }
+  .blk-spread {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin: -2px 0 2px 9px;
+    padding: 5px 8px;
+    border-left: 2px solid var(--accent);
+    background: var(--wash-accent);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--text-mid);
+  }
+  .blk-spread button {
+    background: none;
+    border: none;
+    color: var(--accent);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    cursor: pointer;
+    padding: 0;
+    white-space: nowrap;
+  }
+  .blk-add {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
   }
 </style>

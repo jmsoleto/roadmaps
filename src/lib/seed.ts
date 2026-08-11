@@ -50,6 +50,7 @@ export function seedAppData(): AppData {
             assigneeId: ana.id,
             notes: 'Entrevistas y benchmarking.',
             dependsOn: [],
+            blockers: [],
             isMilestone: false,
           },
           {
@@ -61,6 +62,7 @@ export function seedAppData(): AppData {
             assigneeId: null,
             notes: '',
             dependsOn: [],
+            blockers: [],
             isMilestone: true,
           },
         ],
@@ -84,6 +86,7 @@ export function seedAppData(): AppData {
             assigneeId: beto.id,
             notes: '',
             dependsOn: [],
+            blockers: [],
             isMilestone: false,
           },
         ],
@@ -94,6 +97,7 @@ export function seedAppData(): AppData {
   return {
     roadmaps: [roadmap],
     assignees: [ana, beto],
+    blockers: [],
     activeId: roadmap.id,
   };
 }

@@ -18,6 +18,7 @@ function item(
     assigneeId: null,
     notes: '',
     dependsOn: deps,
+    blockers: [],
     isMilestone: milestone,
   };
 }

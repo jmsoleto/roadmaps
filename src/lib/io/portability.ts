@@ -10,11 +10,12 @@
  * document version, so a file that mixes the two still imports correctly.
  */
 
-import type { AppData, Assignee, Item, Phase, Roadmap, IsoDate } from '../model/types';
+import type { AppData, Assignee, Blocker, Item, Phase, Roadmap, IsoDate } from '../model/types';
 import { DEFAULT_WINDOW_DAYS } from '../model/types';
 import { dateFromDay, dayIndex, isIsoDate } from '../time/timeline';
 import { uid } from '../util/id';
 import { toSlot } from '../theme/migrate';
+import { asBlockers, asItemBlockers } from '../model/normalize';
 
 const FORMAT = 'roadmaps.v1';
 const LEGACY_ORIGIN: IsoDate = '2026-01-01';
@@ -24,26 +25,40 @@ export interface RoadmapExport {
   exportedAt: string;
   roadmap: Roadmap;
   assignees: Assignee[];
+  blockers: Blocker[];
 }
 
-/** Serialize a roadmap plus the assignees it references to a JSON string. */
-export function exportRoadmap(rm: Roadmap, allAssignees: Assignee[]): string {
-  const used = new Set<string>();
+/** Serialize a roadmap plus the assignees and blockers it references. */
+export function exportRoadmap(
+  rm: Roadmap,
+  allAssignees: Assignee[],
+  allBlockers: Blocker[],
+): string {
+  const usedAssignees = new Set<string>();
+  const usedBlockers = new Set<string>();
   for (const p of rm.rows) {
-    if (p.assigneeId) used.add(p.assigneeId);
-    for (const c of p.children) if (c.assigneeId) used.add(c.assigneeId);
+    if (p.assigneeId) usedAssignees.add(p.assigneeId);
+    for (const c of p.children) {
+      if (c.assigneeId) usedAssignees.add(c.assigneeId);
+      for (const a of c.blockers) usedBlockers.add(a.blockerId);
+    }
   }
   const doc: RoadmapExport = {
     format: FORMAT,
     exportedAt: new Date().toISOString(),
     roadmap: rm,
-    assignees: allAssignees.filter((a) => used.has(a.id)),
+    assignees: allAssignees.filter((a) => usedAssignees.has(a.id)),
+    blockers: allBlockers.filter((b) => usedBlockers.has(b.id)),
   };
   return JSON.stringify(doc, null, 2);
 }
 
-/** Parse imported JSON (current or legacy) into a roadmap + its assignees. */
-export function parseImport(text: string): { roadmap: Roadmap; assignees: Assignee[] } {
+/** Parse imported JSON (current or legacy) into a roadmap + what it references. */
+export function parseImport(text: string): {
+  roadmap: Roadmap;
+  assignees: Assignee[];
+  blockers: Blocker[];
+} {
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);
@@ -53,11 +68,19 @@ export function parseImport(text: string): { roadmap: Roadmap; assignees: Assign
   if (!parsed || typeof parsed !== 'object') throw new Error('Formato no reconocido.');
 
   const obj = parsed as Record<string, unknown>;
+  // Assignments are kept whenever the document declares their blocker; the store
+  // prunes again after merging, once the full catalog is known.
+  const blockers = asBlockers(obj.blockers);
+  const known = new Set(blockers.map((b) => b.id));
   if (obj.format === FORMAT && obj.roadmap) {
-    return { roadmap: normalizeRoadmap(obj.roadmap), assignees: asAssignees(obj.assignees) };
+    return {
+      roadmap: normalizeRoadmap(obj.roadmap, known),
+      assignees: asAssignees(obj.assignees),
+      blockers,
+    };
   }
   if (Array.isArray(obj.rows)) {
-    return { roadmap: fromLegacy(obj), assignees: asAssignees(obj.assignees) };
+    return { roadmap: fromLegacy(obj, known), assignees: asAssignees(obj.assignees), blockers };
   }
   throw new Error('Formato no reconocido.');
 }
@@ -76,18 +99,18 @@ function asAssignees(v: unknown): Assignee[] {
 }
 
 /** Accept a current-format roadmap, giving it a fresh id to avoid collisions. */
-function normalizeRoadmap(v: unknown): Roadmap {
+function normalizeRoadmap(v: unknown, knownBlockers: Set<string>): Roadmap {
   const r = v as Roadmap;
   return {
     id: uid('rm'),
     name: String(r.name ?? 'Roadmap importado'),
     startDate: r.startDate ?? LEGACY_ORIGIN,
     windowDays: typeof r.windowDays === 'number' ? r.windowDays : DEFAULT_WINDOW_DAYS,
-    rows: Array.isArray(r.rows) ? r.rows.map(normalizePhase) : [],
+    rows: Array.isArray(r.rows) ? r.rows.map((p) => normalizePhase(p, knownBlockers)) : [],
   };
 }
 
-function normalizePhase(p: Phase & { color?: unknown }): Phase {
+function normalizePhase(p: Phase & { color?: unknown }, knownBlockers: Set<string>): Phase {
   const colorSlot = toSlot(p.color ?? p.colorSlot);
   return {
     id: p.id ?? uid('ph'),
@@ -98,11 +121,17 @@ function normalizePhase(p: Phase & { color?: unknown }): Phase {
     notes: String(p.notes ?? ''),
     startDate: p.startDate ?? null,
     endDate: p.endDate ?? null,
-    children: Array.isArray(p.children) ? p.children.map((c) => normalizeItem(c, colorSlot)) : [],
+    children: Array.isArray(p.children)
+      ? p.children.map((c) => normalizeItem(c, colorSlot, knownBlockers))
+      : [],
   };
 }
 
-function normalizeItem(c: Item & { color?: unknown }, phaseSlot: number): Item {
+function normalizeItem(
+  c: Item & { color?: unknown },
+  phaseSlot: number,
+  knownBlockers: Set<string>,
+): Item {
   const isMilestone = !!c.isMilestone;
   const raw = c.color ?? c.colorSlot;
   return {
@@ -114,6 +143,7 @@ function normalizeItem(c: Item & { color?: unknown }, phaseSlot: number): Item {
     assigneeId: c.assigneeId ?? null,
     notes: String(c.notes ?? ''),
     dependsOn: Array.isArray(c.dependsOn) ? c.dependsOn : [],
+    blockers: asItemBlockers(c.blockers, knownBlockers),
     isMilestone,
   };
 }
@@ -131,7 +161,7 @@ function legacyDate(v: unknown): IsoDate | null {
 }
 
 /** Convert a legacy document (either date dialect) into the current model. */
-function fromLegacy(obj: Record<string, unknown>): Roadmap {
+function fromLegacy(obj: Record<string, unknown>, knownBlockers: Set<string>): Roadmap {
   const rows: Phase[] = (obj.rows as unknown[]).map((pv) => {
     const p = pv as Record<string, unknown>;
     const colorSlot = toSlot(p.color ?? p.colorSlot);
@@ -150,6 +180,7 @@ function fromLegacy(obj: Record<string, unknown>): Roadmap {
             assigneeId: (c.assigneeId as string | null) ?? null,
             notes: String(c.notes ?? ''),
             dependsOn: Array.isArray(c.dependsOn) ? (c.dependsOn as string[]) : [],
+            blockers: asItemBlockers(c.blockers, knownBlockers),
             isMilestone,
           };
         })
@@ -205,5 +236,17 @@ function fitWindow(rows: Phase[]): { startDate: IsoDate; windowDays: number } {
 export function mergeAssignees(app: AppData, incoming: Assignee[]): void {
   for (const a of incoming) {
     if (!app.assignees.some((x) => x.id === a.id)) app.assignees.push(a);
+  }
+}
+
+/**
+ * Merge imported blockers into the catalog, skipping ids that already exist.
+ *
+ * An id already present wins: the local entry may carry an owner or an address
+ * the user has since corrected, and the import should not undo that.
+ */
+export function mergeBlockers(app: AppData, incoming: Blocker[]): void {
+  for (const b of incoming) {
+    if (!app.blockers.some((x) => x.id === b.id)) app.blockers.push(b);
   }
 }
