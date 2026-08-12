@@ -7,6 +7,7 @@
   import MetaView from './lib/components/MetaView.svelte';
   import Drawer from './lib/components/Drawer.svelte';
   import DragTooltip from './lib/components/DragTooltip.svelte';
+  import NewRoadmapDialog from './lib/components/NewRoadmapDialog.svelte';
 
   let gantt = $state<Gantt | undefined>(undefined);
   let meta = $state<MetaView | undefined>(undefined);
@@ -44,6 +45,9 @@
     {/if}
   </div>
   <Drawer />
+  <!-- Mounted once here rather than at each trigger: the topbar button and the
+       "Todos" empty-state call to action open the same dialog. -->
+  <NewRoadmapDialog />
   <DragTooltip />
 </div>
 

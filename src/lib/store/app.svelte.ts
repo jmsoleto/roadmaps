@@ -12,6 +12,7 @@ import { DEFAULT_DAY_W, ZOOM_LEVELS } from '../config';
 import { createStorage, type Storage } from './storage';
 import { seedAppData, newRoadmap } from '../seed';
 import { uid } from '../util/id';
+import { nameKey } from '../util/roadmap-name';
 import { addDays, snapToWorkday, todayIso } from '../time/timeline';
 import { effectiveStart, effectiveEnd } from '../model/derive';
 import { enforceConstraints } from '../model/constraints';
@@ -143,12 +144,41 @@ export class AppStore {
 
   // ---- roadmap-level mutations ----
 
-  addRoadmap(): void {
-    const rm = newRoadmap(`Roadmap ${this.data.roadmaps.length + 1}`);
+  /**
+   * Why a name would be rejected at creation time, or `null` if it is fine.
+   *
+   * Returned rather than kept private because the creation dialog has to say
+   * *why* it refuses — and, for a clash, which roadmap it clashed with, so the
+   * rejection reads as "you already have this one" instead of arbitrary. The
+   * rule then lives here alone; `addRoadmap` is the guard, this is the reason.
+   *
+   * Emptiness is checked on the key, so "   " needs no separate rule.
+   */
+  roadmapNameError(
+    name: string,
+  ): { kind: 'empty' } | { kind: 'duplicate'; existing: string } | null {
+    const key = nameKey(name);
+    if (key === '') return { kind: 'empty' };
+    const clash = this.data.roadmaps.find((r) => nameKey(r.name) === key);
+    return clash ? { kind: 'duplicate', existing: clash.name } : null;
+  }
+
+  /**
+   * Create a roadmap under an explicit name, reporting whether it went through.
+   *
+   * The name is stored verbatim: `nameKey` only decides whether it collides.
+   * Uniqueness is enforced *here only* — `renameRoadmap` and `importFromText`
+   * deliberately do not check it, so those paths can still end up with two
+   * roadmaps sharing a name (roadmap-editor, "Alcance de la unicidad").
+   */
+  addRoadmap(name: string): boolean {
+    if (this.roadmapNameError(name)) return false;
+    const rm = newRoadmap(name);
     this.data.roadmaps.push(rm);
     this.data.activeId = rm.id;
     this.metaView = false;
     this.scheduleSave();
+    return true;
   }
 
   renameRoadmap(id: string, name: string): void {

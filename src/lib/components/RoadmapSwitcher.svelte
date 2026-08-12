@@ -20,7 +20,15 @@
   let filterEl = $state<HTMLInputElement | null>(null);
   let listEl = $state<HTMLDivElement | null>(null);
 
-  /** Accent- and case-insensitive, so "diseno" finds "Diseño" and "plat" finds "Plataforma". */
+  /**
+   * Accent- and case-insensitive, so "diseno" finds "Diseño" and "plat" finds
+   * "Plataforma".
+   *
+   * Deliberately NOT `nameKey()` from `util/roadmap-name`, which looks almost
+   * the same: that one also strips spaces, because it decides whether two
+   * roadmaps count as the same name. Here spaces have to survive so that
+   * typing "plan q" still finds "Plan Q1".
+   */
   const norm = (s: string) =>
     s
       .normalize('NFD')

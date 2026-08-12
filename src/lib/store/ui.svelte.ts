@@ -9,6 +9,16 @@ export type DrawerState =
 
 class UiStore {
   drawer = $state<DrawerState>({ kind: 'none' });
+  /**
+   * True while the "new roadmap" dialog is up.
+   *
+   * Deliberately its own field and not another `DrawerState` variant: a modal
+   * is not a drawer, and it may sit over an open one. Folding it into the union
+   * would force the theme drawer shut just to ask for a name. It lives here
+   * rather than in a component because two of them open it (the topbar button
+   * and the "Todos" empty-state call to action).
+   */
+  newRoadmap = $state<boolean>(false);
   tooltip = $state<{ show: boolean; x: number; y: number; text: string }>({
     show: false,
     x: 0,
@@ -34,6 +44,14 @@ class UiStore {
 
   closeDrawer(): void {
     this.drawer = { kind: 'none' };
+  }
+
+  openNewRoadmap(): void {
+    this.newRoadmap = true;
+  }
+
+  closeNewRoadmap(): void {
+    this.newRoadmap = false;
   }
 
   showTooltip(x: number, y: number, text: string): void {

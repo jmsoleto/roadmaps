@@ -89,7 +89,7 @@
   <div class="empty">
     <p class="empty-title">Todavía no hay ningún roadmap</p>
     <p class="empty-hint">Esta vista reúne todos tus roadmaps y es desde donde se gestionan.</p>
-    <button type="button" class="empty-cta" onclick={() => store.addRoadmap()}
+    <button type="button" class="empty-cta" onclick={() => ui.openNewRoadmap()}
       >+ crear el primero</button
     >
   </div>

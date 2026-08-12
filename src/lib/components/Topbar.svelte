@@ -36,7 +36,7 @@
 <div class="topbar">
   <div class="brand">ROADMAPS</div>
   <RoadmapSwitcher />
-  <button class="add-tab" onclick={() => store.addRoadmap()}>+ nuevo</button>
+  <button class="add-tab" onclick={() => ui.openNewRoadmap()}>+ nuevo</button>
   <button class="add-tab" onclick={() => fileInput.click()} title="importar JSON">↓ importar</button
   >
   <button
