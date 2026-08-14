@@ -41,7 +41,20 @@ export function wouldCreateCycle(phase: Phase, target: Item, candidate: Item): b
   return false;
 }
 
-/** Cascade dependent items forward until all constraints hold. Returns true if anything changed. */
+/**
+ * Cascade dependent items forward until all constraints hold. Returns true if
+ * anything changed.
+ *
+ * Completed items are skipped: they are frozen in time (D4). Under rule B this
+ * skip is never load-bearing — a completed item's predecessors are completed
+ * too, hence frozen too, so its `minStart` can no longer rise and the cascade
+ * would have nothing to do. It is here as the last of the four guards, for the
+ * document that arrives already inconsistent.
+ *
+ * Skipping is only about moving them. `getMinStart` still counts a completed
+ * predecessor's end, because an open item does have to start after the work it
+ * follows, finished or not.
+ */
 export function enforceConstraints(rm: Roadmap): boolean {
   let anyChanged = false;
   for (const phase of rm.rows) {
@@ -50,7 +63,7 @@ export function enforceConstraints(rm: Roadmap): boolean {
     while (changed && iter++ < 200) {
       changed = false;
       for (const item of phase.children) {
-        if (item.dependsOn.length === 0) continue;
+        if (item.dependsOn.length === 0 || item.completedDate !== null) continue;
         const minStart = getMinStart(phase, item);
         if (minStart === null || item.startDate >= minStart) continue;
         if (item.isMilestone) {

@@ -72,7 +72,7 @@ npm run test    # vitest
 .github/workflows/       Despliegue de la web app a GitHub Pages
 public/                  Iconos y assets estáticos de la PWA
 src/                     Frontend Svelte
-  lib/model/             Modelo de datos, derivaciones y restricciones (deps)
+  lib/model/             Modelo de datos, derivaciones, restricciones (deps) y completitud
   lib/time/              Conversión día↔fecha, segmentos (sprints/trimestres/meses)
   lib/store/             Estado reactivo + seam de persistencia (localStorage)
   lib/theme/             Temas: paletas, resolución de tokens, contraste

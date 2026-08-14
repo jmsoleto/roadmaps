@@ -27,6 +27,9 @@ function item(id: string, blockers: Item['blockers']): Item {
     dependsOn: [],
     blockers,
     isMilestone: false,
+    completedDate: null,
+    endAtCompletion: null,
+    baselineEnd: null,
   };
 }
 
@@ -36,6 +39,7 @@ function roadmapWith(children: Item[]): Roadmap {
     name: 'Demo',
     startDate: '2026-01-01',
     windowDays: 730,
+    baselineDate: null,
     rows: [
       {
         id: 'p1',
@@ -100,6 +104,7 @@ describe('documentos sin bloqueos o con asignaciones huérfanas', () => {
         name: 'Antiguo',
         startDate: '2026-01-01',
         windowDays: 730,
+        baselineDate: null,
         rows: [
           {
             id: 'p',
@@ -131,6 +136,7 @@ describe('documentos sin bloqueos o con asignaciones huérfanas', () => {
         name: 'Con huérfana',
         startDate: '2026-01-01',
         windowDays: 730,
+        baselineDate: null,
         rows: [
           {
             id: 'p',

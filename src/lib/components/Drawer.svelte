@@ -5,6 +5,14 @@
   import { effectiveStart, effectiveEnd } from '../model/derive';
   import { wouldCreateCycle } from '../model/constraints';
   import { findBlocker } from '../model/blockers';
+  import {
+    canComplete,
+    isCompleted,
+    pendingPredecessors,
+    slipVsBaseline,
+    slipVsForecast,
+  } from '../model/completion';
+  import { todayIso } from '../time/timeline';
   import { getInitials } from '../util/assignees';
   import { theme } from '../theme/theme.svelte';
   import ThemeEditor from './ThemeEditor.svelte';
@@ -70,6 +78,59 @@
   function setNotes(v: string) {
     if (phase) store.setNotes(phase.id, item ? item.id : null, v);
   }
+
+  // ---- completion ----
+
+  const done = $derived(!!item && isCompleted(item));
+  const pendingDeps = $derived(phase && item ? pendingPredecessors(phase, item) : []);
+  const completable = $derived(!!phase && !!item && canComplete(phase, item));
+
+  /**
+   * The date the next "mark complete" will use. Seeded with today and rebound
+   * whenever the drawer moves to another item, so a date typed for one item
+   * never rides along to the next.
+   */
+  let completionDate = $state(todayIso());
+  $effect(() => {
+    completionDate = item?.completedDate ?? todayIso();
+  });
+
+  const slipBase = $derived(item ? slipVsBaseline(item) : null);
+  const slipForecast = $derived(item ? slipVsForecast(item) : null);
+
+  /** Signed days, in the words the drawer uses: late, early, or on the day. */
+  function fmtSlip(n: number): string {
+    if (n === 0) return 'en fecha';
+    return n > 0 ? `${n} d de retraso` : `${-n} d de adelanto`;
+  }
+
+  function markComplete() {
+    if (phase && item) store.completeItem(phase.id, item.id, completionDate);
+  }
+  function correctDate(v: string) {
+    if (phase && item) store.setCompletedDate(phase.id, item.id, v);
+  }
+
+  // Uncompleting clears the completion of every dependent downstream, and there
+  // is no undo, so the button says how many before it will do anything (D9).
+  let confirmUncomplete = $state(false);
+  const cascadeReach = $derived(
+    phase && item ? store.countCompletedDependents(phase.id, item.id) : 0,
+  );
+  function unmark() {
+    if (!phase || !item) return;
+    if (cascadeReach > 0 && !confirmUncomplete) {
+      confirmUncomplete = true;
+      return;
+    }
+    confirmUncomplete = false;
+    store.uncompleteItem(phase.id, item.id);
+  }
+  $effect(() => {
+    // Moving to another item drops a pending confirmation on the floor.
+    void item?.id;
+    confirmUncomplete = false;
+  });
 
   let confirmDelAssignee = $state<string | null>(null);
   function delAssignee(id: string) {
@@ -308,6 +369,85 @@
     </div>
 
     {#if isItem && item}
+      <!-- Placed against "Depende de" on purpose: rule B means the list below is
+           what decides whether this section can be acted on at all. -->
+      <div class="section done-section">
+        <span class="label">Completitud</span>
+
+        {#if done}
+          <div class="done-row">
+            <span class="done-mark" aria-hidden="true">✓</span>
+            <span>Completado el</span>
+            <input
+              class="input date"
+              type="date"
+              max={todayIso()}
+              value={item.completedDate}
+              onchange={(e) => correctDate(e.currentTarget.value)}
+            />
+          </div>
+
+          <div class="slips">
+            {#if slipBase !== null}
+              <div class="slip">
+                <span class="slip-k">frente al plan</span>
+                <span class="slip-v" class:late={slipBase > 0}>{fmtSlip(slipBase)}</span>
+              </div>
+            {/if}
+            {#if slipForecast !== null}
+              <div class="slip">
+                <span class="slip-k">frente a la última previsión</span>
+                <span class="slip-v" class:late={slipForecast > 0}>{fmtSlip(slipForecast)}</span>
+              </div>
+            {/if}
+          </div>
+
+          {#if item.baselineEnd === null}
+            <div class="hint sm">
+              {#if rm && rm.baselineDate === null}
+                Este roadmap no tiene plan fijado, así que no se mide la desviación acumulada.
+                <button type="button" class="link" onclick={() => rm && store.setBaseline(rm.id)}
+                  >fijar plan →</button
+                >
+              {:else}
+                Añadido después de fijar el plan, así que no tiene desviación acumulada que medir.
+              {/if}
+            </div>
+          {/if}
+
+          <button
+            type="button"
+            class="btn-unmark"
+            class:confirm={confirmUncomplete}
+            onclick={unmark}
+            >{confirmUncomplete
+              ? `¿desmarcar ${cascadeReach + 1} items?`
+              : 'Desmarcar como completado'}</button
+          >
+          {#if cascadeReach > 0 && !confirmUncomplete}
+            <div class="hint sm">
+              Desmarcarlo desmarca también {cascadeReach}
+              {cascadeReach === 1 ? 'item que depende' : 'items que dependen'} de él.
+            </div>
+          {/if}
+        {:else if completable}
+          <div class="done-row">
+            <input class="input date" type="date" max={todayIso()} bind:value={completionDate} />
+            <button type="button" class="btn-mark" onclick={markComplete}>Marcar completado</button>
+          </div>
+          <div class="hint sm">Propone hoy; se puede corregir a un día anterior.</div>
+        {:else}
+          <div class="hint sm">
+            No se puede completar todavía: falta {pendingDeps.length === 1
+              ? 'que termine'
+              : 'que terminen'}
+            {#each pendingDeps as d, i (d.id)}<strong>{d.label}</strong>{i < pendingDeps.length - 1
+                ? ', '
+                : ''}{/each}.
+          </div>
+        {/if}
+      </div>
+
       <div class="section">
         <label class="label" for="dAddDep">Depende de</label>
         <div class="deps-list">
@@ -575,6 +715,73 @@
   .hint.sm {
     margin: 6px 0 0;
     font-size: 11px;
+  }
+  /* Completion.
+     Deliberately quiet: a completed item is the state that needs no action, so
+     the section reports rather than announces. The only accent is the check
+     itself, and the only alarm is a positive slip (D7). */
+  .done-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--text);
+  }
+  .done-row .date {
+    width: auto;
+    flex: 1;
+    min-width: 0;
+  }
+  .done-mark {
+    color: var(--accent);
+    font-weight: 700;
+  }
+  .slips {
+    margin-top: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .slip {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11.5px;
+  }
+  .slip-k {
+    color: var(--text-dim);
+  }
+  .slip-v {
+    color: var(--text);
+  }
+  .slip-v.late {
+    color: var(--danger);
+  }
+  .btn-mark,
+  .btn-unmark {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    padding: 8px 12px;
+    border-radius: 5px;
+    border: 1px solid var(--line);
+    background: var(--surface-2);
+    color: var(--text);
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .btn-unmark {
+    margin-top: 12px;
+    width: 100%;
+  }
+  .btn-mark:hover,
+  .btn-unmark:hover {
+    border-color: var(--accent);
+  }
+  .btn-unmark.confirm {
+    border-color: var(--danger);
+    background: var(--danger);
+    color: var(--ink-on-danger);
   }
   .deps-list {
     display: flex;

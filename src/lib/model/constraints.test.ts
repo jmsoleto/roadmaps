@@ -20,6 +20,9 @@ function item(
     dependsOn: deps,
     blockers: [],
     isMilestone: milestone,
+    completedDate: null,
+    endAtCompletion: null,
+    baselineEnd: null,
   };
 }
 
@@ -38,7 +41,14 @@ function phase(children: Item[]): Phase {
 }
 
 function roadmap(p: Phase): Roadmap {
-  return { id: 'r', name: 'r', startDate: '2026-01-01', windowDays: 730, rows: [p] };
+  return {
+    id: 'r',
+    name: 'r',
+    startDate: '2026-01-01',
+    windowDays: 730,
+    rows: [p],
+    baselineDate: null,
+  };
 }
 
 describe('getMinStart', () => {
@@ -103,5 +113,46 @@ describe('enforceConstraints', () => {
     enforceConstraints(rm);
     expect(m.startDate).toBe('2026-01-26');
     expect(m.endDate).toBe('2026-01-26');
+  });
+});
+
+describe('enforceConstraints with completed items', () => {
+  it('does not drag a completed dependent forward', () => {
+    const a = item('a', '2026-01-05', '2026-03-02'); // predecessor pushed out
+    const b = item('b', '2026-01-12', '2026-01-30', ['a']);
+    b.completedDate = '2026-01-30';
+    b.endAtCompletion = '2026-01-30';
+    const rm = roadmap(phase([a, b]));
+    expect(enforceConstraints(rm)).toBe(false);
+    expect(b.startDate).toBe('2026-01-12');
+    expect(b.endDate).toBe('2026-01-30');
+  });
+
+  it('does not collapse a completed milestone onto its predecessor', () => {
+    const a = item('a', '2026-01-05', '2026-03-02');
+    const m = item('m', '2026-01-12', '2026-01-12', ['a'], true);
+    m.completedDate = '2026-01-12';
+    const rm = roadmap(phase([a, m]));
+    expect(enforceConstraints(rm)).toBe(false);
+    expect(m.startDate).toBe('2026-01-12');
+  });
+
+  it('still drags an open dependent behind a completed predecessor', () => {
+    // Freezing a completed item stops it from moving; it does not stop its end
+    // from constraining whoever follows.
+    const a = item('a', '2026-01-05', '2026-01-26'); // Mon 26 Jan
+    a.completedDate = '2026-01-26';
+    const b = item('b', '2026-01-12', '2026-01-20', ['a']);
+    const rm = roadmap(phase([a, b]));
+    expect(enforceConstraints(rm)).toBe(true);
+    expect(a.startDate).toBe('2026-01-05');
+    expect(b.startDate).toBe('2026-01-26');
+  });
+
+  it('getMinStart counts a completed predecessor', () => {
+    const a = item('a', '2026-01-05', '2026-01-26');
+    a.completedDate = '2026-01-26';
+    const b = item('b', '2026-01-12', '2026-01-20', ['a']);
+    expect(getMinStart(phase([a, b]), b)).toBe('2026-01-26');
   });
 });

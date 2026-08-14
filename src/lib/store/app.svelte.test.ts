@@ -25,6 +25,7 @@ const roadmap = (id: string) => ({
   name: id,
   startDate: '2026-01-01',
   windowDays: 730,
+  baselineDate: null,
   rows: [],
 });
 

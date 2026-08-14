@@ -33,6 +33,7 @@ function roadmapWithItem(id: string): Roadmap {
     name: id,
     startDate: '2026-01-01',
     windowDays: 730,
+    baselineDate: null,
     rows: [
       {
         id: `ph-${id}`,
@@ -55,6 +56,9 @@ function roadmapWithItem(id: string): Roadmap {
             dependsOn: [],
             blockers: [],
             isMilestone: false,
+            completedDate: null,
+            endAtCompletion: null,
+            baselineEnd: null,
           },
         ],
       },

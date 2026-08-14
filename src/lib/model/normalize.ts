@@ -1,5 +1,6 @@
 /**
- * Load-boundary normalization for blockers (design decision D9).
+ * Load-boundary normalization for blockers (D9 of `bloqueos-externos`) and for
+ * completion (D10 of `completitud-de-items`).
  *
  * Documents written before blockers existed carry neither the global catalog
  * nor a `blockers` list on their items. Rather than versioning the stored
@@ -16,7 +17,8 @@
  */
 
 import { uid } from '../util/id';
-import type { Blocker, ItemBlocker } from './types';
+import { isIsoDate } from '../time/timeline';
+import type { Blocker, IsoDate, ItemBlocker } from './types';
 
 /** A document as it may arrive from storage or an import: fields may be missing. */
 type MaybeBlockers = {
@@ -85,6 +87,81 @@ export function normalizeBlockers<T>(data: T): T {
     for (const phase of roadmap.rows ?? []) {
       for (const item of phase.children ?? []) {
         item.blockers = asItemBlockers(item.blockers, known);
+      }
+    }
+  }
+  return data;
+}
+
+/** A document as it may arrive from storage or an import, seen through completion. */
+type MaybeCompletion = {
+  roadmaps?: {
+    baselineDate?: unknown;
+    rows?: {
+      children?: {
+        id?: unknown;
+        dependsOn?: unknown;
+        completedDate?: unknown;
+        endAtCompletion?: unknown;
+        baselineEnd?: unknown;
+      }[];
+    }[];
+  }[];
+} | null;
+
+/** An ISO day, or null for anything that is not one. */
+function asIsoOrNull(value: unknown): IsoDate | null {
+  return isIsoDate(value) ? value : null;
+}
+
+/**
+ * Normalize a whole loaded document in place: fill in the completion fields
+ * documents written before this change do not carry, and drop the completion
+ * states rule B cannot reach.
+ *
+ * Documents that predate completion have none of these fields, so every item
+ * reads as open and every roadmap as having no fixed plan.
+ *
+ * The second half is the interesting one. A completed item whose predecessor is
+ * open can only arrive from a hand-edited or hand-merged document, and keeping
+ * it would leave a frozen bar that `enforceConstraints` has standing permission
+ * to want to push. Losing a tick is cheaper than carrying that contradiction,
+ * so the offending item is reopened — and reopening it can invalidate whatever
+ * depended on it, which is why this runs to a fixed point.
+ *
+ * Idempotent, and it writes nothing by itself: like `normalizeBlockers`, the
+ * result reaches storage on the next save that normal use produces.
+ */
+export function normalizeCompletion<T>(data: T): T {
+  const doc = data as MaybeCompletion;
+  if (!doc || typeof doc !== 'object') return data;
+
+  for (const roadmap of doc.roadmaps ?? []) {
+    roadmap.baselineDate = asIsoOrNull(roadmap.baselineDate);
+
+    for (const phase of roadmap.rows ?? []) {
+      const children = phase.children ?? [];
+      for (const item of children) {
+        item.completedDate = asIsoOrNull(item.completedDate);
+        item.endAtCompletion = asIsoOrNull(item.endAtCompletion);
+        item.baselineEnd = asIsoOrNull(item.baselineEnd);
+      }
+
+      let changed = true;
+      while (changed) {
+        changed = false;
+        for (const item of children) {
+          if (item.completedDate === null) continue;
+          const deps = Array.isArray(item.dependsOn) ? item.dependsOn : [];
+          const open = deps.some((id) => {
+            const dep = children.find((c) => c.id === id);
+            return dep !== undefined && dep.completedDate === null;
+          });
+          if (!open) continue;
+          item.completedDate = null;
+          item.endAtCompletion = null;
+          changed = true;
+        }
       }
     }
   }

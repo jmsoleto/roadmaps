@@ -12,6 +12,7 @@ const roadmap: Roadmap = {
   name: 'Demo',
   startDate: '2026-01-01',
   windowDays: 730,
+  baselineDate: null,
   rows: [
     {
       id: 'p1',
@@ -34,6 +35,9 @@ const roadmap: Roadmap = {
           dependsOn: [],
           blockers: [],
           isMilestone: false,
+          completedDate: null,
+          endAtCompletion: null,
+          baselineEnd: null,
         },
         {
           id: 'i2',
@@ -46,6 +50,9 @@ const roadmap: Roadmap = {
           dependsOn: ['i1'],
           blockers: [],
           isMilestone: false,
+          completedDate: null,
+          endAtCompletion: null,
+          baselineEnd: null,
         },
       ],
     },
@@ -155,6 +162,9 @@ describe('legacy import (ISO date format, schemaVersion 1)', () => {
             id: 'item-1',
             label: 'Wallet en Perfil',
             isMilestone: false,
+            completedDate: null,
+            endAtCompletion: null,
+            baselineEnd: null,
             start: '2026-06-28',
             end: '2026-07-12',
             assigneeId: 'assg-1',
@@ -165,6 +175,9 @@ describe('legacy import (ISO date format, schemaVersion 1)', () => {
             id: 'item-2',
             label: 'Entrega',
             isMilestone: true,
+            completedDate: null,
+            endAtCompletion: null,
+            baselineEnd: null,
             start: '2026-09-20',
             end: '2026-09-20',
             assigneeId: null,
@@ -271,6 +284,7 @@ describe('import of pre-theming exports (hex colors)', () => {
         name: 'Antes de los temas',
         startDate: '2026-01-01',
         windowDays: 730,
+        baselineDate: null,
         rows: [
           {
             id: 'p1',
@@ -292,6 +306,9 @@ describe('import of pre-theming exports (hex colors)', () => {
                 notes: '',
                 dependsOn: [],
                 isMilestone: false,
+                completedDate: null,
+                endAtCompletion: null,
+                baselineEnd: null,
               },
             ],
           },
@@ -321,5 +338,73 @@ describe('parseImport errors', () => {
   it('rejects invalid JSON and unknown shapes', () => {
     expect(() => parseImport('{not json')).toThrow();
     expect(() => parseImport('{"foo":1}')).toThrow();
+  });
+});
+
+describe('completitud en el intercambio', () => {
+  /** The fixture roadmap with a fixed plan and its first item completed. */
+  function completed(): Roadmap {
+    const rm = structuredClone(roadmap);
+    rm.baselineDate = '2026-01-02';
+    const a = rm.rows[0].children[0];
+    a.completedDate = '2026-02-15';
+    a.endAtCompletion = '2026-02-10';
+    a.baselineEnd = '2026-01-31';
+    return rm;
+  }
+
+  it('conserva completitud y línea base en la ida y vuelta', () => {
+    const { roadmap: back } = parseImport(exportRoadmap(completed(), assignees, []));
+    const a = back.rows[0].children[0];
+    expect(back.baselineDate).toBe('2026-01-02');
+    expect(a.completedDate).toBe('2026-02-15');
+    expect(a.endAtCompletion).toBe('2026-02-10');
+    expect(a.baselineEnd).toBe('2026-01-31');
+  });
+
+  it('importa sin completitud un documento que no la declara', () => {
+    const older = JSON.stringify({
+      format: 'roadmaps.v1',
+      roadmap: { name: 'Antiguo', rows: [{ id: 'p', name: 'F', children: [{ id: 'i' }] }] },
+      assignees: [],
+    });
+    const { roadmap: back } = parseImport(older);
+    expect(back.baselineDate).toBeNull();
+    expect(back.rows[0].children[0].completedDate).toBeNull();
+    expect(back.rows[0].children[0].baselineEnd).toBeNull();
+  });
+
+  it('importa sin completitud un documento en formato heredado', () => {
+    const legacy = JSON.stringify({
+      name: 'Heredado',
+      rows: [{ id: 'p', label: 'F', children: [{ id: 'i', label: 'T', start: 10, end: 20 }] }],
+    });
+    const { roadmap: back } = parseImport(legacy);
+    expect(back.baselineDate).toBeNull();
+    expect(back.rows[0].children[0].completedDate).toBeNull();
+  });
+
+  it('descompleta al importar un item cuyo predecesor llega pendiente', () => {
+    const rm = completed();
+    const [a, b] = rm.rows[0].children;
+    a.completedDate = null; // el predecesor llega pendiente...
+    a.endAtCompletion = null;
+    b.dependsOn = [a.id];
+    b.completedDate = '2026-03-01'; // ...y el dependiente completado
+    b.endAtCompletion = '2026-03-01';
+
+    const { roadmap: back } = parseImport(exportRoadmap(rm, assignees, []));
+    expect(back.rows[0].children[1].completedDate).toBeNull();
+    expect(back.rows[0].children[1].endAtCompletion).toBeNull();
+    expect(back.rows[0].children[0].label).toBe('Tarea 1'); // el resto se importa
+  });
+
+  it('importa un item completado sin línea base', () => {
+    const rm = completed();
+    rm.rows[0].children[0].baselineEnd = null;
+    const { roadmap: back } = parseImport(exportRoadmap(rm, assignees, []));
+    const a = back.rows[0].children[0];
+    expect(a.completedDate).toBe('2026-02-15');
+    expect(a.baselineEnd).toBeNull();
   });
 });

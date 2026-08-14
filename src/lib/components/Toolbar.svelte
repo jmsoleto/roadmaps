@@ -1,8 +1,28 @@
 <script lang="ts">
   import { store } from '../store/app.svelte';
   import { ui } from '../store/ui.svelte';
+  import { fmtDate } from '../time/timeline';
 
   let { onToday }: { onToday: () => void } = $props();
+
+  // Fixing the plan a second time throws away the drift measured against the
+  // first one, so refixing takes two clicks and says so. The first fix does
+  // not: there is nothing yet to lose (D5).
+  let confirmRefix = $state(false);
+  function fixPlan() {
+    const rm = store.activeRoadmap;
+    if (!rm) return;
+    if (rm.baselineDate !== null && !confirmRefix) {
+      confirmRefix = true;
+      return;
+    }
+    confirmRefix = false;
+    store.setBaseline(rm.id);
+  }
+  $effect(() => {
+    void store.activeRoadmap?.id;
+    confirmRefix = false;
+  });
 </script>
 
 <!-- The "Todos" view scales with `store.dayW` too and marks today just like the
@@ -18,7 +38,22 @@
        external dependencies is global, and "Todos" is where you'd register
        something that is about to hit several roadmaps (D8). -->
   <button class="btn" onclick={() => ui.openBlockers()}>dependencias externas</button>
+  <!-- Absent from "Todos" on purpose: the baseline belongs to one roadmap (D5). -->
   {#if !store.metaView && store.activeRoadmap}
+    {@const fixed = store.activeRoadmap.baselineDate}
+    <button
+      class="btn"
+      class:confirm={confirmRefix}
+      onclick={fixPlan}
+      title={fixed
+        ? `Plan fijado el ${fmtDate(fixed)}. Volver a fijarlo toma como plan las fechas de hoy y reinicia la desviación acumulada.`
+        : 'Toma las fechas de hoy como plan comprometido, para medir contra ellas la desviación de lo que se complete.'}
+      >{confirmRefix
+        ? '¿refijar y reiniciar la desviación?'
+        : fixed
+          ? `plan · ${fmtDate(fixed)}`
+          : 'fijar plan'}</button
+    >
     <div class="timeline-cfg" title="ventana temporal de este roadmap">
       <span class="cfg-label">inicio</span>
       <input
@@ -73,6 +108,15 @@
   .btn:disabled {
     opacity: 0.45;
     cursor: not-allowed;
+  }
+  .btn.confirm {
+    border-color: var(--danger);
+    background: var(--danger);
+    color: var(--ink-on-danger);
+  }
+  .btn.confirm:hover {
+    border-color: var(--danger);
+    color: var(--ink-on-danger);
   }
   .btn.sq {
     padding: 6px 10px;

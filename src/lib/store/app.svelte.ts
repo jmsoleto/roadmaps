@@ -13,9 +13,10 @@ import { createStorage, type Storage } from './storage';
 import { seedAppData, newRoadmap } from '../seed';
 import { uid } from '../util/id';
 import { nameKey } from '../util/roadmap-name';
-import { addDays, snapToWorkday, todayIso } from '../time/timeline';
+import { addDays, isIsoDate, snapToWorkday, todayIso } from '../time/timeline';
 import { effectiveStart, effectiveEnd } from '../model/derive';
 import { enforceConstraints } from '../model/constraints';
+import { canComplete, completedDependents, isCompleted } from '../model/completion';
 import {
   countBlockerUsage,
   countUnresolvedEquivalents,
@@ -24,7 +25,7 @@ import {
 } from '../model/blockers';
 import { exportRoadmap, parseImport, mergeAssignees, mergeBlockers } from '../io/portability';
 import { normalizeColors } from '../theme/migrate';
-import { normalizeBlockers } from '../model/normalize';
+import { normalizeBlockers, normalizeCompletion } from '../model/normalize';
 import { PALETTE_SLOTS } from '../theme/tokens';
 
 const SAVE_DEBOUNCE_MS = 250;
@@ -57,7 +58,9 @@ export class AppStore {
 
   /** Load persisted state (or seed on first run). Must be awaited before mount. */
   async init(): Promise<void> {
-    const loaded = normalizeBlockers(normalizeColors(await this.storage.load()));
+    const loaded = normalizeCompletion(
+      normalizeBlockers(normalizeColors(await this.storage.load())),
+    );
     if (loaded) {
       this.data = loaded;
     } else {
@@ -312,6 +315,9 @@ export class AppStore {
       dependsOn: [],
       blockers: [],
       isMilestone: false,
+      completedDate: null,
+      endAtCompletion: null,
+      baselineEnd: null,
     });
     phase.expanded = true;
     this.scheduleSave();
@@ -334,6 +340,9 @@ export class AppStore {
       dependsOn: [],
       blockers: [],
       isMilestone: true,
+      completedDate: null,
+      endAtCompletion: null,
+      baselineEnd: null,
     });
     phase.expanded = true;
     this.scheduleSave();
@@ -356,18 +365,25 @@ export class AppStore {
     this.commit();
   }
 
+  /** Move an item's dates. Does nothing to a completed item: it is frozen (D4). */
   setItemDates(phaseId: string, itemId: string, startDate: IsoDate, endDate: IsoDate): void {
     const item = this.findItem(phaseId, itemId);
-    if (item) {
+    if (item && !isCompleted(item)) {
       item.startDate = startDate;
       item.endDate = item.isMilestone ? startDate : endDate;
       this.commit();
     }
   }
 
+  /**
+   * Swap an item between a span and a milestone.
+   *
+   * Refused on a completed item: this writes `endDate`, so it is one of the
+   * four doors through which a frozen item could otherwise move (D4).
+   */
   toggleMilestone(phaseId: string, itemId: string): void {
     const item = this.findItem(phaseId, itemId);
-    if (!item) return;
+    if (!item || isCompleted(item)) return;
     if (item.isMilestone) {
       item.isMilestone = false;
       let end = snapToWorkday(addDays(item.startDate, 7));
@@ -400,12 +416,21 @@ export class AppStore {
 
   // ---- dependencies ----
 
+  /**
+   * Declare `depId` as a predecessor of `itemId`.
+   *
+   * A completed item only accepts predecessors that are completed too. Without
+   * that, a new dependency on open work would break rule B retroactively and
+   * hand the cascade a frozen bar to push (D4).
+   */
   addDependency(phaseId: string, itemId: string, depId: string): void {
-    const item = this.findItem(phaseId, itemId);
-    if (item && !item.dependsOn.includes(depId)) {
-      item.dependsOn.push(depId);
-      this.commit();
-    }
+    const phase = this.findPhase(phaseId);
+    const item = phase?.children.find((c) => c.id === itemId);
+    if (!phase || !item || item.dependsOn.includes(depId)) return;
+    const dep = phase.children.find((c) => c.id === depId);
+    if (isCompleted(item) && (!dep || !isCompleted(dep))) return;
+    item.dependsOn.push(depId);
+    this.commit();
   }
 
   removeDependency(phaseId: string, itemId: string, depId: string): void {
@@ -414,6 +439,107 @@ export class AppStore {
       item.dependsOn = item.dependsOn.filter((d) => d !== depId);
       this.commit();
     }
+  }
+
+  // ---- completion ----
+  //
+  // `completedDate` alone carries the state (D2). Completing does not go
+  // through `commit()`: it changes no dates, and freezing an item can never
+  // create a constraint violation. Uncompleting does, because it thaws items
+  // that `enforceConstraints` had been skipping.
+
+  /**
+   * Mark an item completed, returning false when rule B forbids it.
+   *
+   * `date` defaults to today and may be corrected backwards — work gets ticked
+   * off after it is finished — but never forwards, since a future completion is
+   * just the end date the item already has (D2).
+   *
+   * The end date in force at this instant is frozen into `endAtCompletion`, so
+   * later drags cannot rewrite what was measured (D6).
+   */
+  completeItem(phaseId: string, itemId: string, date?: IsoDate): boolean {
+    const phase = this.findPhase(phaseId);
+    const item = phase?.children.find((c) => c.id === itemId);
+    if (!phase || !item || isCompleted(item)) return false;
+    if (!canComplete(phase, item)) return false;
+
+    const today = todayIso();
+    const when = date ?? today;
+    if (!isIsoDate(when) || when > today) return false;
+
+    item.completedDate = when;
+    item.endAtCompletion = item.endDate;
+    this.scheduleSave();
+    return true;
+  }
+
+  /**
+   * Correct the completion date of an item that is already completed.
+   *
+   * Same window as `completeItem` — never in the future — and deliberately not
+   * a re-completion: `endAtCompletion` keeps the end date in force when the
+   * work actually closed, which is the thing the forecast slip measures. Fixing
+   * a typo in the date must not be a reason to lose it, and it must not cost a
+   * trip through the destructive uncomplete cascade either.
+   */
+  setCompletedDate(phaseId: string, itemId: string, date: IsoDate): boolean {
+    const item = this.findItem(phaseId, itemId);
+    if (!item || !isCompleted(item)) return false;
+    if (!isIsoDate(date) || date > todayIso()) return false;
+    item.completedDate = date;
+    this.scheduleSave();
+    return true;
+  }
+
+  /**
+   * How many completed items would be dragged along by uncompleting this one —
+   * the reach the confirmation has to state before anything is cleared (D9).
+   */
+  countCompletedDependents(phaseId: string, itemId: string): number {
+    const phase = this.findPhase(phaseId);
+    const item = phase?.children.find((c) => c.id === itemId);
+    if (!phase || !item) return 0;
+    return completedDependents(phase, item).length;
+  }
+
+  /**
+   * Uncomplete an item and every completed item downstream of it.
+   *
+   * The cascade is what keeps rule B true going backwards: a completed item
+   * cannot be left with an open predecessor. `baselineEnd` survives untouched —
+   * the baseline belongs to the plan, not to the completion (D9).
+   *
+   * Destructive and unguarded: the caller confirms first, using
+   * `countCompletedDependents`.
+   */
+  uncompleteItem(phaseId: string, itemId: string): void {
+    const phase = this.findPhase(phaseId);
+    const item = phase?.children.find((c) => c.id === itemId);
+    if (!phase || !item) return;
+    for (const target of [item, ...completedDependents(phase, item)]) {
+      target.completedDate = null;
+      target.endAtCompletion = null;
+    }
+    this.commit();
+  }
+
+  /**
+   * Fix the plan of a roadmap: copy every item's planned end into its baseline
+   * and stamp the day it was done.
+   *
+   * Repeatable, and repeating it restarts the accumulated drift — the caller
+   * warns before calling again. Items created afterwards keep `baselineEnd`
+   * null, which is how they read as scope added after the plan (D5).
+   */
+  setBaseline(roadmapId: string): void {
+    const rm = this.data.roadmaps.find((r) => r.id === roadmapId);
+    if (!rm) return;
+    for (const phase of rm.rows) {
+      for (const item of phase.children) item.baselineEnd = item.endDate;
+    }
+    rm.baselineDate = todayIso();
+    this.scheduleSave();
   }
 
   // ---- blockers (global catalog) ----

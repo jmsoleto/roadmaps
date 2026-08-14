@@ -15,7 +15,7 @@ import { DEFAULT_WINDOW_DAYS } from '../model/types';
 import { dateFromDay, dayIndex, isIsoDate } from '../time/timeline';
 import { uid } from '../util/id';
 import { toSlot } from '../theme/migrate';
-import { asBlockers, asItemBlockers } from '../model/normalize';
+import { asBlockers, asItemBlockers, normalizeCompletion } from '../model/normalize';
 
 const FORMAT = 'roadmaps.v1';
 const LEGACY_ORIGIN: IsoDate = '2026-01-01';
@@ -74,15 +74,29 @@ export function parseImport(text: string): {
   const known = new Set(blockers.map((b) => b.id));
   if (obj.format === FORMAT && obj.roadmap) {
     return {
-      roadmap: normalizeRoadmap(obj.roadmap, known),
+      roadmap: settle(normalizeRoadmap(obj.roadmap, known)),
       assignees: asAssignees(obj.assignees),
       blockers,
     };
   }
   if (Array.isArray(obj.rows)) {
-    return { roadmap: fromLegacy(obj, known), assignees: asAssignees(obj.assignees), blockers };
+    return {
+      roadmap: settle(fromLegacy(obj, known)),
+      assignees: asAssignees(obj.assignees),
+      blockers,
+    };
   }
   throw new Error('Formato no reconocido.');
+}
+
+/**
+ * Apply to an imported roadmap the same completion coherence the loader
+ * applies, so an item completed ahead of an open predecessor cannot enter the
+ * model by the import door either. Reuses `normalizeCompletion` rather than
+ * restating rule B, which is why it is shaped like a one-roadmap document.
+ */
+function settle(rm: Roadmap): Roadmap {
+  return normalizeCompletion({ roadmaps: [rm] }).roadmaps[0];
 }
 
 function asAssignees(v: unknown): Assignee[] {
@@ -106,6 +120,7 @@ function normalizeRoadmap(v: unknown, knownBlockers: Set<string>): Roadmap {
     name: String(r.name ?? 'Roadmap importado'),
     startDate: r.startDate ?? LEGACY_ORIGIN,
     windowDays: typeof r.windowDays === 'number' ? r.windowDays : DEFAULT_WINDOW_DAYS,
+    baselineDate: isIsoDate(r.baselineDate) ? r.baselineDate : null,
     rows: Array.isArray(r.rows) ? r.rows.map((p) => normalizePhase(p, knownBlockers)) : [],
   };
 }
@@ -145,6 +160,9 @@ function normalizeItem(
     dependsOn: Array.isArray(c.dependsOn) ? c.dependsOn : [],
     blockers: asItemBlockers(c.blockers, knownBlockers),
     isMilestone,
+    completedDate: isIsoDate(c.completedDate) ? c.completedDate : null,
+    endAtCompletion: isIsoDate(c.endAtCompletion) ? c.endAtCompletion : null,
+    baselineEnd: isIsoDate(c.baselineEnd) ? c.baselineEnd : null,
   };
 }
 
@@ -182,6 +200,10 @@ function fromLegacy(obj: Record<string, unknown>, knownBlockers: Set<string>): R
             dependsOn: Array.isArray(c.dependsOn) ? (c.dependsOn as string[]) : [],
             blockers: asItemBlockers(c.blockers, knownBlockers),
             isMilestone,
+            // The legacy format predates completion by a long way.
+            completedDate: null,
+            endAtCompletion: null,
+            baselineEnd: null,
           };
         })
       : [];
@@ -202,6 +224,7 @@ function fromLegacy(obj: Record<string, unknown>, knownBlockers: Set<string>): R
     id: uid('rm'),
     name: String(obj.name ?? 'Roadmap importado'),
     ...fitWindow(rows),
+    baselineDate: null,
     rows,
   };
 }

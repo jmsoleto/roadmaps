@@ -17,6 +17,9 @@ function item(start: string, end: string): Item {
     dependsOn: [],
     blockers: [],
     isMilestone: false,
+    completedDate: null,
+    endAtCompletion: null,
+    baselineEnd: null,
   };
 }
 
@@ -41,13 +44,14 @@ function roadmap(id: string, startDate: string, itemStart: string, itemEnd: stri
     name: id,
     startDate,
     windowDays: 730,
+    baselineDate: null,
     rows: [phase([item(itemStart, itemEnd)])],
   };
 }
 
 /** A roadmap with a configured window but nothing scheduled in it. */
 function emptyRoadmap(id: string, startDate: string): Roadmap {
-  return { id, name: id, startDate, windowDays: 730, rows: [] };
+  return { id, name: id, startDate, windowDays: 730, rows: [], baselineDate: null };
 }
 
 describe('getMetaWindow', () => {

@@ -16,6 +16,7 @@ export function newRoadmap(name: string, startDate = defaultStartDate()): Roadma
     name,
     startDate,
     windowDays: DEFAULT_WINDOW_DAYS,
+    baselineDate: null,
     rows: [],
   };
 }
@@ -30,6 +31,7 @@ export function seedAppData(): AppData {
     name: 'Roadmap 1',
     startDate: '2026-01-01',
     windowDays: DEFAULT_WINDOW_DAYS,
+    baselineDate: null,
     rows: [
       {
         id: uid('ph'),
@@ -52,6 +54,9 @@ export function seedAppData(): AppData {
             dependsOn: [],
             blockers: [],
             isMilestone: false,
+            completedDate: null,
+            endAtCompletion: null,
+            baselineEnd: null,
           },
           {
             id: uid('it'),
@@ -64,6 +69,9 @@ export function seedAppData(): AppData {
             dependsOn: [],
             blockers: [],
             isMilestone: true,
+            completedDate: null,
+            endAtCompletion: null,
+            baselineEnd: null,
           },
         ],
       },
@@ -88,6 +96,9 @@ export function seedAppData(): AppData {
             dependsOn: [],
             blockers: [],
             isMilestone: false,
+            completedDate: null,
+            endAtCompletion: null,
+            baselineEnd: null,
           },
         ],
       },

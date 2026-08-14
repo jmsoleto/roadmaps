@@ -22,6 +22,7 @@
     isPhaseBlocked,
     pendingBlockers,
   } from '../model/blockers';
+  import { isCompleted, phaseProgress } from '../model/completion';
   import { getInitials, findAssignee } from '../util/assignees';
   import { theme } from '../theme/theme.svelte';
   import { onDrag, clientToDayOffset } from '../interactions/drag';
@@ -354,6 +355,20 @@
   bar and on a milestone — and the two contexts differ only in where the plate
   gets its color from.
 -->
+<!-- The completion mark. Same stroked path as the resolved-blocker badge —
+     drawn rather than typed, because a monospace ✓ is a thin outline that comes
+     apart at this size — and inheriting `--bar-ink`, the per-bar ink already
+     computed from the slot color, so it contrasts on any palette in any theme
+     without a new theme token (D7). Not a button: marking and unmarking live in
+     the item drawer, where the cascade can be confirmed. -->
+{#snippet checkMark()}
+  <span class="done-mark" title="completado">
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M2.5 8.6 6.4 12.5 13.5 4.2" />
+    </svg>
+  </span>
+{/snippet}
+
 {#snippet depBadges(
   dep: { pending: number; resolved: number; title: string } | null,
   onBar: boolean,
@@ -400,6 +415,15 @@
               value={v.phase.name}
               oninput={(e) => store.renamePhase(v.phase.id, e.currentTarget.value)}
             />
+            <!-- Beside the name, not on the rollup bar, which already carries the
+                 blocked hatching. This is where the sense of progress lives, so
+                 it is the number that gets to be read (D8). -->
+            {#if phaseProgress(v.phase) !== null}
+              {@const pct = phaseProgress(v.phase)}
+              <span class="pct" class:full={pct === 100} title="items completados de la fase"
+                >{pct}%</span
+              >
+            {/if}
             <button
               type="button"
               class="row-del"
@@ -629,8 +653,11 @@
             >
               <svg
                 class="m-diamond"
+                class:frozen={isCompleted(v.item)}
                 viewBox="0 0 24 24"
-                onpointerdown={(ev) => startMilestoneMove(ev, v.phase, v.item)}
+                onpointerdown={(ev) => {
+                  if (!isCompleted(v.item)) startMilestoneMove(ev, v.phase, v.item);
+                }}
                 role="presentation"
               >
                 <polygon
@@ -648,6 +675,15 @@
                     points="12,1.5 22.5,12 12,22.5 1.5,12"
                     fill="url(#blockHatch)"
                     style:color={theme.inkFor(v.phase.colorSlot)}
+                  />
+                {/if}
+                <!-- A diamond has no grip to give up, so the mark goes inside it.
+                     Same path as the bars', scaled to the smaller box (D7). -->
+                {#if isCompleted(v.item)}
+                  <path
+                    class="m-check"
+                    d="M7.2 12.4 10.5 15.6 16.6 8.4"
+                    stroke={theme.inkFor(v.phase.colorSlot)}
                   />
                 {/if}
                 <title
@@ -681,17 +717,26 @@
                 : ''}"
               ondblclick={() => ui.openDetail(v.phase.id, v.item.id)}
             >
-              <button
-                type="button"
-                class="grip"
-                onpointerdown={(ev) => startMove(ev, v.phase.id, v.item.id, t)}
-                aria-label="mover">⠿</button
-              >
-              <span
-                class="barlabel"
-                onpointerdown={(ev) => startMove(ev, v.phase.id, v.item.id, t)}
-                role="presentation">{v.item.label}</span
-              >
+              <!-- The grip is what a completed item has no use for, so the check
+                   takes its place rather than adding to a bar that already carries
+                   label, badge, counters and two handles. Losing the grip is how
+                   the freeze reads before you try to drag it (D7). -->
+              {#if isCompleted(v.item)}
+                {@render checkMark()}
+                <span class="barlabel frozen">{v.item.label}</span>
+              {:else}
+                <button
+                  type="button"
+                  class="grip"
+                  onpointerdown={(ev) => startMove(ev, v.phase.id, v.item.id, t)}
+                  aria-label="mover">⠿</button
+                >
+                <span
+                  class="barlabel"
+                  onpointerdown={(ev) => startMove(ev, v.phase.id, v.item.id, t)}
+                  role="presentation">{v.item.label}</span
+                >
+              {/if}
               {#if a}<span
                   class="assignee-badge item"
                   style:background={theme.slotColor(a.colorSlot)}
@@ -699,18 +744,20 @@
                 >{/if}
               {@render depBadges(dep, true)}
               {#if v.item.notes.trim()}<span class="notes-indicator" title="Con notas">●</span>{/if}
-              <button
-                type="button"
-                class="handle left"
-                onpointerdown={(ev) => startResize(ev, v.phase.id, v.item.id, t, 'left')}
-                aria-label="redimensionar inicio"
-              ></button>
-              <button
-                type="button"
-                class="handle right"
-                onpointerdown={(ev) => startResize(ev, v.phase.id, v.item.id, t, 'right')}
-                aria-label="redimensionar fin"
-              ></button>
+              {#if !isCompleted(v.item)}
+                <button
+                  type="button"
+                  class="handle left"
+                  onpointerdown={(ev) => startResize(ev, v.phase.id, v.item.id, t, 'left')}
+                  aria-label="redimensionar inicio"
+                ></button>
+                <button
+                  type="button"
+                  class="handle right"
+                  onpointerdown={(ev) => startResize(ev, v.phase.id, v.item.id, t, 'right')}
+                  aria-label="redimensionar fin"
+                ></button>
+              {/if}
             </div>
           {:else}
             <div
@@ -825,6 +872,18 @@
     font-size: 9px;
     font-family: 'IBM Plex Mono', monospace;
     font-weight: 600;
+  }
+  /* Phase completion. Monospace so the digits do not shuffle the name sideways
+     as the number climbs, and quiet until it reaches the end. */
+  .pct {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10.5px;
+    color: var(--text-dim);
+    flex-shrink: 0;
+    font-variant-numeric: tabular-nums;
+  }
+  .pct.full {
+    color: var(--accent);
   }
   .chev {
     width: 14px;
@@ -1103,6 +1162,40 @@
     white-space: nowrap;
     cursor: grab;
   }
+  /* Nothing on a completed bar offers to be dragged, cursor included: the
+     freeze should be legible before it is discovered (D4). */
+  .barlabel.frozen {
+    cursor: default;
+  }
+
+  /* The completion mark, in the 14px the grip vacates. Slightly more present
+     than the grip was (0.4) without becoming the loudest thing on the bar —
+     done work reports, it does not announce (D7). */
+  .done-mark {
+    width: 14px;
+    align-self: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .done-mark svg {
+    width: 12px;
+    height: 12px;
+    fill: none;
+    stroke: var(--bar-ink);
+    stroke-width: 2.2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    opacity: 0.85;
+  }
+  .m-check {
+    fill: none;
+    stroke-width: 2.2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    opacity: 0.85;
+  }
   .bar-meta {
     font-size: 11px;
     color: var(--bar-ink);
@@ -1146,6 +1239,10 @@
   }
   .milestone .m-diamond:active {
     cursor: grabbing;
+  }
+  .milestone .m-diamond.frozen,
+  .milestone .m-diamond.frozen:active {
+    cursor: default;
   }
   .milestone .m-label {
     margin-left: 6px;

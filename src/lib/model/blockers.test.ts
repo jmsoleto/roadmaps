@@ -30,6 +30,9 @@ function item(label: string, blockers: ItemBlocker[] = []): Item {
     dependsOn: [],
     blockers,
     isMilestone: false,
+    completedDate: null,
+    endAtCompletion: null,
+    baselineEnd: null,
   };
 }
 
@@ -48,7 +51,7 @@ function phase(name: string, children: Item[]): Phase {
 }
 
 function roadmap(id: string, rows: Phase[]): Roadmap {
-  return { id, name: id, startDate: '2026-01-01', windowDays: 730, rows };
+  return { id, name: id, startDate: '2026-01-01', windowDays: 730, rows, baselineDate: null };
 }
 
 function app(roadmaps: Roadmap[]): AppData {

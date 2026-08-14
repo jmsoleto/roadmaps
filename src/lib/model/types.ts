@@ -76,6 +76,37 @@ export interface Item {
   /** External waits on this item. Never affects its dates. */
   blockers: ItemBlocker[];
   isMilestone: boolean;
+  /**
+   * The day the work was closed, or `null` when it is not done.
+   *
+   * There is deliberately no accompanying boolean (design decision D2): a
+   * `completed` flag beside a date admits two states that mean nothing —
+   * completed with no date, and a date that does not count — and every loader,
+   * importer and mutation would have to defend against both. Absence *is* the
+   * unfinished state, so those states cannot be written.
+   *
+   * A completed item is frozen in time: see `../store/app.svelte.ts` and
+   * `enforceConstraints` in `./constraints.ts`.
+   */
+  completedDate: IsoDate | null;
+  /**
+   * The `endDate` this item carried at the instant it was completed.
+   *
+   * Snapshotted so later drags cannot rewrite what was measured. On its own it
+   * is a weak signal — whoever runs late drags the bar before ticking the box,
+   * and the slip against it comes out zero — which is exactly why it is paired
+   * with `baselineEnd` (D6).
+   */
+  endAtCompletion: IsoDate | null;
+  /**
+   * The planned end captured when the roadmap's plan was fixed, or `null`.
+   *
+   * `null` is not "unmeasured": it means the item did not exist when the plan
+   * was committed, so it is scope added afterwards (D5). Nothing captures this
+   * automatically — an item is born at a filler position (`addItem`), and a
+   * baseline taken there would measure drift against a made-up number.
+   */
+  baselineEnd: IsoDate | null;
 }
 
 /** A collapsible group of items. May optionally carry its own date extent. */
@@ -102,6 +133,13 @@ export interface Roadmap {
   /** Length of the visible timeline window, in days. */
   windowDays: number;
   rows: Phase[];
+  /**
+   * The day the plan was fixed, or `null` when it never was.
+   *
+   * Fixing the plan copies every item's `endDate` into its `baselineEnd` (D5).
+   * It is repeatable, and repeating it restarts the accumulated drift.
+   */
+  baselineDate: IsoDate | null;
 }
 
 /** The full persisted application state. */
