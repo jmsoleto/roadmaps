@@ -2,9 +2,11 @@
 
 ## Purpose
 
-Dependencias externas: catálogo global de aquello que, siendo ajeno al roadmap, impide completar un item —otro equipo, un proveedor, una decisión pendiente—, con su responsable y su contacto. Cubre la asignación a items indicando qué funcionalidad concreta se espera, la resolución independiente de cada asignación, la deduplicación asistida entre asignaciones que describen la misma espera, y cómo se refleja todo ello en la parrilla del Gantt.
+Dependencias externas: catálogo global de aquello que, siendo ajeno al roadmap, frena un item —otro equipo, un proveedor, una decisión pendiente—, con su responsable y su contacto. Cubre la asignación a items indicando qué funcionalidad concreta se espera, la resolución independiente de cada asignación, la deduplicación asistida entre asignaciones que describen la misma espera, y cómo se refleja todo ello en la parrilla del Gantt.
 
-Distinto de `dependsOn` (ver `roadmap-editor`), que ordena items de una misma fase y desplaza fechas: una dependencia externa nunca toca el calendario, solo describe por qué el trabajo no puede cerrarse.
+Distinto de `dependsOn` (ver `roadmap-editor`), que ordena items de una misma fase y desplaza fechas: una dependencia externa nunca toca el calendario, solo registra qué se está esperando de fuera y de quién.
+
+Y distinto también de la completitud (ver `completion`): una dependencia externa sin resolver **no** impide marcar un item como completado. Exigirlo obligaría a resolver un dato sobre otra persona para poder cerrar el trabajo propio, y el usuario acabaría marcando como resueltas cosas que no lo están solo para poder avanzar, que es lo que destruiría el valor del registro. Un item puede estar cerrado y haber estado esperando algo de fuera; son hechos distintos y compatibles.
 
 ## Requirements
 ### Requirement: Catálogo global de dependencias externas

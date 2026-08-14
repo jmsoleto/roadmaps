@@ -66,7 +66,7 @@
 - [x] 9.1 `npm run check`, `npm run lint` y `npm run test` en verde
 - [x] 9.2 No aplica: la marca se dibuja sin movimiento, así que no hace falta guarda `prefers-reduced-motion`. Ver la nota al final
 - [x] 9.3 Actualizar el bloque de estructura del `README.md` con `lib/model/completion.ts`
-- [ ] 9.4 Al archivar, escribir el `## Purpose` de `openspec/specs/completion/spec.md`, que el delta no lleva
+- [x] 9.4 Al archivar, escribir el `## Purpose` de `openspec/specs/completion/spec.md`, que el delta no lleva
 
 ---
 
