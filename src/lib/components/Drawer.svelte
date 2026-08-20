@@ -13,6 +13,7 @@
     slipVsForecast,
   } from '../model/completion';
   import { todayIso } from '../time/timeline';
+  import { prefersReducedMotion } from 'svelte/motion';
   import { getInitials } from '../util/assignees';
   import { theme } from '../theme/theme.svelte';
   import ThemeEditor from './ThemeEditor.svelte';
@@ -104,8 +105,38 @@
     return n > 0 ? `${n} d de retraso` : `${-n} d de adelanto`;
   }
 
+  /**
+   * The item whose completion this drawer just performed, or null.
+   *
+   * This is what separates "was just completed" from "is being shown and
+   * happens to be completed" — a distinction the DOM cannot make on its own,
+   * since `completedDate` reads the same either way. It can live in plain local
+   * state, with nothing shared and nothing to expire on a timer, because the
+   * drawer is both the actor and the renderer: marking and unmarking live here
+   * by design, so the component knows first-hand where the completion came from
+   * (D2). Closing the drawer or moving to another item stops satisfying the
+   * condition, which is exactly right — reopening must not replay anything.
+   */
+  let justCompleted = $state<string | null>(null);
+  /** Whether the reveal should play for the item currently on screen. */
+  const revealing = $derived(!prefersReducedMotion.current && justCompleted === item?.id);
+
+  // `<Drawer />` is mounted unconditionally in `App.svelte`, so this state
+  // outlives closing the panel: without a reset, completing an item, leaving and
+  // coming back would replay the reveal on something already completed.
+  //
+  // Keyed on the drawer target and *not* on `item`, deliberately. `ui.drawer` is
+  // reassigned only by `openDetail`/`closeDrawer`, so this runs exactly when the
+  // panel changes what it is pointing at — never as a side effect of completing,
+  // which is what would otherwise clear the flag before the animation ran.
+  $effect(() => {
+    void drawer;
+    justCompleted = null;
+  });
+
   function markComplete() {
-    if (phase && item) store.completeItem(phase.id, item.id, completionDate);
+    if (!phase || !item) return;
+    if (store.completeItem(phase.id, item.id, completionDate)) justCompleted = item.id;
   }
   function correctDate(v: string) {
     if (phase && item) store.setCompletedDate(phase.id, item.id, v);
@@ -124,6 +155,7 @@
       return;
     }
     confirmUncomplete = false;
+    justCompleted = null;
     store.uncompleteItem(phase.id, item.id);
   }
   $effect(() => {
@@ -376,7 +408,15 @@
 
         {#if done}
           <div class="done-row">
-            <span class="done-mark" aria-hidden="true">✓</span>
+            <!-- A path and not the `✓` character: a glyph cannot be drawn stroke
+                 by stroke, and the grid already emits this same path for the same
+                 underlying reason — a monospace check is a thin outline that comes
+                 apart at small sizes (D5). -->
+            <span class="done-mark" class:drawing={revealing} aria-hidden="true">
+              <svg viewBox="0 0 16 16">
+                <path d="M2.5 8.6 6.4 12.5 13.5 4.2" />
+              </svg>
+            </span>
             <span>Completado el</span>
             <input
               class="input date"
@@ -387,7 +427,10 @@
             />
           </div>
 
-          <div class="slips">
+          <!-- The order is the point: the fact first, then what it cost. The
+               deviations are the information the whole feature exists for, so the
+               sequence presents them rather than decorating them (D6). -->
+          <div class="slips" class:revealing>
             {#if slipBase !== null}
               <div class="slip">
                 <span class="slip-k">frente al plan</span>
@@ -733,8 +776,55 @@
     min-width: 0;
   }
   .done-mark {
-    color: var(--accent);
-    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+  }
+  .done-mark svg {
+    width: 15px;
+    height: 15px;
+    fill: none;
+    stroke: var(--accent);
+    stroke-width: 2.4;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  /* Draw-in. The dash length is a hair over the path's own (~16.4 units), so it
+     hides the stroke completely at full offset and clears it at zero. Applied
+     only under `.drawing`, which is what keeps every other way of mounting this
+     mark silent (D2). */
+  .done-mark.drawing svg path {
+    stroke-dasharray: 17;
+    animation: draw-check 220ms ease-out both;
+  }
+  @keyframes draw-check {
+    from {
+      stroke-dashoffset: 17;
+    }
+    to {
+      stroke-dashoffset: 0;
+    }
+  }
+  /* The deviations follow the mark, staggered. `both` matters: without it the
+     rows would show at full opacity during their delay and then jump. */
+  .slips.revealing .slip {
+    animation: slip-in 160ms ease-out both;
+  }
+  .slips.revealing .slip:nth-child(1) {
+    animation-delay: 80ms;
+  }
+  .slips.revealing .slip:nth-child(2) {
+    animation-delay: 140ms;
+  }
+  @keyframes slip-in {
+    from {
+      opacity: 0;
+      transform: translateY(3px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
   }
   .slips {
     margin-top: 10px;

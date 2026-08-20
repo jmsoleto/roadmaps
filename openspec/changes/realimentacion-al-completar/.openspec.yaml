@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-08-14
+goal: "Animar el momento de completar un item: la secuencia de revelado en el
+  drawer y el porcentaje de fase contando, sin animar la marca de la barra"

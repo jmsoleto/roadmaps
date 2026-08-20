@@ -23,6 +23,7 @@
     pendingBlockers,
   } from '../model/blockers';
   import { isCompleted, phaseProgress } from '../model/completion';
+  import PhaseProgress from './PhaseProgress.svelte';
   import { getInitials, findAssignee } from '../util/assignees';
   import { theme } from '../theme/theme.svelte';
   import { onDrag, clientToDayOffset } from '../interactions/drag';
@@ -400,6 +401,7 @@
     <div class="sidebar-rows">
       {#each visible as v, i (i)}
         {#if v.kind === 'phase'}
+          {@const pct = phaseProgress(v.phase)}
           <div class="row-label">
             <button
               type="button"
@@ -417,12 +419,17 @@
             />
             <!-- Beside the name, not on the rollup bar, which already carries the
                  blocked hatching. This is where the sense of progress lives, so
-                 it is the number that gets to be read (D8). -->
-            {#if phaseProgress(v.phase) !== null}
-              {@const pct = phaseProgress(v.phase)}
-              <span class="pct" class:full={pct === 100} title="items completados de la fase"
-                >{pct}%</span
-              >
+                 it is the number that gets to be read (D8).
+
+                 The `{#key}` is load-bearing and looks redundant: rows are keyed
+                 by index, so on switching roadmaps this same node would be handed
+                 another phase and its tween would count *between two unrelated
+                 phases* — worse than a jump. Keying on the phase id remounts it
+                 and reseeds the tween at the right value (D4). -->
+            {#if pct !== null}
+              {#key v.phase.id}
+                <PhaseProgress value={pct} />
+              {/key}
             {/if}
             <button
               type="button"
@@ -872,18 +879,6 @@
     font-size: 9px;
     font-family: 'IBM Plex Mono', monospace;
     font-weight: 600;
-  }
-  /* Phase completion. Monospace so the digits do not shuffle the name sideways
-     as the number climbs, and quiet until it reaches the end. */
-  .pct {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 10.5px;
-    color: var(--text-dim);
-    flex-shrink: 0;
-    font-variant-numeric: tabular-nums;
-  }
-  .pct.full {
-    color: var(--accent);
   }
   .chev {
     width: 14px;
