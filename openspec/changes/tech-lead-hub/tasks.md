@@ -72,7 +72,7 @@
 - [x] 9.3 `start_url` apuntando a la landing del hub
 - [x] 9.4 `index.html`: `<title>` y referencias de iconos
 - [x] 9.5 `README.md`: nombre del producto, qué es el hub, qué aplicaciones aloja y cuál está viva
-- [ ] 9.6 Comprobar en una instalación previa que la PWA se actualiza en su sitio, cambia nombre e icono, y **conserva los datos**
+- [x] 9.6 Comprobar en una instalación previa que la PWA se actualiza en su sitio, cambia nombre e icono, y **conserva los datos**
 
 ## 10. Verificación
 
