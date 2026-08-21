@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { store } from '../store/app.svelte';
   import { ui } from '../store/ui.svelte';
+  import { usage } from '../hub/usage.svelte';
   import { ROW_H } from '../config';
   import { theme } from '../theme/theme.svelte';
   import { dayIndex, dayToX, fmtDate, todayIso } from '../time/timeline';
@@ -48,6 +49,17 @@
   // styles, already applied by the time this runs, so the container is scrollable
   // without waiting for a tick.
   onMount(scrollToToday);
+
+  /**
+   * Open a roadmap, and note that it was opened.
+   *
+   * Both ways in from this view land here so the hub's "abiertos recientemente"
+   * cannot miss one. The note lives outside `AppData` on purpose (D6).
+   */
+  function openRoadmap(id: string) {
+    store.setActive(id);
+    usage.touch(id);
+  }
 
   // ---- inline delete (two-step confirm, no browser dialog) ----
   // "Todos" is the only surface that deletes roadmaps, so this lives here and
@@ -112,7 +124,7 @@
             <button
               type="button"
               class="row-open"
-              onclick={() => store.setActive(r.rm.id)}
+              onclick={() => openRoadmap(r.rm.id)}
               title="abrir roadmap"
               aria-label="abrir {r.rm.name}">▸</button
             >
@@ -173,7 +185,7 @@
                 style:width="{g.width}px"
                 style:background={theme.slotColor(r.slot)}
                 style:--bar-ink={theme.inkFor(r.slot)}
-                onclick={() => store.setActive(r.rm.id)}
+                onclick={() => openRoadmap(r.rm.id)}
                 title="{r.rm.name} · {fmtDate(r.extent.start)} → {fmtDate(r.extent.end)}"
               >
                 <span class="barlabel">{r.rm.name}</span>

@@ -40,11 +40,19 @@ export class AppStore {
   data = $state<AppData>({ roadmaps: [], assignees: [], blockers: [], activeId: null });
   dayW = $state<number>(DEFAULT_DAY_W);
   /**
-   * True while the "Todos" view (portfolio of every roadmap) is showing. It is
-   * the app's home: the session always starts here, never inside a roadmap, so
-   * this is deliberately not persisted. `data.activeId` therefore means "the
-   * roadmap opened last" — which one to show on leaving "Todos", and whose name
-   * the topbar breadcrumb carries.
+   * True while the "Todos" view (portfolio of every roadmap) is showing.
+   *
+   * It is **Roadmaps' home, not the session's**: the session now starts on the
+   * hub landing, one level up (`hub/location.svelte.ts`). Entering Roadmaps by
+   * any route — its card, the app switcher, the browser's back button — runs an
+   * entry hook that sets this back to `true`, so the app always opens on
+   * "Todos"; the one exception is entering while naming a roadmap, where the
+   * caller runs `setActive` afterwards and wins.
+   *
+   * Still deliberately not persisted, for the same reason as before: where you
+   * are is decided on arrival, not remembered. `data.activeId` therefore means
+   * "the roadmap opened last" — which one to show on leaving "Todos", and whose
+   * name the topbar breadcrumb carries.
    */
   metaView = $state<boolean>(true);
   /** Briefly true right after a save, to drive the "guardado ✓" indicator. */

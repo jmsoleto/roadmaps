@@ -9,6 +9,7 @@
    */
   import { store } from '../store/app.svelte';
   import { theme } from '../theme/theme.svelte';
+  import { usage } from '../hub/usage.svelte';
 
   type Option =
     | { kind: 'all'; label: string; current: boolean }
@@ -65,8 +66,14 @@
   }
 
   function choose(o: Option) {
-    if (o.kind === 'all') store.toggleMetaView(true);
-    else store.setActive(o.id);
+    if (o.kind === 'all') {
+      store.toggleMetaView(true);
+    } else {
+      store.setActive(o.id);
+      // The selector is one of the ways into a roadmap, so it feeds the hub's
+      // recent list like the others (D6).
+      usage.touch(o.id);
+    }
     close();
   }
 

@@ -1,6 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { store } from './lib/store/app.svelte';
+  import { location } from './lib/hub/location.svelte';
+  import { ROADMAPS_ID } from './lib/hub/apps';
   import Topbar from './lib/components/Topbar.svelte';
   import Toolbar from './lib/components/Toolbar.svelte';
   import Gantt from './lib/components/Gantt.svelte';
@@ -8,9 +10,14 @@
   import Drawer from './lib/components/Drawer.svelte';
   import DragTooltip from './lib/components/DragTooltip.svelte';
   import NewRoadmapDialog from './lib/components/NewRoadmapDialog.svelte';
+  import HubLanding from './lib/components/HubLanding.svelte';
 
   let gantt = $state<Gantt | undefined>(undefined);
   let meta = $state<MetaView | undefined>(undefined);
+
+  // The outer level: the hub, or one application. What shows *inside* an
+  // application is still that application's own business.
+  const inRoadmaps = $derived(location.appId === ROADMAPS_ID);
 
   // Which view is on screen. Both the toolbar's "ir a hoy" and the markup below
   // need the answer, and they must not be able to disagree.
@@ -32,21 +39,28 @@
 
 <div class="app">
   <Topbar />
-  <!-- Both views mark today, so "ir a hoy" goes to whichever one is mounted.
-       The two branches are exclusive, so only one reference is ever live. -->
-  <Toolbar onToday={() => (showMeta ? meta : gantt)?.scrollToToday()} />
-  <div class="gantt-wrapper">
-    <!-- Falling back to "Todos" when there is no active roadmap keeps any
-         degenerate state on the home, which now carries its own empty state. -->
-    {#if showMeta}
-      <MetaView bind:this={meta} />
-    {:else}
-      <Gantt bind:this={gantt} />
-    {/if}
-  </div>
+  {#if inRoadmaps}
+    <!-- Both views mark today, so "ir a hoy" goes to whichever one is mounted.
+         The two branches are exclusive, so only one reference is ever live. -->
+    <Toolbar onToday={() => (showMeta ? meta : gantt)?.scrollToToday()} />
+    <div class="gantt-wrapper">
+      <!-- Falling back to "Todos" when there is no active roadmap keeps any
+           degenerate state on the app's home, which carries its own empty state. -->
+      {#if showMeta}
+        <MetaView bind:this={meta} />
+      {:else}
+        <Gantt bind:this={gantt} />
+      {/if}
+    </div>
+  {:else}
+    <div class="gantt-wrapper">
+      <HubLanding />
+    </div>
+  {/if}
   <Drawer />
-  <!-- Mounted once here rather than at each trigger: the topbar button and the
-       "Todos" empty-state call to action open the same dialog. -->
+  <!-- Mounted once here rather than at each trigger: the topbar button, the
+       "Todos" empty-state call to action and the landing card all open the same
+       dialog. -->
   <NewRoadmapDialog />
   <DragTooltip />
 </div>

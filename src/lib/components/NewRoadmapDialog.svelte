@@ -12,6 +12,7 @@
    * overlay, and focus returned to whatever opened it.
    */
   import { store } from '../store/app.svelte';
+  import { usage } from '../hub/usage.svelte';
   import { ui } from '../store/ui.svelte';
 
   let name = $state('');
@@ -42,7 +43,10 @@
   function accept() {
     if (!canAccept) return;
     // The store activates the roadmap and leaves the "Todos" view itself.
-    if (store.addRoadmap(name)) close();
+    if (!store.addRoadmap(name)) return;
+    // Creating one is opening it, so it heads the hub's recent list too.
+    if (store.data.activeId) usage.touch(store.data.activeId);
+    close();
   }
 
   function onKeydown(e: KeyboardEvent) {

@@ -15,10 +15,18 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.png', 'apple-touch-icon.png'],
       manifest: {
-        name: 'Roadmaps',
-        short_name: 'Roadmaps',
-        description: 'Planificador de roadmaps tipo Gantt, offline-first.',
+        // The container's identity, not any one application's. Renaming this
+        // changes what an existing installation shows in the dock, which is
+        // accepted deliberately (see the change's design.md, D1).
+        name: 'Tech Lead Hub',
+        short_name: 'Tech Lead Hub',
+        description:
+          'Las aplicaciones del día a día de un tech lead: roadmaps, decisiones y lo que venga. Offline-first.',
         lang: 'es',
+        // Left at the base path on purpose. A bare URL carries no hash, which
+        // the router resolves to the hub landing — so the installed app opens
+        // where the spec says it must, without altering the `start_url` some
+        // browsers use to decide whether this is the same installation.
         start_url: base,
         scope: base,
         display: 'standalone',

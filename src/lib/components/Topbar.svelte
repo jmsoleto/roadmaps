@@ -1,10 +1,22 @@
 <script lang="ts">
   import { store } from '../store/app.svelte';
   import { ui } from '../store/ui.svelte';
+  import { ROADMAPS_ID } from '../hub/apps';
+  import { location } from '../hub/location.svelte';
+  import AppSwitcher from './AppSwitcher.svelte';
   import RoadmapSwitcher from './RoadmapSwitcher.svelte';
 
   let fileInput: HTMLInputElement;
   let importError = $state<string | null>(null);
+
+  /**
+   * The topbar carries only the open application's actions.
+   *
+   * Creating, importing and exporting belong to Roadmaps, so they have no
+   * business on the hub or inside another app. The theme does belong to the
+   * container, so it stays available everywhere.
+   */
+  const inRoadmaps = $derived(location.appId === ROADMAPS_ID);
 
   function exportActive() {
     const json = store.exportActive();
@@ -34,17 +46,24 @@
 </script>
 
 <div class="topbar">
-  <div class="brand">ROADMAPS</div>
-  <RoadmapSwitcher />
-  <button class="add-tab" onclick={() => ui.openNewRoadmap()}>+ nuevo</button>
-  <button class="add-tab" onclick={() => fileInput.click()} title="importar JSON">↓ importar</button
-  >
-  <button
-    class="add-tab"
-    onclick={exportActive}
-    disabled={!store.activeRoadmap}
-    title="exportar roadmap activo">↑ exportar</button
-  >
+  <div class="brand">TECH LEAD HUB</div>
+  <AppSwitcher />
+  {#if inRoadmaps}
+    <span class="sep" aria-hidden="true">▸</span>
+    <RoadmapSwitcher />
+    <button class="add-tab" onclick={() => ui.openNewRoadmap()}>+ nuevo</button>
+    <button class="add-tab" onclick={() => fileInput.click()} title="importar JSON"
+      >↓ importar</button
+    >
+    <button
+      class="add-tab"
+      onclick={exportActive}
+      disabled={!store.activeRoadmap}
+      title="exportar roadmap activo">↑ exportar</button
+    >
+  {:else}
+    <div class="spacer"></div>
+  {/if}
   <button class="add-tab" onclick={() => ui.openTheme()} title="tema de colores">◐ tema</button>
   <input
     bind:this={fileInput}
@@ -54,6 +73,10 @@
     onchange={onImportFile}
   />
   {#if importError}<span class="import-error">{importError}</span>{/if}
+  <!-- Not a user name (D10): there are no accounts, and suggesting a session in
+       an app whose data dies with the site's storage is the expensive
+       misunderstanding. It says where the data is. -->
+  <span class="scope">local</span>
   <span class="save-indicator" class:show={store.justSaved}>guardado ✓</span>
 </div>
 
@@ -74,6 +97,24 @@
     letter-spacing: 0.14em;
     color: var(--accent);
     font-weight: 600;
+  }
+  .sep {
+    flex-shrink: 0;
+    color: var(--text-dim);
+    opacity: 0.6;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+  }
+  /* Stands in for the roadmap switcher's `flex: 1` so the trailing controls
+     keep their place when no application is open. */
+  .spacer {
+    flex: 1;
+  }
+  .scope {
+    flex-shrink: 0;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--text-dim);
   }
   .add-tab {
     flex-shrink: 0;
