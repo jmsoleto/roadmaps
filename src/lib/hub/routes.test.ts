@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { APPS } from './apps';
+import { APPS, type AppDefinition } from './apps';
+import { APP_IDENTITIES } from './identity';
 import { HUB_HASH, hashFor, parseHash, sameLocation } from './routes';
 
 describe('hub routes', () => {
@@ -26,11 +27,40 @@ describe('hub routes', () => {
     expect(parseHash('#/')).toEqual({ kind: 'hub' });
   });
 
-  /** An announced app has no way in — not by card, not by switcher, not by URL. */
+  /**
+   * An announced app has no way in — not by card, not by switcher, not by URL.
+   *
+   * Tested against a fixture rather than the real registry: every app that ships
+   * today is live, so the registry has no example left. The rule outlives the
+   * example, and the next announced app must not be the moment it is discovered
+   * to have rotted.
+   */
   it('falls back to the hub for an application that is not live', () => {
-    const announced = APPS.find((a) => a.state === 'announced');
-    expect(announced).toBeDefined();
-    expect(parseHash(`#/${announced!.id}`)).toEqual({ kind: 'hub' });
+    const announced: AppDefinition = {
+      id: 'pendiente',
+      name: 'Pendiente Hub',
+      tagline: 'todavía no',
+      identity: APP_IDENTITIES.future,
+      state: 'announced',
+      createLabel: '+ nuevo',
+      route: null,
+    };
+    const lookup = (id: string) => (id === announced.id ? announced : undefined);
+
+    expect(parseHash('#/pendiente', lookup)).toEqual({ kind: 'hub' });
+  });
+
+  it('falls back to the hub for an application with a state but no route', () => {
+    const broken: AppDefinition = {
+      id: 'rota',
+      name: 'Rota',
+      tagline: '',
+      identity: APP_IDENTITIES.future,
+      state: 'live',
+      createLabel: '+ nuevo',
+      route: null,
+    };
+    expect(parseHash('#/rota', () => broken)).toEqual({ kind: 'hub' });
   });
 
   it('writes the hash a location came from', () => {

@@ -1,0 +1,5 @@
+schema: spec-driven
+created: 2026-08-21
+goal: "Decisions Hub sin adjuntos: la duda técnica y la pregunta a negocio como
+  dos textos, opciones con ejes de intercambio, recomendación congelada al
+  plantear, resolución, y almacén propio en IndexedDB"

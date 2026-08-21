@@ -75,7 +75,9 @@
         abrir {app.name.replace(/\s+Hub$/, '')} →
       </button>
       {#if app.create}
-        <button type="button" class="secondary" onclick={() => app.create?.()}>+ nuevo</button>
+        <button type="button" class="secondary" onclick={() => app.create?.()}
+          >{app.createLabel}</button
+        >
       {/if}
     </div>
   {:else}

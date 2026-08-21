@@ -10,13 +10,16 @@ describe('the app registry', () => {
     expect(findApp(ROADMAPS_ID)?.route).toBe('#/roadmaps');
   });
 
-  it('registers Decisions as announced, with an identity but no way in', () => {
+  it('registers Decisions as the second live application', () => {
     const decisions = findApp('decisions');
-    expect(decisions?.state).toBe('announced');
-    expect(decisions?.route).toBe(null);
-    // Announced is not the anonymous marker: it has a name and its own colours.
-    expect(decisions?.name).not.toBe('');
+    expect(decisions?.state).toBe('live');
+    expect(decisions?.route).toBe('#/decisions');
     expect(IDENTITY_CATALOG).toContain(decisions?.identity);
+  });
+
+  it('gives each live application its own route', () => {
+    const routes = APPS.filter((a) => a.state === 'live').map((a) => a.route);
+    expect(new Set(routes).size).toBe(routes.length);
   });
 
   it('gives every registered app a distinct id', () => {
@@ -48,15 +51,15 @@ describe('registering another application', () => {
     tagline: 'Lo que se rompió y qué se hizo.',
     identity: { glyph: 'future', from: '#4ADE80', to: '#FACC15' },
     state: 'live',
+    createLabel: '+ incidencia',
     route: '#/incidents',
   };
 
-  it('takes its place with the ones already there', () => {
+  it('takes its place after the ones already there', () => {
     const registry = [...APPS, extra];
-    expect(registry.filter((a) => a.state === 'live').map((a) => a.id)).toEqual([
-      ROADMAPS_ID,
-      'incidents',
-    ]);
+    const live = registry.filter((a) => a.state === 'live').map((a) => a.id);
+    expect(live).toContain(ROADMAPS_ID);
+    expect(live[live.length - 1]).toBe('incidents');
   });
 
   it('titles its own short list rather than borrowing one', () => {

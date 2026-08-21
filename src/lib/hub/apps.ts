@@ -15,19 +15,27 @@ export interface AppDefinition {
   tagline: string;
   identity: AppIdentity;
   state: AppState;
+  /**
+   * What the card's secondary action says.
+   *
+   * The app's, not the landing's — same reason its short list titles itself:
+   * "+ nuevo" is the wrong word, and in Spanish the wrong gender, for anything
+   * that is not a roadmap.
+   */
+  createLabel: string;
   /** The hash route. `null` for anything that cannot be entered. */
   route: string | null;
 }
 
 export const ROADMAPS_ID = 'roadmaps';
+export const DECISIONS_ID = 'decisions';
 
 /**
  * The registry.
  *
- * Decisions is `announced` rather than absent because its identity is already
- * decided and naming it is useful information. It is also what makes the grid
- * show all three states at once — which is the only way to tell, while there is
- * still just one live app, whether the card contract actually holds.
+ * Both applications are live. The grid still shows a third state — the
+ * anonymous marker the landing appends — so "more fit here" stays visible
+ * without an app having to pretend to be a placeholder.
  */
 export const APPS: readonly AppDefinition[] = [
   {
@@ -37,16 +45,18 @@ export const APPS: readonly AppDefinition[] = [
       'Planificación tipo Gantt por proyecto: fases, dependencias externas, plan fijado y desviación.',
     identity: APP_IDENTITIES.roadmaps,
     state: 'live',
+    createLabel: '+ nuevo roadmap',
     route: '#/roadmaps',
   },
   {
-    id: 'decisions',
+    id: DECISIONS_ID,
     name: 'Decisions Hub',
     tagline:
       'Las decisiones de proyecto que hay que hablar con negocio, y dónde queda escrita su resolución.',
     identity: APP_IDENTITIES.decisions,
-    state: 'announced',
-    route: null,
+    state: 'live',
+    createLabel: '+ capturar',
+    route: '#/decisions',
   },
 ];
 

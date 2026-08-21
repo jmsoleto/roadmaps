@@ -13,13 +13,19 @@
  * Pure on purpose — no `window` in here.
  */
 
-import { findApp } from './apps';
+import { findApp, type AppDefinition } from './apps';
 
 export type Location = { kind: 'hub' } | { kind: 'app'; id: string };
 
 export const HUB: Location = { kind: 'hub' };
 
 export const HUB_HASH = '#/';
+
+/** How an id is turned into an app. Injectable so the rules can be tested
+ * against a fixture registry rather than against whichever apps happen to be
+ * live today — the announced case has no example in the real registry now that
+ * Decisions ships. */
+export type AppLookup = (id: string) => AppDefinition | undefined;
 
 /**
  * Read a location out of a hash.
@@ -28,10 +34,10 @@ export const HUB_HASH = '#/';
  * only announced, an empty hash, junk. It is the only degradation available
  * that does not invent state.
  */
-export function parseHash(hash: string): Location {
+export function parseHash(hash: string, lookup: AppLookup = findApp): Location {
   const id = hash.replace(/^#\/?/, '').split('/')[0];
   if (!id) return HUB;
-  const app = findApp(id);
+  const app = lookup(id);
   if (!app || app.state !== 'live' || app.route === null) return HUB;
   return { kind: 'app', id: app.id };
 }

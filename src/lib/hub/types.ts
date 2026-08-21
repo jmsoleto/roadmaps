@@ -80,6 +80,8 @@ export interface HubApp {
   tagline: string;
   identity: AppIdentity;
   state: AppState;
+  /** What the card's secondary action says. Belongs to the app, not the landing. */
+  createLabel: string;
   /** The hash route, for live apps only. */
   route: string | null;
   /**
