@@ -68,11 +68,25 @@ function request<T>(req: IDBRequest<T>): Promise<T> {
 }
 
 /**
- * Open the database, creating its object store on first run or version bump.
+ * How long to wait for the open request to say anything at all.
  *
- * `onblocked` fires when another tab holds an older version open. It is
- * reported rather than waited out: a tab that never closes would hang the app
- * forever, and saying so is more useful than a spinner.
+ * `onblocked` covers the case IndexedDB reports — another connection holding an
+ * older version. It does **not** cover the one where the request simply never
+ * fires any event, which a wedged database really does: no success, no error,
+ * no blocked, forever.
+ *
+ * Without a bound there, `bootstrap` never resolves and **nothing mounts** —
+ * the hub and Roadmaps included, even though neither has anything to do with
+ * this store. `local-persistence` promises the opposite, so the wait has an end.
+ */
+const OPEN_TIMEOUT_MS = 5000;
+
+/**
+ * Open the database, creating its object stores on first run or version bump.
+ *
+ * Every failure resolves to a rejection rather than a wait: a tab that never
+ * closes, or a database that never answers, would otherwise hang the whole
+ * application, and saying so is more useful than a spinner.
  */
 export function openDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -80,16 +94,40 @@ export function openDatabase(): Promise<IDBDatabase> {
       reject(new Error('este navegador no ofrece IndexedDB'));
       return;
     }
+
+    let settled = false;
+    const finish = (fn: () => void) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      fn();
+    };
+
+    const timer = setTimeout(
+      () =>
+        finish(() =>
+          reject(
+            new Error(
+              'la base de datos no responde; puede haber otra pestaña con una versión anterior abierta',
+            ),
+          ),
+        ),
+      OPEN_TIMEOUT_MS,
+    );
+
     const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = () => {
       const db = req.result;
       if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);
       if (!db.objectStoreNames.contains(BLOBS)) db.createObjectStore(BLOBS);
     };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error ?? new Error('no se pudo abrir la base de datos'));
+    req.onsuccess = () => finish(() => resolve(req.result));
+    req.onerror = () =>
+      finish(() => reject(req.error ?? new Error('no se pudo abrir la base de datos')));
     req.onblocked = () =>
-      reject(new Error('otra pestaña tiene abierta una versión anterior de los datos'));
+      finish(() =>
+        reject(new Error('otra pestaña tiene abierta una versión anterior de los datos')),
+      );
   });
 }
 

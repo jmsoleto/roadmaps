@@ -66,6 +66,11 @@
 
 {#if presented}
   <PresentationView decision={presented} onClose={() => decisionsUi.endPresentation()} />
+{:else if !decisions.ready}
+  <!-- Not "there is nothing": "we do not know yet". Showing an empty list over a
+       store still answering is the same mistake as showing one over a store that
+       failed. -->
+  <div class="loading">Abriendo las decisiones…</div>
 {:else if decisions.unavailable}
   <div class="unavailable">
     <h2>Las decisiones no están disponibles</h2>
@@ -297,6 +302,12 @@
     color: var(--text-dim);
     font-size: 13.5px;
     line-height: 1.5;
+  }
+  .loading {
+    padding: 48px 16px;
+    text-align: center;
+    color: var(--text-dim);
+    font-size: 13.5px;
   }
   .unavailable {
     display: flex;

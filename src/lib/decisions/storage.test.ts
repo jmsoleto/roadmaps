@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import 'fake-indexeddb/auto';
 import { IDBFactory } from 'fake-indexeddb';
 import { IndexedDbBackend, openDatabase } from './storage';
+import { vi } from 'vitest';
 import type { DecisionsData } from './model/types';
 
 const doc = (n: number): DecisionsData => ({
@@ -161,5 +162,51 @@ describe('the attachment store', () => {
     // Writing the document again leaves the bytes untouched.
     await backend.save(doc(3));
     expect((await backend.getBlob('att1'))!.size).toBe(128);
+  });
+});
+
+describe('a database that never answers', () => {
+  /**
+   * The failure this guards is the one that reached production: a wedged
+   * IndexedDB fires *no* event — not success, not error, not blocked — and an
+   * unbounded wait left the whole app unmounted over a store the hub and
+   * Roadmaps do not even use.
+   */
+  it('gives up instead of waiting forever', async () => {
+    vi.useFakeTimers();
+    try {
+      // An open request that will never call anything back.
+      globalThis.indexedDB = { open: () => ({}) } as unknown as IDBFactory;
+
+      const pending = openDatabase();
+      const settled = vi.fn();
+      void pending.catch(settled);
+
+      await vi.advanceTimersByTimeAsync(4000);
+      expect(settled).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(settled).toHaveBeenCalledOnce();
+      expect(settled.mock.calls[0][0]).toBeInstanceOf(Error);
+      expect(String(settled.mock.calls[0][0])).toMatch(/no responde/);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('reports it as unavailable rather than as empty', async () => {
+    vi.useFakeTimers();
+    try {
+      globalThis.indexedDB = { open: () => ({}) } as unknown as IDBFactory;
+
+      const backend = new IndexedDbBackend();
+      const load = backend.load();
+      await vi.advanceTimersByTimeAsync(6000);
+
+      const out = await load;
+      expect(out.kind).toBe('unavailable');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
