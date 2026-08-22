@@ -9,7 +9,7 @@
    */
   import { decisions } from '../../decisions/store.svelte';
   import { decisionsUi, FILTERS, matchesFilter } from '../../decisions/ui.svelte';
-  import { decisionState, byUrgency, daysToDeadline } from '../../decisions/model/state';
+  import { byUrgency, daysToDeadline, phaseOf } from '../../decisions/model/state';
   import { knownProjects } from '../../decisions/model/projects';
   import { todayIso } from '../../time/timeline';
   import DecisionDetail from './DecisionDetail.svelte';
@@ -20,21 +20,22 @@
 
   const visible = $derived(
     decisions.all
-      .filter((d) => matchesFilter(decisionsUi.filter, decisionState(d, today)))
+      .filter((d) => matchesFilter(decisionsUi.filter, phaseOf(d, today)))
       .filter((d) => decisionsUi.project === '' || d.project === decisionsUi.project)
       .sort(byUrgency(today)),
   );
 
   const counts = $derived({
-    abiertas: decisions.countOpen(today),
-    borradores: decisions.drafts.length,
-    resueltas: decisions.all.length - decisions.countOpen(today),
+    abiertas: decisions.countOpen(),
+    borradores: decisions.captured.length,
+    listas: decisions.all.filter((d) => ['lista', 'caducada'].includes(phaseOf(d, today))).length,
+    resueltas: decisions.all.length - decisions.countOpen(),
     todas: decisions.all.length,
   });
 
   function meta(d: (typeof visible)[number]): string {
-    const state = decisionState(d, today);
-    if (state === 'resuelta') return d.resolution?.at ?? '';
+    const phase = phaseOf(d, today);
+    if (phase === 'cerrada') return d.resolution?.at ?? '';
     if (d.deadline === null) return 'sin fecha';
     const days = daysToDeadline(d, today)!;
     if (days < 0) return `venció hace ${-days} d`;
@@ -96,17 +97,17 @@
         {/if}
 
         {#each visible as d (d.id)}
-          {@const state = decisionState(d, today)}
+          {@const phase = phaseOf(d, today)}
           <button
             type="button"
             class="row"
             class:selected={decisions.selectedId === d.id}
             onclick={() => decisions.select(d.id)}
           >
-            <span class="dot {state}"></span>
+            <span class="dot {phase}"></span>
             <span class="title">{d.question.trim() || d.origin}</span>
             <span class="project-tag">{d.project}</span>
-            <span class="meta {state}">{meta(d)}</span>
+            <span class="meta {phase}">{meta(d)}</span>
           </button>
         {/each}
       </div>
@@ -210,17 +211,17 @@
     border-radius: 2px;
     background: var(--text-dim);
   }
-  .dot.borrador {
+  .dot.captura {
     background: var(--text-dim);
     opacity: 0.5;
   }
-  .dot.planteada {
+  .dot.lista {
     background: var(--accent);
   }
   .dot.caducada {
     background: var(--danger);
   }
-  .dot.resuelta {
+  .dot.cerrada {
     background: var(--text-mid);
   }
   .title {
@@ -249,8 +250,10 @@
   .meta.caducada {
     color: var(--danger);
   }
+  /* Wide enough for the criteria matrix, which is what phase 2 is for. The
+     matrix still scrolls inside itself when the alternatives outgrow it. */
   .detail-pane {
-    width: 420px;
+    width: clamp(420px, 52%, 760px);
     flex-shrink: 0;
     min-height: 0;
   }

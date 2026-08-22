@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { DecisionsStore } from './store.svelte';
 import type { DecisionsBackend, LoadOutcome } from './storage';
 import { emptyDecisionsData, type DecisionsData } from './model/types';
-import { decisionState, outcome, recommendationIsFrozen } from './model/state';
+import { outcome, phaseOf, recommendationIsFrozen } from './model/state';
 
 /** In-memory backend, so the store can be exercised without IndexedDB. */
 class FakeBackend implements DecisionsBackend {
@@ -48,13 +48,16 @@ describe('opening the store', () => {
       origin: 'duda',
       originContext: '',
       question: '¿?',
+      internalNote: '',
+      capturedAt: null,
+      captureSource: 'tecleado',
       project: '',
       stakeholder: '',
       deadline: null,
       impact: null,
       notes: '',
       options: [],
-      raisedAt: null,
+      readyAt: null,
       recommendation: null,
       resolution: null,
     });
@@ -96,7 +99,7 @@ describe('quick capture', () => {
     expect(d.question).toBe('');
     expect(d.project).toBe('');
     expect(d.deadline).toBe(null);
-    expect(decisionState(d, '2026-08-20')).toBe('borrador');
+    expect(phaseOf(d, '2026-08-20')).toBe('captura');
   });
 
   it('refuses empty text', async () => {
@@ -117,7 +120,7 @@ describe('quick capture', () => {
     store.capture('dos');
     store.capture('tres');
     expect(store.all.map((d) => d.origin)).toEqual(['una', 'dos', 'tres']);
-    expect(store.drafts).toHaveLength(3);
+    expect(store.captured).toHaveLength(3);
   });
 });
 
@@ -142,7 +145,7 @@ describe('translating', () => {
     const { store } = await storeWith();
     const d = store.capture('duda')!;
     store.setQuestion(d.id, '¿pregunta para negocio?');
-    expect(decisionState(d, '2026-08-20')).toBe('preparada');
+    expect(phaseOf(d, '2026-08-20')).toBe('estudio');
   });
 });
 
@@ -177,31 +180,46 @@ describe('alternatives', () => {
     expect(d.options[0].id).toBe(first);
   });
 
-  it('declares an effect on an axis and replaces it rather than duplicating', async () => {
+  it('assesses a criterion and replaces it rather than duplicating', async () => {
     const { store, d } = await withOptions();
     const o = d.options[0].id;
 
-    store.setEffect(d.id, o, 'coste', 'sube', 'lo asume la compañía');
-    store.setEffect(d.id, o, 'riesgo', 'baja');
-    expect(d.options[0].effects).toHaveLength(2);
+    store.setAssessment(d.id, o, 'coste', {
+      text: '140 k€',
+      value: { kind: 'money', amount: 140000 },
+    });
+    store.setAssessment(d.id, o, 'riesgo', { text: 'conciliación diaria' });
+    expect(d.options[0].assessments).toHaveLength(2);
 
-    store.setEffect(d.id, o, 'coste', 'baja');
-    expect(d.options[0].effects.filter((e) => e.axis === 'coste')).toHaveLength(1);
-    expect(d.options[0].effects.find((e) => e.axis === 'coste')?.direction).toBe('baja');
+    store.setAssessment(d.id, o, 'coste', { text: '75 k€' });
+    const coste = d.options[0].assessments.filter((a) => a.criterion === 'coste');
+    expect(coste).toHaveLength(1);
+    expect(coste[0].text).toBe('75 k€');
+    // Editing only the text leaves the value where it was.
+    expect(coste[0].value).toEqual({ kind: 'money', amount: 140000 });
   });
 
-  /** An axis nobody spoke about is not an axis called unchanged. */
-  it('clears an effect instead of storing a neutral one', async () => {
+  /** Text without value is a complete answer for the room. */
+  it('keeps a sentence with no magnitude behind it', async () => {
     const { store, d } = await withOptions();
     const o = d.options[0].id;
-    store.setEffect(d.id, o, 'coste', 'sube');
-    store.setEffect(d.id, o, 'coste', null);
-    expect(d.options[0].effects).toEqual([]);
+    store.setAssessment(d.id, o, 'riesgo', { text: 'cualquier descuadre es dinero real' });
+
+    expect(d.options[0].assessments[0].value).toBe(null);
+    expect(d.options[0].assessments[0].text).toBe('cualquier descuadre es dinero real');
+  });
+
+  it('drops an assessment left with neither text nor value', async () => {
+    const { store, d } = await withOptions();
+    const o = d.options[0].id;
+    store.setAssessment(d.id, o, 'coste', { text: '75 k€' });
+    store.setAssessment(d.id, o, 'coste', { text: '   ', value: null });
+    expect(d.options[0].assessments).toEqual([]);
   });
 
   it('accepts an alternative that declares nothing', async () => {
     const { store, d } = await withOptions();
-    expect(d.options[1].effects).toEqual([]);
+    expect(d.options[1].assessments).toEqual([]);
     expect(store.all[0].options).toHaveLength(2);
   });
 });
@@ -231,10 +249,10 @@ describe('recommending, raising, resolving', () => {
   });
 
   /** The rule the whole measure rests on. */
-  it('freezes the recommendation when the decision is raised', async () => {
+  it('freezes the recommendation when the study is closed', async () => {
     const { store, d, a, b } = await prepared();
     store.recommend(d.id, a, 'menos fricción');
-    expect(store.raise(d.id, '2026-08-15')).toBe(true);
+    expect(store.markReady(d.id, '2026-08-15')).toBe(true);
 
     expect(store.recommend(d.id, b, 'ahora digo otra cosa')).toBe(false);
     expect(store.clearRecommendation(d.id)).toBe(false);
@@ -242,27 +260,27 @@ describe('recommending, raising, resolving', () => {
     expect(d.recommendation?.at).toBe('2026-08-15');
   });
 
-  it('will not raise a decision that is still a draft', async () => {
+  it('will not close the study of a decision that is still a capture', async () => {
     const { store } = await storeWith();
     const d = store.capture('duda')!;
-    expect(store.raise(d.id)).toBe(false);
-    expect(d.raisedAt).toBe(null);
+    expect(store.markReady(d.id)).toBe(false);
+    expect(d.readyAt).toBe(null);
   });
 
-  it('will not raise twice', async () => {
+  it('will not close the study twice', async () => {
     const { store, d } = await prepared();
-    store.raise(d.id, '2026-08-15');
-    expect(store.raise(d.id, '2026-08-16')).toBe(false);
-    expect(d.raisedAt).toBe('2026-08-15');
+    store.markReady(d.id, '2026-08-15');
+    expect(store.markReady(d.id, '2026-08-16')).toBe(false);
+    expect(d.readyAt).toBe('2026-08-15');
   });
 
-  it('raises without a recommendation', async () => {
+  it('closes the study without a recommendation', async () => {
     const { store, d } = await prepared();
-    expect(store.raise(d.id, '2026-08-15')).toBe(true);
+    expect(store.markReady(d.id, '2026-08-15')).toBe(true);
     expect(d.recommendation).toBe(null);
   });
 
-  it('will not resolve something that was never raised', async () => {
+  it('will not resolve something that never left the study', async () => {
     const { store, d, a } = await prepared();
     expect(store.resolveWithOption(d.id, a)).toBe(false);
   });
@@ -270,7 +288,7 @@ describe('recommending, raising, resolving', () => {
   it('resolves into an alternative and reports the outcome', async () => {
     const { store, d, a, b } = await prepared();
     store.recommend(d.id, a, 'menos fricción');
-    store.raise(d.id, '2026-08-15');
+    store.markReady(d.id, '2026-08-15');
 
     expect(store.resolveWithOption(d.id, b, '2026-08-18')).toBe(true);
     expect(outcome(d)).toBe('se decidió otra');
@@ -279,7 +297,7 @@ describe('recommending, raising, resolving', () => {
   it('resolves outside the alternatives', async () => {
     const { store, d, a } = await prepared();
     store.recommend(d.id, a, 'menos fricción');
-    store.raise(d.id, '2026-08-15');
+    store.markReady(d.id, '2026-08-15');
 
     expect(store.resolveWithText(d.id, 'gratis solo la primera vez', '2026-08-18')).toBe(true);
     expect(outcome(d)).toBe('fuera de las alternativas');
@@ -288,7 +306,7 @@ describe('recommending, raising, resolving', () => {
 
   it('refuses an empty free-text resolution', async () => {
     const { store, d } = await prepared();
-    store.raise(d.id, '2026-08-15');
+    store.markReady(d.id, '2026-08-15');
     expect(store.resolveWithText(d.id, '   ')).toBe(false);
     expect(d.resolution).toBe(null);
   });
@@ -309,11 +327,11 @@ describe('counting', () => {
 
     const done = store.capture('ya cerrada')!;
     store.setQuestion(done.id, '¿?');
-    store.raise(done.id, '2026-08-10');
+    store.markReady(done.id, '2026-08-10');
     store.resolveWithText(done.id, 'así', '2026-08-12');
 
     expect(store.all).toHaveLength(2);
-    expect(store.countOpen('2026-08-20')).toBe(1);
+    expect(store.countOpen()).toBe(1);
   });
 
   it('counts the lapsed ones', async () => {
@@ -321,7 +339,7 @@ describe('counting', () => {
     const d = store.capture('vencida')!;
     store.setQuestion(d.id, '¿?');
     store.setField(d.id, { deadline: '2026-08-01' });
-    store.raise(d.id, '2026-07-20');
+    store.markReady(d.id, '2026-07-20');
 
     expect(store.countLapsed('2026-08-20')).toBe(1);
   });

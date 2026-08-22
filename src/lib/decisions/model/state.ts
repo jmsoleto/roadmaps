@@ -1,9 +1,9 @@
 /**
  * Pure derivations over a decision (no reactivity, easy to test).
  *
- * The lifecycle lives here and nowhere else. Nothing in the model stores it:
- * a decision's state is a reading of which fields are set plus today's date,
- * so it cannot disagree with the data it describes (D2).
+ * The lifecycle lives here and nowhere else. Nothing in the model stores it: a
+ * decision's phase is a reading of which fields are set plus today's date, so it
+ * cannot disagree with the data it describes.
  *
  * `today` is a parameter rather than a `todayIso()` call, the same shape
  * `getMetaWindow` uses in Roadmaps, so this file stays pure.
@@ -15,39 +15,98 @@ import type { Decision, Option } from './types';
 /**
  * Where a decision is in its life.
  *
- * `caducada` is derived and not stored for a second reason beyond D2: it
- * depends on *today*. Storing it would need a daily sweep nobody will run, and
- * a lapsed decision would stay lapsed after its deadline moved — when moving
- * the deadline is precisely how you revive it.
+ * The three phases are the spine of the app: capture it where it comes up,
+ * study it alone until the business side can answer it, put it in front of them
+ * and decide. `cerrada` and `caducada` are outcomes rather than phases.
+ *
+ * `caducada` is derived and not stored for a reason beyond the general one: it
+ * depends on *today*. Storing it would need a daily sweep nobody will run, and a
+ * lapsed decision would stay lapsed after its deadline moved — when moving the
+ * deadline is precisely how you revive it.
  */
-export type DecisionState = 'borrador' | 'preparada' | 'planteada' | 'resuelta' | 'caducada';
+export type Phase = 'captura' | 'estudio' | 'lista' | 'cerrada' | 'caducada';
 
-export function decisionState(d: Decision, today: IsoDate): DecisionState {
-  if (d.resolution !== null) return 'resuelta';
-  if (d.question.trim() === '') return 'borrador';
-  if (d.raisedAt === null) return 'preparada';
-  // Lapsed only strictly after the deadline: a decision is not late on the very
-  // day it is due.
+/** The three phases in order, for anything that renders a stepper. */
+export const PHASES = [
+  { id: 'captura', n: 1, label: 'captura' },
+  { id: 'estudio', n: 2, label: 'estudio y evaluación' },
+  { id: 'lista', n: 3, label: 'presentación y decisión' },
+] as const;
+
+export function phaseOf(d: Decision, today: IsoDate): Phase {
+  if (d.resolution !== null) return 'cerrada';
+  if (d.question.trim() === '') return 'captura';
+  if (d.readyAt === null) return 'estudio';
+  // Lapsing only reaches phase 3: a decision still being studied was never put
+  // in front of anyone, so it cannot have expired on them.
   if (d.deadline !== null && d.deadline < today) return 'caducada';
-  return 'planteada';
+  return 'lista';
 }
 
-/** A decision still waiting for an answer, whatever stage it is at. */
-export function isOpen(d: Decision, today: IsoDate): boolean {
-  return decisionState(d, today) !== 'resuelta';
+/** Which of the three phases a decision sits in, whatever its outcome. */
+export function phaseNumber(d: Decision, today: IsoDate): 1 | 2 | 3 {
+  const phase = phaseOf(d, today);
+  if (phase === 'captura') return 1;
+  if (phase === 'estudio') return 2;
+  return 3;
+}
+
+/**
+ * A decision still waiting for an answer, whatever phase it is at.
+ *
+ * Deliberately not a function of today: an open decision is one with no
+ * resolution, and letting a date into that reading would make "open" and
+ * "lapsed" overlap.
+ */
+export function isOpen(d: Decision): boolean {
+  return d.resolution === null;
 }
 
 /** Captured but not yet translated into a question for the business side. */
-export function isDraft(d: Decision): boolean {
+export function isCaptured(d: Decision): boolean {
   return d.resolution === null && d.question.trim() === '';
+}
+
+/**
+ * What the study has and has not got, for the phase-2 closing panel.
+ *
+ * Shown, never enforced beyond the translation: sometimes you present with what
+ * you have, and blocking the gate would produce fields filled in for the sake of
+ * it — which is what ruins the value of the record.
+ */
+export interface StudyChecklist {
+  translated: boolean;
+  options: number;
+  assessed: number;
+  recommended: boolean;
+}
+
+export function studyChecklist(d: Decision): StudyChecklist {
+  return {
+    translated: d.question.trim() !== '',
+    options: d.options.length,
+    assessed: d.options.filter((o) => o.assessments.some((a) => a.text.trim() !== '' || a.value))
+      .length,
+    recommended: d.recommendation !== null,
+  };
+}
+
+/**
+ * Whether the study may be closed.
+ *
+ * Only the translation is required: without a question there is nothing to
+ * present. Everything else is shown as pending and left to the user.
+ */
+export function canMarkReady(d: Decision): boolean {
+  return d.resolution === null && d.readyAt === null && d.question.trim() !== '';
 }
 
 /**
  * How the resolution compared with what was recommended.
  *
- * `null` when there was no recommendation — a decision may be raised without
- * one, and requiring one would produce token recommendations that poison the
- * measure (D3).
+ * `null` when there was no recommendation — a decision may reach phase 3
+ * without one, and requiring one would produce token recommendations that
+ * poison the measure.
  */
 export type Outcome = 'coincidió' | 'se decidió otra' | 'fuera de las alternativas';
 
@@ -60,13 +119,13 @@ export function outcome(d: Decision): Outcome | null {
 /**
  * Whether the recommendation may still be changed.
  *
- * Raising is the instant it stops being arguable: that is when you committed to
- * it in front of the business side. Between raising and resolving there may be
- * a week, and editing it in that window would be rewriting what you said while
- * already sensing which way the answer is going (D3).
+ * Closing the study is the instant it stops being arguable: that is when you
+ * committed to it, before walking into the room. Between closing the study and
+ * presenting it there may be a week, and editing it in that window would be
+ * rewriting what you concluded with the meeting already booked.
  */
 export function recommendationIsFrozen(d: Decision): boolean {
-  return d.raisedAt !== null;
+  return d.readyAt !== null;
 }
 
 /** The alternative a decision was resolved into, when it was one of them. */
@@ -89,8 +148,8 @@ export function recommendedOption(d: Decision): Option | null {
  */
 export function byUrgency(today: IsoDate) {
   return (a: Decision, b: Decision): number => {
-    const lapsedA = decisionState(a, today) === 'caducada';
-    const lapsedB = decisionState(b, today) === 'caducada';
+    const lapsedA = phaseOf(a, today) === 'caducada';
+    const lapsedB = phaseOf(b, today) === 'caducada';
     if (lapsedA !== lapsedB) return lapsedA ? -1 : 1;
 
     if (a.deadline === null && b.deadline === null) return 0;
@@ -102,7 +161,7 @@ export function byUrgency(today: IsoDate) {
 
 /** Open decisions, most urgent first. */
 export function openByUrgency(decisions: Decision[], today: IsoDate): Decision[] {
-  return decisions.filter((d) => isOpen(d, today)).sort(byUrgency(today));
+  return decisions.filter(isOpen).sort(byUrgency(today));
 }
 
 /** Days until a decision's deadline, negative once past. `null` without one. */

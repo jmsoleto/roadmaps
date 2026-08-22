@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { ImportError, exportDecisions, parseDecisionsImport } from './io';
-import { decisionState, outcome } from './model/state';
+import { outcome, phaseOf } from './model/state';
 import type { Decision } from './model/types';
 
 const full = (): Decision => ({
@@ -13,18 +13,25 @@ const full = (): Decision => ({
   deadline: '2026-09-09',
   impact: 'alto',
   notes: 'lo habló también Iván',
+  internalNote: 'el equipo de pagos no llega a Q4',
+  capturedAt: '2026-08-12',
+  captureSource: 'tecleado',
   options: [
     {
       id: 'o1',
       text: 'Casi inmediato',
-      effects: [
-        { axis: 'coste', direction: 'sube', note: 'más infraestructura' },
-        { axis: 'riesgo', direction: 'baja', note: '' },
+      assessments: [
+        { criterion: 'coste', text: '140 k€', value: { kind: 'money', amount: 140000 } },
+        {
+          criterion: 'riesgo',
+          text: 'conciliación diaria',
+          value: { kind: 'level', level: 'alto' },
+        },
       ],
     },
-    { id: 'o2', text: 'Hasta una hora', effects: [] },
+    { id: 'o2', text: 'Hasta una hora', assessments: [] },
   ],
-  raisedAt: '2026-08-15',
+  readyAt: '2026-08-15',
   recommendation: { optionId: 'o2', why: 'suficiente para el negocio', at: '2026-08-15' },
   resolution: { optionId: 'o1', text: '', at: '2026-08-18' },
 });
@@ -35,14 +42,14 @@ describe('exporting decisions', () => {
   it('writes a document that says what it is', () => {
     const doc = JSON.parse(exportDecisions([full()]));
     expect(doc.kind).toBe('tech-lead-hub/decisions');
-    expect(doc.version).toBe(1);
+    expect(doc.version).toBe(2);
     expect(doc.decisions).toHaveLength(1);
   });
 
   it('carries everything needed to rebuild the derived readings', () => {
     const [back] = roundTrip([full()]);
 
-    expect(decisionState(back, '2026-08-20')).toBe('resuelta');
+    expect(phaseOf(back, '2026-08-20')).toBe('cerrada');
     // The outcome is derived, never stored — so it only survives if the frozen
     // recommendation and the resolution both came across, references included.
     expect(outcome(back)).toBe('se decidió otra');
@@ -64,13 +71,20 @@ describe('exporting decisions', () => {
     );
   });
 
-  it('keeps the declared effects of each alternative', () => {
+  it('keeps every assessment, with its text and its value', () => {
     const [back] = roundTrip([full()]);
-    expect(back.options[0].effects).toEqual([
-      { axis: 'coste', direction: 'sube', note: 'más infraestructura' },
-      { axis: 'riesgo', direction: 'baja', note: '' },
+    expect(back.options[0].assessments).toEqual([
+      { criterion: 'coste', text: '140 k€', value: { kind: 'money', amount: 140000 } },
+      { criterion: 'riesgo', text: 'conciliación diaria', value: { kind: 'level', level: 'alto' } },
     ]);
-    expect(back.options[1].effects).toEqual([]);
+    expect(back.options[1].assessments).toEqual([]);
+  });
+
+  it('keeps the internal note and the provenance of the capture', () => {
+    const [back] = roundTrip([full()]);
+    expect(back.internalNote).toBe('el equipo de pagos no llega a Q4');
+    expect(back.capturedAt).toBe('2026-08-12');
+    expect(back.captureSource).toBe('tecleado');
   });
 
   it('keeps a resolution taken outside the alternatives', () => {
@@ -132,10 +146,10 @@ describe('importing decisions', () => {
     expect(back.deadline).toBe(null);
     expect(back.impact).toBe(null);
     expect(back.options).toEqual([]);
-    expect(decisionState(back, '2026-08-20')).toBe('borrador');
+    expect(phaseOf(back, '2026-08-20')).toBe('captura');
   });
 
-  it('drops an effect on an axis it does not know', () => {
+  it('drops an assessment on a criterion it does not know', () => {
     const doc = JSON.stringify({
       kind: 'tech-lead-hub/decisions',
       version: 1,
@@ -146,27 +160,27 @@ describe('importing decisions', () => {
             {
               id: 'o1',
               text: 'una',
-              effects: [
-                { axis: 'inventado', direction: 'sube' },
-                { axis: 'coste', direction: 'baja' },
+              assessments: [
+                { criterion: 'inventado', text: 'nada' },
+                { criterion: 'coste', text: '30 k€' },
               ],
             },
           ],
         },
       ],
     });
-    expect(parseDecisionsImport(doc)[0].options[0].effects).toEqual([
-      { axis: 'coste', direction: 'baja', note: '' },
+    expect(parseDecisionsImport(doc)[0].options[0].assessments).toEqual([
+      { criterion: 'coste', text: '30 k€', value: null },
     ]);
   });
 
   /** A resolution on something never raised would read as resolved-never-asked. */
-  it('drops a resolution on a decision that was never raised', () => {
+  it('drops a resolution on a decision that was never declared ready', () => {
     const d = full();
-    d.raisedAt = null;
+    d.readyAt = null;
     const [back] = roundTrip([d]);
     expect(back.resolution).toBe(null);
-    expect(decisionState(back, '2026-08-20')).toBe('preparada');
+    expect(phaseOf(back, '2026-08-20')).toBe('estudio');
   });
 
   it('degrades a resolution whose alternative is missing into a free-text one', () => {
@@ -177,7 +191,7 @@ describe('importing decisions', () => {
         {
           origin: 'x',
           question: '¿?',
-          raisedAt: '2026-08-10',
+          readyAt: '2026-08-10',
           options: [],
           resolution: { optionId: 'perdida', text: 'lo que fuera', at: '2026-08-12' },
         },
@@ -210,5 +224,53 @@ describe('importing decisions', () => {
       decisions: [{ origin: 'x', deadline: '9 de septiembre' }],
     });
     expect(parseDecisionsImport(doc)[0].deadline).toBe(null);
+  });
+});
+
+/**
+ * The reason `parseDecisionsImport` delegates to `normalizeDecision`: a backup
+ * taken before the criteria model existed still has to come back.
+ */
+describe('importing a document written by the previous version', () => {
+  const legacy = JSON.stringify({
+    kind: 'tech-lead-hub/decisions',
+    version: 1,
+    decisions: [
+      {
+        id: 'd1',
+        origin: '¿webhook o polling?',
+        question: '¿cuánto puede tardar?',
+        options: [
+          {
+            id: 'o1',
+            text: 'Casi inmediato',
+            effects: [{ axis: 'coste', direction: 'sube', note: 'más infraestructura' }],
+          },
+        ],
+        raisedAt: '2026-08-15',
+        recommendation: { optionId: 'o1', why: 'porque sí', at: '2026-08-15' },
+      },
+    ],
+  });
+
+  it('accepts it and converts its axes', () => {
+    const [back] = parseDecisionsImport(legacy);
+    expect(back.options[0].assessments).toEqual([
+      { criterion: 'coste', text: 'sube · más infraestructura', value: null },
+    ]);
+  });
+
+  it('carries the freeze across, references included', () => {
+    const [back] = parseDecisionsImport(legacy);
+    expect(back.readyAt).toBe('2026-08-15');
+    expect(back.recommendation?.optionId).toBe(back.options[0].id);
+    expect(back.recommendation?.at).toBe('2026-08-15');
+  });
+
+  it('reissues identity for the old document too', () => {
+    const a = parseDecisionsImport(legacy);
+    const b = parseDecisionsImport(legacy);
+    expect(a[0].id).not.toBe(b[0].id);
+    expect(a[0].options[0].id).not.toBe(b[0].options[0].id);
   });
 });

@@ -10,12 +10,16 @@
    */
   import { decisions } from '../../decisions/store.svelte';
   import {
+    PHASES,
+    canMarkReady,
     daysToDeadline,
-    decisionState,
     outcome,
+    phaseNumber,
+    phaseOf,
     recommendationIsFrozen,
     recommendedOption,
     resolvedOption,
+    studyChecklist,
   } from '../../decisions/model/state';
   import { todayIso } from '../../time/timeline';
   import type { Decision, Impact } from '../../decisions/model/types';
@@ -28,12 +32,14 @@
   let { decision }: Props = $props();
 
   const today = todayIso();
-  const lifecycle = $derived(decisionState(decision, today));
+  const lifecycle = $derived(phaseOf(decision, today));
+  const phaseN = $derived(phaseNumber(decision, today));
+  const checklist = $derived(studyChecklist(decision));
   const frozen = $derived(recommendationIsFrozen(decision));
   const verdict = $derived(outcome(decision));
   const days = $derived(daysToDeadline(decision, today));
 
-  let confirmRaise = $state(false);
+  let confirmReady = $state(false);
   let freeText = $state('');
   let projectQuery = $state<string | null>(null);
 
@@ -49,21 +55,22 @@
   $effect(() => {
     const showing = decision.id;
     if (showing === '') return;
-    confirmRaise = false;
+    confirmReady = false;
     freeText = '';
     projectQuery = null;
   });
 
-  function raise() {
-    decisions.raise(decision.id);
-    confirmRaise = false;
+  function markReady() {
+    decisions.markReady(decision.id);
+    confirmReady = false;
   }
 </script>
 
 <div class="detail">
   <header class="head">
     <span class="state {lifecycle}">{lifecycle}</span>
-    {#if decision.deadline && lifecycle !== 'resuelta'}
+    <span class="phase-n">fase {phaseN}</span>
+    {#if decision.deadline && lifecycle !== 'cerrada'}
       <span class="deadline" class:late={days !== null && days < 0}>
         {days !== null && days < 0 ? `venció hace ${-days} d` : `quedan ${days} d`}
       </span>
@@ -77,19 +84,30 @@
     >
   </header>
 
+  <!-- Where this decision is, and what the three phases are. Derived, never
+       stored: the stepper reads the data rather than a field. -->
+  <ol class="stepper" aria-label="fases">
+    {#each PHASES as p (p.id)}
+      <li class="step" class:done={p.n < phaseN} class:now={p.n === phaseN}>
+        <span class="step-n">{p.n < phaseN ? '✓' : p.n}</span>
+        <span class="step-label">{p.label}</span>
+      </li>
+    {/each}
+  </ol>
+
   <!-- The question the business side answers. The origin lives below it, smaller:
        it is the record of the translation, not the thing being asked. -->
   <section class="block">
-    <span class="label">PREGUNTA A NEGOCIO</span>
+    <span class="label">PREGUNTA A NEGOCIO <em>· lo único que verá negocio</em></span>
     <textarea
       class="question"
       rows="2"
       placeholder={decision.origin ? `p. ej. ${decision.origin}` : 'la pregunta, en su idioma…'}
       value={decisions.proposedQuestion(decision)}
-      disabled={lifecycle === 'resuelta'}
+      disabled={lifecycle === 'cerrada'}
       onchange={(e) => decisions.setQuestion(decision.id, e.currentTarget.value)}
     ></textarea>
-    {#if lifecycle === 'borrador'}
+    {#if lifecycle === 'captura'}
       <p class="hint">
         Mientras no tenga pregunta, es un borrador. Se propone la duda de origen: acéptala si ya
         estaba en lenguaje de negocio, o reescríbela.
@@ -123,6 +141,9 @@
       placeholder="de dónde sale — p. ej. reunión equipo API · 12/08"
       onchange={(e) => decisions.setOrigin(decision.id, decision.origin, e.currentTarget.value)}
     />
+    {#if decision.capturedAt}
+      <p class="hint">capturado el {decision.capturedAt} · {decision.captureSource}</p>
+    {/if}
   </section>
 
   <section class="fields">
@@ -213,13 +234,13 @@
             )}
         ></textarea>
         {#if frozen}
-          <p class="hint">Congelada el {decision.recommendation.at}, al plantearla.</p>
+          <p class="hint">Congelada el {decision.recommendation.at}, al declararla lista.</p>
         {/if}
       </div>
     {:else}
       <p class="hint">
         {#if frozen}
-          Se planteó sin recomendación.
+          Se declaró lista sin recomendación.
         {:else}
           Marca una alternativa con ★ para recomendarla. Es opcional: recomendar por obligación no
           mide nada.
@@ -228,28 +249,50 @@
     {/if}
   </section>
 
-  {#if lifecycle === 'preparada'}
+  {#if lifecycle === 'estudio'}
     <section class="action">
-      {#if confirmRaise}
+      <span class="label">CIERRE DE LA FASE</span>
+      <!-- Shown, not enforced: sometimes you present with what you have, and
+           blocking the gate produces fields filled in for the sake of it. -->
+      <ul class="checklist">
+        <li class:ok={checklist.translated}>
+          {checklist.translated ? '✓' : '·'} duda traducida a negocio
+        </li>
+        <li class:ok={checklist.assessed > 0}>
+          {checklist.assessed > 0 ? '✓' : '·'}
+          {checklist.assessed} de {checklist.options}
+          {checklist.options === 1 ? 'alternativa evaluada' : 'alternativas evaluadas'}
+        </li>
+        <li class:ok={checklist.recommended}>
+          {checklist.recommended ? '✓' : '·'} recomendación marcada
+        </li>
+      </ul>
+
+      {#if confirmReady}
         <p class="warn">
-          Al plantearla se congela la recomendación: después ya no se podrá cambiar. Se registra hoy
-          como el día en que se puso delante de negocio.
+          Al declararla lista se congela la recomendación: después ya no se podrá cambiar. Te mojas
+          ahora, antes de entrar en la sala.
         </p>
         <div class="buttons">
-          <button type="button" class="primary" onclick={raise}>sí, plantear</button>
-          <button type="button" class="secondary" onclick={() => (confirmRaise = false)}
+          <button type="button" class="primary" onclick={markReady}>sí, está lista</button>
+          <button type="button" class="secondary" onclick={() => (confirmReady = false)}
             >cancelar</button
           >
         </div>
       {:else}
-        <button type="button" class="primary" onclick={() => (confirmRaise = true)}>
-          plantear a negocio →
+        <button
+          type="button"
+          class="primary"
+          disabled={!canMarkReady(decision)}
+          onclick={() => (confirmReady = true)}
+        >
+          lista para presentar →
         </button>
       {/if}
     </section>
   {/if}
 
-  {#if lifecycle === 'planteada' || lifecycle === 'caducada'}
+  {#if lifecycle === 'lista' || lifecycle === 'caducada'}
     <section class="block">
       <span class="label">RESOLUCIÓN</span>
       <div class="resolve">
@@ -300,6 +343,17 @@
       >
     </section>
   {/if}
+
+  <section class="block">
+    <span class="label">NOTA INTERNA <em>· no se presenta</em></span>
+    <textarea
+      rows="2"
+      class="notes internal"
+      placeholder="lo que piensas y no cuentas"
+      value={decision.internalNote}
+      onchange={(e) => decisions.setField(decision.id, { internalNote: e.currentTarget.value })}
+    ></textarea>
+  </section>
 
   <section class="block">
     <span class="label">NOTAS</span>
@@ -363,6 +417,74 @@
     display: flex;
     flex-direction: column;
     gap: 6px;
+  }
+  /* The stepper carries its own numbering, so the list must not add a second. */
+  .stepper {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .step {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1;
+    min-width: 0;
+    padding: 6px 8px;
+    border: var(--line-width) solid var(--line);
+    border-radius: 6px;
+    background: var(--surface-2);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+  .step.done {
+    color: var(--text-mid);
+  }
+  .step.now {
+    color: var(--accent);
+    border-color: var(--accent);
+  }
+  .step-n {
+    flex-shrink: 0;
+    width: 16px;
+    text-align: center;
+  }
+  .step-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .phase-n {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-mid);
+  }
+  .checklist {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--text-dim);
+  }
+  .checklist li.ok {
+    color: var(--text-mid);
+  }
+  .label em {
+    font-style: normal;
+    opacity: 0.75;
+  }
+  .notes.internal {
+    border-style: dashed;
   }
   .label {
     font-family: 'IBM Plex Mono', monospace;

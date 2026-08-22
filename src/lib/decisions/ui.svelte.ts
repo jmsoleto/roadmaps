@@ -6,27 +6,31 @@
  * apart: none of this is persisted, and mixing it in would invite it to be.
  */
 
-import type { DecisionState } from './model/state';
+import type { Phase } from './model/state';
 
 /** Which slice of the list is showing. */
-export type Filter = 'abiertas' | 'borradores' | 'resueltas' | 'todas';
+export type Filter = 'abiertas' | 'borradores' | 'listas' | 'resueltas' | 'todas';
 
 export const FILTERS: { id: Filter; label: string }[] = [
   { id: 'abiertas', label: 'abiertas' },
   { id: 'borradores', label: 'sin traducir' },
-  { id: 'resueltas', label: 'resueltas' },
+  { id: 'listas', label: 'listas' },
+  { id: 'resueltas', label: 'cerradas' },
   { id: 'todas', label: 'todas' },
 ];
 
-/** Whether a decision in `state` belongs in `filter`. */
-export function matchesFilter(filter: Filter, state: DecisionState): boolean {
+/** Whether a decision in `phase` belongs in `filter`. */
+export function matchesFilter(filter: Filter, phase: Phase): boolean {
   switch (filter) {
     case 'abiertas':
-      return state !== 'resuelta';
+      return phase !== 'cerrada';
     case 'borradores':
-      return state === 'borrador';
+      return phase === 'captura';
+    case 'listas':
+      // Lapsed ones belong here too: they are ready, just overdue.
+      return phase === 'lista' || phase === 'caducada';
     case 'resueltas':
-      return state === 'resuelta';
+      return phase === 'cerrada';
     case 'todas':
       return true;
   }

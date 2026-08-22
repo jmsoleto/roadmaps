@@ -15,15 +15,18 @@ const decision = (over: Partial<Decision> = {}): Decision => ({
   deadline: null,
   impact: null,
   notes: '',
+  internalNote: '',
+  capturedAt: null,
+  captureSource: 'tecleado',
   options: [],
-  raisedAt: null,
+  readyAt: null,
   recommendation: null,
   resolution: null,
   ...over,
 });
 
 const raised = (over: Partial<Decision> = {}) =>
-  decision({ question: '¿pregunta para negocio?', raisedAt: '2026-08-10', ...over });
+  decision({ question: '¿pregunta para negocio?', readyAt: '2026-08-10', ...over });
 
 describe('the three figures', () => {
   it('counts open, untranslated and lapsed', () => {

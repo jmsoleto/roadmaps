@@ -11,7 +11,7 @@
 import type { IsoDate } from '../model/types';
 import type { Alert, AppSummary, Row, Stat } from '../hub/types';
 import { byToneDescending } from '../hub/types';
-import { daysToDeadline, decisionState, isDraft, isOpen, openByUrgency } from './model/state';
+import { daysToDeadline, isCaptured, isOpen, openByUrgency, phaseOf } from './model/state';
 import type { Decision } from './model/types';
 
 /** How many rows the card shows. */
@@ -24,8 +24,8 @@ const DRAFT_PILEUP = 3;
 
 /** The swatch colour of a row, by how much the decision is asking for. */
 function rowColour(d: Decision, today: IsoDate): string {
-  const state = decisionState(d, today);
-  if (state === 'caducada') return 'var(--danger)';
+  const phase = phaseOf(d, today);
+  if (phase === 'caducada') return 'var(--danger)';
   const days = daysToDeadline(d, today);
   if (days !== null && days <= SOON_DAYS) return 'var(--accent)';
   return 'var(--text-dim)';
@@ -33,8 +33,8 @@ function rowColour(d: Decision, today: IsoDate): string {
 
 /** The right-hand detail of a row: when it is due, or that it already was. */
 function rowMeta(d: Decision, today: IsoDate): { meta: string; tone: Row['metaTone'] } {
-  const state = decisionState(d, today);
-  if (state === 'borrador') return { meta: 'sin traducir', tone: 'neutral' };
+  const phase = phaseOf(d, today);
+  if (phase === 'captura') return { meta: 'sin traducir', tone: 'neutral' };
   if (d.deadline === null) return { meta: 'sin fecha', tone: 'neutral' };
 
   const days = daysToDeadline(d, today)!;
@@ -51,15 +51,15 @@ function shortDate(iso: IsoDate): string {
 }
 
 export function decisionStats(decisions: Decision[], today: IsoDate): [Stat, Stat, Stat] {
-  const open = decisions.filter((d) => isOpen(d, today)).length;
-  const drafts = decisions.filter(isDraft).length;
-  const lapsed = decisions.filter((d) => decisionState(d, today) === 'caducada').length;
+  const open = decisions.filter((d) => isOpen(d)).length;
+  const captured = decisions.filter(isCaptured).length;
+  const lapsed = decisions.filter((d) => phaseOf(d, today) === 'caducada').length;
 
   return [
     // Open and not the historical total: the total only ever goes up and stops
     // saying anything after three months.
     { value: open, label: 'abiertas', tone: 'neutral' },
-    { value: drafts, label: 'sin traducir', tone: 'neutral' },
+    { value: captured, label: 'sin traducir', tone: 'neutral' },
     { value: lapsed, label: 'caducadas', tone: lapsed > 0 ? 'danger' : 'neutral' },
   ];
 }
@@ -73,7 +73,7 @@ export function decisionStats(decisions: Decision[], today: IsoDate): [Stat, Sta
  */
 export function decisionRows(decisions: Decision[], today: IsoDate): Row[] {
   return openByUrgency(decisions, today)
-    .filter((d) => !isDraft(d))
+    .filter((d) => !isCaptured(d))
     .slice(0, LIST_ROWS)
     .map((d) => {
       const { meta, tone } = rowMeta(d, today);
@@ -91,7 +91,7 @@ export function decisionAlerts(decisions: Decision[], today: IsoDate): Alert[] {
   const out: Alert[] = [];
 
   for (const d of decisions) {
-    if (decisionState(d, today) !== 'caducada') continue;
+    if (phaseOf(d, today) !== 'caducada') continue;
     out.push({
       id: `lapsed:${d.id}`,
       text: `Venció sin resolución: ${d.question.trim() || d.origin}`,
@@ -101,7 +101,7 @@ export function decisionAlerts(decisions: Decision[], today: IsoDate): Alert[] {
   }
 
   const soon = decisions.filter((d) => {
-    if (!isOpen(d, today) || isDraft(d) || decisionState(d, today) === 'caducada') return false;
+    if (!isOpen(d) || isCaptured(d) || phaseOf(d, today) === 'caducada') return false;
     const days = daysToDeadline(d, today);
     return days !== null && days >= 0 && days <= SOON_DAYS;
   }).length;
@@ -114,7 +114,7 @@ export function decisionAlerts(decisions: Decision[], today: IsoDate): Alert[] {
     });
   }
 
-  const drafts = decisions.filter(isDraft).length;
+  const drafts = decisions.filter(isCaptured).length;
   if (drafts >= DRAFT_PILEUP) {
     out.push({
       id: 'drafts',

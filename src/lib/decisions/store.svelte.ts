@@ -19,21 +19,25 @@ import type { IsoDate } from '../model/types';
 import { createDecisionsBackend, type DecisionsBackend } from './storage';
 import {
   emptyDecisionsData,
+  type Assessment,
+  type AssessmentValue,
+  type CaptureSource,
   type Decision,
   type DecisionsData,
-  type Effect,
   type Impact,
   type Option,
 } from './model/types';
 import {
-  decisionState,
-  isDraft,
+  canMarkReady,
+  isCaptured,
   isOpen,
   openByUrgency,
+  phaseOf,
   recommendationIsFrozen,
 } from './model/state';
+import { normalizeDecisions } from './model/normalize';
 import { suggestProjects } from './model/projects';
-import type { AxisId, EffectDirection } from './model/axes';
+import type { CriterionId } from './model/criteria';
 
 const SAVE_DEBOUNCE_MS = 250;
 
@@ -67,7 +71,12 @@ export class DecisionsStore {
     if (out.kind === 'unavailable') {
       this.unavailable = { reason: out.reason };
     } else {
-      this.data = out.kind === 'loaded' ? out.data : emptyDecisionsData();
+      // Everything that comes in gets normalised, so nothing downstream has to
+      // know that an older format ever existed (D6).
+      this.data =
+        out.kind === 'loaded'
+          ? (normalizeDecisions(out.data) ?? emptyDecisionsData())
+          : emptyDecisionsData();
       this.unavailable = null;
     }
     this.ready = true;
@@ -88,16 +97,17 @@ export class DecisionsStore {
     return openByUrgency(this.data.decisions, today);
   }
 
-  get drafts(): Decision[] {
-    return this.data.decisions.filter(isDraft);
+  /** Captured and not yet translated: the study debt. */
+  get captured(): Decision[] {
+    return this.data.decisions.filter(isCaptured);
   }
 
-  countOpen(today: IsoDate = todayIso()): number {
-    return this.data.decisions.filter((d) => isOpen(d, today)).length;
+  countOpen(): number {
+    return this.data.decisions.filter(isOpen).length;
   }
 
   countLapsed(today: IsoDate = todayIso()): number {
-    return this.data.decisions.filter((d) => decisionState(d, today) === 'caducada').length;
+    return this.data.decisions.filter((d) => phaseOf(d, today) === 'caducada').length;
   }
 
   projectSuggestions(query: string): string[] {
@@ -117,7 +127,7 @@ export class DecisionsStore {
    * which kind of thing you just heard. Translating it later proposes it as the
    * question, so a decision born in business language costs no retyping (D4).
    */
-  capture(origin: string, originContext = ''): Decision | null {
+  capture(origin: string, originContext = '', source: CaptureSource = 'tecleado'): Decision | null {
     if (this.unavailable) return null;
     const text = origin.trim();
     if (text === '') return null;
@@ -126,14 +136,17 @@ export class DecisionsStore {
       id: uid('dec'),
       origin: text,
       originContext: originContext.trim(),
+      capturedAt: todayIso(),
+      captureSource: source,
       question: '',
       project: '',
       stakeholder: '',
       deadline: null,
       impact: null,
       notes: '',
+      internalNote: '',
       options: [],
-      raisedAt: null,
+      readyAt: null,
       recommendation: null,
       resolution: null,
     };
@@ -168,7 +181,7 @@ export class DecisionsStore {
 
   setField(
     id: string,
-    patch: Partial<Pick<Decision, 'project' | 'stakeholder' | 'notes'>> & {
+    patch: Partial<Pick<Decision, 'project' | 'stakeholder' | 'notes' | 'internalNote'>> & {
       deadline?: IsoDate | null;
       impact?: Impact | null;
     },
@@ -189,7 +202,7 @@ export class DecisionsStore {
 
   addOption(id: string, text = ''): void {
     this.patch(id, (d) => {
-      d.options.push({ id: uid('opt'), text, effects: [] });
+      d.options.push({ id: uid('opt'), text, assessments: [] });
     });
   }
 
@@ -201,24 +214,29 @@ export class DecisionsStore {
   }
 
   /**
-   * Declare, clear or change what an alternative does to one axis.
+   * Assess an alternative on one criterion.
    *
-   * `null` removes the declaration rather than storing a neutral one: an axis
-   * nobody spoke about and an axis explicitly called unchanged are different
-   * claims, and only the second deserves a glyph (D5).
+   * Text and value are independent: a criterion described in a sentence but
+   * never quantified is a complete answer for the room and merely invisible to
+   * a chart. An assessment with neither is dropped rather than kept empty.
    */
-  setEffect(
+  setAssessment(
     id: string,
     optionId: string,
-    axis: AxisId,
-    direction: EffectDirection | null,
-    note = '',
+    criterion: CriterionId,
+    patch: { text?: string; value?: AssessmentValue | null },
   ): void {
     this.patch(id, (d) => {
       const o = d.options.find((x) => x.id === optionId);
       if (!o) return;
-      const rest = o.effects.filter((e) => e.axis !== axis);
-      o.effects = direction === null ? rest : [...rest, { axis, direction, note } as Effect];
+      const current = o.assessments.find((a) => a.criterion === criterion);
+      const next: Assessment = {
+        criterion,
+        text: patch.text ?? current?.text ?? '',
+        value: patch.value !== undefined ? patch.value : (current?.value ?? null),
+      };
+      const rest = o.assessments.filter((a) => a.criterion !== criterion);
+      o.assessments = next.text.trim() === '' && next.value === null ? rest : [...rest, next];
     });
   }
 
@@ -228,7 +246,7 @@ export class DecisionsStore {
       // A recommendation pointing at an alternative that no longer exists would
       // be a dangling reference; it can only happen before raising, when the
       // recommendation is still the author's to change.
-      if (d.recommendation?.optionId === optionId && d.raisedAt === null) d.recommendation = null;
+      if (d.recommendation?.optionId === optionId && d.readyAt === null) d.recommendation = null;
     });
   }
 
@@ -269,45 +287,44 @@ export class DecisionsStore {
   }
 
   /**
-   * Put the decision in front of the business side.
+   * Declare the study finished: the decision is ready to present.
    *
-   * An explicit gesture that stamps the day and freezes the recommendation.
-   * Never inferred from anything else: inferring it would freeze what you
-   * recommended at an instant that did not happen.
+   * The one transition the data cannot imply — three alternatives written down
+   * do not mean the thinking is done — so it is an explicit gesture that stamps
+   * the day and freezes the recommendation (D1, D2).
    */
-  raise(id: string, at: IsoDate = todayIso()): boolean {
+  markReady(id: string, at: IsoDate = todayIso()): boolean {
     const d = this.find(id);
-    if (!d || this.unavailable) return false;
-    if (d.question.trim() === '' || d.raisedAt !== null) return false;
-    d.raisedAt = at;
-    // The recommendation's own stamp becomes the day it stopped being arguable,
+    if (!d || this.unavailable || !canMarkReady(d)) return false;
+    d.readyAt = at;
+    // The recommendation's stamp becomes the day it stopped being arguable,
     // which is now — not the day it was drafted.
     if (d.recommendation) d.recommendation = { ...d.recommendation, at };
     this.scheduleSave();
     return true;
   }
 
-  /** Resolve into one of the alternatives. */
+  /** Resolve into one of the alternatives. Only from phase 3. */
   resolveWithOption(id: string, optionId: string, at: IsoDate = todayIso()): boolean {
     const d = this.find(id);
-    if (!d || this.unavailable || d.raisedAt === null) return false;
+    if (!d || this.unavailable || d.readyAt === null) return false;
     if (!d.options.some((o) => o.id === optionId)) return false;
     d.resolution = { optionId, text: '', at };
     this.scheduleSave();
     return true;
   }
 
-  /** Resolve into something that was not on the table. */
+  /** Resolve into something that was not on the table. Only from phase 3. */
   resolveWithText(id: string, text: string, at: IsoDate = todayIso()): boolean {
     const d = this.find(id);
-    if (!d || this.unavailable || d.raisedAt === null) return false;
+    if (!d || this.unavailable || d.readyAt === null) return false;
     if (text.trim() === '') return false;
     d.resolution = { optionId: null, text: text.trim(), at };
     this.scheduleSave();
     return true;
   }
 
-  /** Undo a resolution, putting the decision back in front of the business. */
+  /** Undo a resolution, putting the decision back into phase 3. */
   reopen(id: string): void {
     this.patch(id, (d) => {
       d.resolution = null;

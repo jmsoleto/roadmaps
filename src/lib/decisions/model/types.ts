@@ -1,49 +1,69 @@
 /**
  * Canonical data model for Decisions.
  *
- * Two ideas carry this file, both inherited from `completion` in Roadmaps:
+ * Three ideas carry this file, the first two inherited from `completion` in
+ * Roadmaps and the third from the phases this app is built around:
  *
- *  - **The state is never stored.** There is no `state: 'pendiente'` field
- *    beside `resolution`; the lifecycle is derived in `./state.ts` from which
- *    fields are set. A stored state admits combinations that mean nothing —
- *    resolved and pending at once — and every loader, importer and mutation
- *    would have to defend against them (D2).
- *  - **What must not be rewritten is frozen at the instant it stops being
- *    arguable.** The recommendation freezes when the decision is raised, not
- *    when it is resolved (D3).
+ *  - **The state is never stored.** There is no `phase` field; the lifecycle is
+ *    derived in `./state.ts` from which fields are set. A stored state admits
+ *    combinations that mean nothing and every loader would have to defend
+ *    against them.
+ *  - **What must not be rewritten freezes at the instant it stops being
+ *    arguable.** For a recommendation that instant is when the study is
+ *    declared finished — `readyAt` — not when the decision reaches the room.
+ *  - **Text always, value when there is one.** An assessment says its sentence
+ *    even when nobody has quantified it.
  */
 
 import type { IsoDate } from '../../model/types';
-import type { AxisId, EffectDirection } from './axes';
+import type { CriterionId, RiskLevel } from './criteria';
 
-/** What an alternative does to one axis of the trade-off. */
-export interface Effect {
-  axis: AxisId;
-  direction: EffectDirection;
-  /** Optional one-liner: *why* it moves that way. */
-  note: string;
+/**
+ * What one alternative is worth on one criterion.
+ *
+ * `text` is what gets read out loud; `value` is what a chart can draw. Either
+ * may be absent — an assessment with only a sentence is complete for the room
+ * and merely invisible to a chart.
+ *
+ * `value` is typed by the criterion's `kind`:
+ *   effort    → `{ weeks, people }`
+ *   money     → `number` (the amount)
+ *   date      → `IsoDate`
+ *   level     → `RiskLevel`
+ *   appraisal → 1..5
+ *   none      → always `null`
+ */
+export type AssessmentValue =
+  | { kind: 'effort'; weeks: number; people: number | null }
+  | { kind: 'money'; amount: number }
+  | { kind: 'date'; date: IsoDate }
+  | { kind: 'level'; level: RiskLevel }
+  | { kind: 'appraisal'; score: number };
+
+export interface Assessment {
+  criterion: CriterionId;
+  text: string;
+  value: AssessmentValue | null;
 }
 
 /** One of the alternatives on the table. */
 export interface Option {
   id: string;
   text: string;
-  /**
-   * Declared effects, at most one per axis. Empty is a valid answer: a forced
-   * axis is worse than a gap (D5).
-   */
-  effects: Effect[];
+  /** At most one assessment per criterion. Empty is a valid answer. */
+  assessments: Assessment[];
 }
 
 /**
- * What was recommended, and why, captured before the conversation.
+ * What was recommended, and why, captured during the study.
  *
- * `at` is the instant it was frozen — the moment the decision was raised, not
- * the moment it was written. Together with `Resolution` it is what lets the app
- * say whether the recommendation held, which is the whole reason to record it.
+ * `at` is the instant it was frozen: the day the study was closed. Together
+ * with `Resolution` it is what lets the app say whether the recommendation
+ * held, which is the whole reason to record it.
  */
 export interface Recommendation {
   optionId: string;
+  /** The argument said out loud. Not the internal note. */
   why: string;
   /** The day it stopped being editable. */
   at: IsoDate;
@@ -54,7 +74,7 @@ export interface Recommendation {
  *
  * `optionId` is `null` when the answer was not one of the alternatives offered.
  * That is not a defect in the record: it says the framing was wrong, which is
- * information about whoever prepared the decision (D3).
+ * information about whoever prepared the decision.
  */
 export interface Resolution {
   optionId: string | null;
@@ -64,6 +84,9 @@ export interface Resolution {
 }
 
 export type Impact = 'alto' | 'medio' | 'bajo';
+
+/** How the captured text got in. */
+export type CaptureSource = 'tecleado' | 'dictado';
 
 export interface Decision {
   id: string;
@@ -76,30 +99,46 @@ export interface Decision {
   origin: string;
   /** Where it came from, e.g. "reunión equipo API · 12/08". Free text. */
   originContext: string;
+  /** When it was captured, and by which route the text got in. */
+  capturedAt: IsoDate | null;
+  captureSource: CaptureSource;
   /**
    * The same question, phrased so that whoever decides can answer it.
    *
-   * Empty means the decision is still a draft: captured, not yet translated.
-   * That absence *is* the draft state — there is no flag beside it (D2).
+   * Empty means the decision is still in phase 1: captured, not yet translated.
+   * That absence *is* the phase — there is no flag beside it.
+   *
+   * It is also the only one of the decision's texts that the presentation phase
+   * shows. Everything else here is working material.
    */
   question: string;
 
-  /** Free text with suggestions, deliberately not a foreign key (D6). */
+  /** Free text with suggestions, deliberately not a foreign key. */
   project: string;
   /** Who decides, on the business side. */
   stakeholder: string;
   deadline: IsoDate | null;
   impact: Impact | null;
   notes: string;
+  /**
+   * What is thought and not said: that team A will not make it, that the
+   * vendor is on the way out.
+   *
+   * A field of its own, apart from the recommendation's `why`, precisely so it
+   * cannot be projected by accident. `why` is the argument spoken in the room;
+   * this never leaves the study.
+   */
+  internalNote: string;
 
   options: Option[];
   /**
-   * The day the decision was put in front of the business, or `null`.
+   * The day the study was declared finished, or `null` while it is open.
    *
-   * An explicit gesture, never inferred: inferring it would freeze the
-   * recommendation at an instant that did not happen.
+   * An explicit gesture, never inferred: it is the one transition the data
+   * cannot imply, because having three alternatives written down does not mean
+   * the thinking is done. Freezing the recommendation hangs off it.
    */
-  raisedAt: IsoDate | null;
+  readyAt: IsoDate | null;
   recommendation: Recommendation | null;
   resolution: Resolution | null;
 }

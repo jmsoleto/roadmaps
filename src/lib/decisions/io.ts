@@ -6,22 +6,23 @@
  * carries decisions. The two apps do not know about each other, and their
  * backups should not either.
  *
- * The document is self-contained by construction: every derived reading — the
- * lifecycle, the outcome of recommendation against resolution — comes from the
- * fields already here, so nothing extra has to travel.
+ * The reading of a decision is **not** repeated here: it is `normalizeDecision`,
+ * the same function the store uses on load. That is what makes a document
+ * exported before the criteria model existed importable today without this file
+ * knowing anything about the older shape (D6).
  *
- * When attachments arrive they add a manifest to this shape. Nothing is built
- * for them yet.
+ * What is this file's own job is identity: ids are reissued on the way in, so
+ * importing the same document twice produces two independent sets rather than
+ * one overwriting the other.
  */
 
 import { uid } from '../util/id';
-import { isIsoDate } from '../time/timeline';
-import { isAxisId, isDirection } from './model/axes';
-import type { Decision, Effect, Impact, Option, Recommendation, Resolution } from './model/types';
+import { normalizeDecision } from './model/normalize';
+import type { Decision } from './model/types';
 
 /** Marks the document as ours, and as *decisions* rather than roadmaps. */
 const KIND = 'tech-lead-hub/decisions';
-const VERSION = 1;
+const VERSION = 2;
 
 export interface DecisionsExport {
   kind: typeof KIND;
@@ -40,102 +41,61 @@ export function exportDecisions(decisions: Decision[]): string {
   return JSON.stringify(doc, null, 2);
 }
 
-const str = (v: unknown): string => (typeof v === 'string' ? v : '');
-
-const isoOrNull = (v: unknown): string | null => (isIsoDate(v) ? v : null);
-
-const impact = (v: unknown): Impact | null =>
-  v === 'alto' || v === 'medio' || v === 'bajo' ? v : null;
-
 /**
- * Rebuild one alternative, keeping a map from its old id to the new one.
+ * Reissue every id in a decision, rewriting the references that point at them.
  *
- * Ids are reissued on import so that importing the same document twice produces
- * two independent sets rather than one overwriting the other. That means every
- * reference to an option — the recommendation, the resolution — has to be
- * rewritten through this map.
+ * The recommendation and the resolution both name an alternative, so remapping
+ * the options without remapping those two would leave dangling references — and
+ * a resolution that lost its option would silently stop being comparable to the
+ * recommendation.
  */
-function parseOption(raw: unknown, idMap: Map<string, string>): Option | null {
-  if (typeof raw !== 'object' || raw === null) return null;
-  const o = raw as Record<string, unknown>;
-  const text = str(o.text);
-  const id = uid('opt');
-  if (typeof o.id === 'string') idMap.set(o.id, id);
+function reissueIdentity(d: Decision): Decision {
+  const idMap = new Map<string, string>();
+  const options = d.options.map((o) => {
+    const id = uid('opt');
+    idMap.set(o.id, id);
+    return { ...o, id };
+  });
 
-  const effects: Effect[] = Array.isArray(o.effects)
-    ? o.effects.flatMap((e): Effect[] => {
-        if (typeof e !== 'object' || e === null) return [];
-        const r = e as Record<string, unknown>;
-        if (!isAxisId(r.axis) || !isDirection(r.direction)) return [];
-        return [{ axis: r.axis, direction: r.direction, note: str(r.note) }];
-      })
-    : [];
+  const recommendation =
+    d.recommendation && idMap.has(d.recommendation.optionId)
+      ? { ...d.recommendation, optionId: idMap.get(d.recommendation.optionId)! }
+      : null;
 
-  return { id, text, effects };
+  let resolution = d.resolution;
+  if (resolution && resolution.optionId !== null) {
+    const mapped = idMap.get(resolution.optionId);
+    // Losing the option reference must not lose the resolution: it degrades to
+    // a free-text answer, which is exactly what it now is.
+    resolution = mapped
+      ? { ...resolution, optionId: mapped }
+      : resolution.text.trim() !== ''
+        ? { ...resolution, optionId: null }
+        : null;
+  }
+
+  return { ...d, id: uid('dec'), options, recommendation, resolution };
 }
 
-function parseDecision(raw: unknown): Decision | null {
-  if (typeof raw !== 'object' || raw === null) return null;
+/**
+ * Stamp throwaway ids where a document has none.
+ *
+ * `normalizeDecision` rejects an entry without an id, and rightly so on the load
+ * path: there, a missing id means the stored document is corrupt. On the import
+ * path it means nothing — a hand-written file simply did not bother — and the
+ * ids are reissued a moment later anyway.
+ */
+function withProvisionalIds(raw: unknown): unknown {
+  if (typeof raw !== 'object' || raw === null) return raw;
   const d = raw as Record<string, unknown>;
-
-  // A decision with neither text is not a decision; everything else may be blank.
-  const origin = str(d.origin);
-  const question = str(d.question);
-  if (origin.trim() === '' && question.trim() === '') return null;
-
-  const idMap = new Map<string, string>();
   const options = Array.isArray(d.options)
-    ? d.options.flatMap((o) => {
-        const parsed = parseOption(o, idMap);
-        return parsed ? [parsed] : [];
-      })
-    : [];
-
-  const rawRec = d.recommendation as Record<string, unknown> | null | undefined;
-  let recommendation: Recommendation | null = null;
-  if (rawRec && typeof rawRec === 'object') {
-    const optionId = idMap.get(str(rawRec.optionId));
-    const at = isoOrNull(rawRec.at);
-    // A recommendation pointing at an alternative the document does not contain
-    // would be a dangling reference; dropping it is better than importing one.
-    if (optionId && at) recommendation = { optionId, why: str(rawRec.why), at };
-  }
-
-  const rawRes = d.resolution as Record<string, unknown> | null | undefined;
-  let resolution: Resolution | null = null;
-  if (rawRes && typeof rawRes === 'object') {
-    const at = isoOrNull(rawRes.at);
-    if (at) {
-      const mapped = typeof rawRes.optionId === 'string' ? idMap.get(rawRes.optionId) : undefined;
-      const text = str(rawRes.text);
-      // Losing the option reference must not lose the resolution: it degrades
-      // to a free-text answer, which is exactly what it now is.
-      if (mapped) resolution = { optionId: mapped, text, at };
-      else if (text.trim() !== '') resolution = { optionId: null, text, at };
-    }
-  }
-
-  const raisedAt = isoOrNull(d.raisedAt);
-
-  return {
-    id: uid('dec'),
-    origin,
-    originContext: str(d.originContext),
-    question,
-    project: str(d.project),
-    stakeholder: str(d.stakeholder),
-    deadline: isoOrNull(d.deadline),
-    impact: impact(d.impact),
-    notes: str(d.notes),
-    options,
-    raisedAt,
-    // Kept whether or not the decision was raised: recommending happens
-    // *before* raising, and on a prepared decision it is simply still editable.
-    recommendation,
-    // A resolution on something never raised is incoherent, and the derived
-    // lifecycle would read it as resolved without it ever having been asked.
-    resolution: raisedAt === null ? null : resolution,
-  };
+    ? d.options.map((o) =>
+        typeof o === 'object' && o !== null && typeof (o as { id?: unknown }).id !== 'string'
+          ? { ...o, id: uid('opt') }
+          : o,
+      )
+    : d.options;
+  return { ...d, id: typeof d.id === 'string' ? d.id : uid('dec'), options };
 }
 
 export class ImportError extends Error {}
@@ -172,9 +132,12 @@ export function parseDecisionsImport(text: string): Decision[] {
     throw new ImportError('El documento no contiene decisiones.');
   }
 
-  const decisions = d.decisions.flatMap((raw) => {
-    const parsed = parseDecision(raw);
-    return parsed ? [parsed] : [];
+  const decisions = d.decisions.flatMap((raw): Decision[] => {
+    const parsed = normalizeDecision(withProvisionalIds(raw));
+    if (!parsed) return [];
+    // A decision with neither text is not a decision; everything else may be blank.
+    if (parsed.origin.trim() === '' && parsed.question.trim() === '') return [];
+    return [reissueIdentity(parsed)];
   });
 
   if (decisions.length === 0) {
