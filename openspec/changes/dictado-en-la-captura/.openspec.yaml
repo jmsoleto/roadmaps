@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-08-22
+goal: "Dictar la duda en la captura: el navegador transcribe, solo se guarda el
+  texto, y se advierte de que el audio sale de la maquina"
