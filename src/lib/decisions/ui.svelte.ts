@@ -41,6 +41,13 @@ class DecisionsUi {
   /** Empty means every project. */
   project = $state<string>('');
   capturing = $state<boolean>(false);
+  /**
+   * Which decision is being presented, or `null`.
+   *
+   * Transient like everything else here: a presentation is a moment, not a
+   * state of the decision, and reopening the app must never land inside one.
+   */
+  presenting = $state<string | null>(null);
 
   openCapture(): void {
     this.capturing = true;
@@ -48,6 +55,19 @@ class DecisionsUi {
 
   closeCapture(): void {
     this.capturing = false;
+  }
+
+  present(id: string): void {
+    this.presenting = id;
+  }
+
+  /** True while a presentation is on screen. */
+  get isPresenting(): boolean {
+    return this.presenting !== null;
+  }
+
+  endPresentation(): void {
+    this.presenting = null;
   }
 
   setFilter(f: Filter): void {

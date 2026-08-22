@@ -13,6 +13,7 @@
   import { knownProjects } from '../../decisions/model/projects';
   import { todayIso } from '../../time/timeline';
   import DecisionDetail from './DecisionDetail.svelte';
+  import PresentationView from './PresentationView.svelte';
 
   const today = todayIso();
 
@@ -33,6 +34,25 @@
     todas: decisions.all.length,
   });
 
+  /**
+   * The decision being presented, if any.
+   *
+   * `cerrada` counts. Deciding in the meeting closes the decision, and dropping
+   * out of the presentation at that exact instant would snatch the screen away
+   * from the room instead of showing them the minute. What is refused is
+   * *entering* on something unfinished — phases 1 and 2 — which is a different
+   * rule from staying.
+   */
+  const presented = $derived(
+    decisionsUi.presenting === null
+      ? null
+      : (decisions.all.find(
+          (d) =>
+            d.id === decisionsUi.presenting &&
+            ['lista', 'caducada', 'cerrada'].includes(phaseOf(d, today)),
+        ) ?? null),
+  );
+
   function meta(d: (typeof visible)[number]): string {
     const phase = phaseOf(d, today);
     if (phase === 'cerrada') return d.resolution?.at ?? '';
@@ -44,7 +64,9 @@
   }
 </script>
 
-{#if decisions.unavailable}
+{#if presented}
+  <PresentationView decision={presented} onClose={() => decisionsUi.endPresentation()} />
+{:else if decisions.unavailable}
   <div class="unavailable">
     <h2>Las decisiones no están disponibles</h2>
     <p class="reason">{decisions.unavailable.reason}</p>

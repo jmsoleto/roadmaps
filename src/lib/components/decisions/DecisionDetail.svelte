@@ -9,6 +9,7 @@
    * answer that was none of them — which is a real outcome, not an error.
    */
   import { decisions } from '../../decisions/store.svelte';
+  import { decisionsUi } from '../../decisions/ui.svelte';
   import {
     PHASES,
     canMarkReady,
@@ -296,6 +297,16 @@
   {/if}
 
   {#if lifecycle === 'lista' || lifecycle === 'caducada'}
+    <section class="action">
+      <button type="button" class="primary" onclick={() => decisionsUi.present(decision.id)}>
+        presentar a pantalla completa →
+      </button>
+      <p class="hint">
+        Solo se enseña la pregunta a negocio y las alternativas. La duda técnica, la nota interna y
+        el motivo de la recomendación no se proyectan.
+      </p>
+    </section>
+
     <section class="block">
       <span class="label">RESOLUCIÓN</span>
       <div class="resolve">
