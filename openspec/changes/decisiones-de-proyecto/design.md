@@ -19,7 +19,7 @@ Y hay un patrón de este repositorio que se aplica entero aquí. `completion` re
 - Que la recomendación no se pueda reescribir después de saber la respuesta.
 - Que negocio vea el intercambio que está eligiendo, no una lista de opciones equivalentes.
 - Que el almacén de Decisions no pueda dañar el de Roadmaps.
-- Que la landing acoja la segunda aplicación **sin cambiar una línea**.
+- Que la landing acoja la segunda aplicación sin cambiar de forma. *(Se planteó como "sin cambiar una línea" y no se cumplió del todo: hizo falta un campo en el contrato, el rótulo de la acción de crear. Ver D10.)*
 
 **Non-Goals:**
 
@@ -129,6 +129,32 @@ Por el contrato de `hub-landing`, sin tocarlo:
 | Avisos | caducadas (grave), límite dentro de pocos días (aviso), borradores acumulados (informativo) |
 
 Las cifras cuentan **abiertas** y no el total histórico: el total sube para siempre y deja de decir nada a los tres meses.
+
+### D9 — Decisions estrena su propio seam de almacenamiento, no reutiliza el de Roadmaps
+
+El plan decía "backend IndexedDB **tras el `Storage` seam existente**". No se hizo, y la razón apareció al escribir el primer test.
+
+`Storage.load()` devuelve `Promise<AppData | null>`, donde `null` significa "no hay nada guardado". Este change necesita distinguir tres respuestas, no dos:
+
+```
+  loaded       hay documento
+  empty        el almacén abrió y no tiene nada
+  unavailable  el almacén no se pudo abrir
+```
+
+Meter la tercera en aquella firma obligaba a una de dos cosas malas: colapsar `unavailable` en `null` —justo el fallo que `local-persistence` prohíbe, porque presentar una lista vacía sobre datos que no se han podido leer invita a escribir encima— o cambiar el contrato de `Storage` y con él el store de Roadmaps, que no tiene nada que ganar aquí.
+
+Así que `src/lib/store/storage.ts` **no se toca** y Decisions declara `DecisionsBackend` con su `LoadOutcome` de tres ramas. La idea del seam —el store habla con una interfaz y nunca con un backend concreto— se conserva entera; lo que no se comparte es una firma que solo servía para una de las dos aplicaciones. Y encaja con lo que `local-persistence` pasa a exigir: cada aplicación tiene su almacén, y ninguna lee el de otra.
+
+*Alternativa descartada:* genéricos sobre `Storage<T>`. Habría unificado la firma sin resolver lo único que importaba, que es la tercera respuesta.
+
+### D10 — El rótulo de crear pertenece a la aplicación
+
+Descubierto al ver las dos tarjetas juntas: la de Decisions ofrecía "+ nuevo" para *una decisión*. Palabra equivocada, y en castellano género equivocado.
+
+`hub-landing` ya había resuelto este problema una vez, para la etiqueta de la lista corta: *"si la landing la fijara, la tercera app tendría que fingir que sus tres filas son recientes"*. El rótulo de la acción de crear es el mismo caso y se le aplica la misma regla, así que el contrato gana un campo y la landing deja de decidir ese texto.
+
+Es la única costura que el contrato del hub no había previsto, y solo se veía con dos aplicaciones vivas delante — que es exactamente lo que este change existía para averiguar.
 
 ## Risks / Trade-offs
 

@@ -35,13 +35,18 @@ Fuera de alcance, sin fecha:
 
 ### Modified Capabilities
 
+- `hub-landing`: el rótulo de la acción de crear de una tarjeta pasa a pertenecer a la aplicación en lugar de fijarlo la landing.
 - `local-persistence`: deja de haber un único almacén. Se define que cada aplicación tiene el suyo, que el de Decisions vive en IndexedDB, y qué garantiza esa separación.
 - `data-portability`: se añade el export/import de decisiones.
 
-### Sin cambios, y es la prueba
+### La prueba del contrato, y su resultado
 
-- `hub-landing` **no se toca**. Decisions pasa a viva y aporta sus cifras, su lista y sus avisos por el mismo contrato que Roadmaps. Si esta capability hubiera necesitado un solo requisito nuevo, el contrato del change anterior estaría mal.
-- `hub-shell` tampoco. Que una aplicación pase de anunciada a viva es un dato del registro, no un requisito.
+Esta propuesta afirmó que `hub-landing` no se tocaría, y que **si hubiera necesitado un solo requisito nuevo, el contrato del change anterior estaría mal**. Se deja escrito porque no se sostuvo del todo, y el matiz vale más que un aprobado limpio:
+
+- `hub-shell`: **intacto**, como se predijo. Que una aplicación pase de anunciada a viva es un dato del registro, no un requisito.
+- `hub-landing`: **necesitó una extensión**. La tarjeta rotulaba su acción de crear con un texto fijo, "+ nuevo", que para *una decisión* es la palabra equivocada y en castellano ni siquiera el género correcto. El rótulo pasa a pertenecer a la aplicación, exactamente por el mismo motivo que ya justificaba que la etiqueta de su lista corta le perteneciera.
+
+Lo que el contrato sí resolvió sin tocarse: las cifras, la lista, los avisos, los tres estados de tarjeta, la rejilla y las rutas. Lo que se le escapó fue un rótulo, porque se escribió mirando una sola aplicación viva — que es la limitación que este change existía para descubrir.
 
 ## Impact
 
@@ -51,17 +56,27 @@ Fuera de alcance, sin fecha:
 
 **Persistencia**
 
-- `src/lib/store/storage.ts`: el seam se mantiene, pero deja de haber una única implementación. Aparece un backend IndexedDB para el almacén de Decisions. El seam ya era asíncrono previendo exactamente esto.
+- `src/lib/store/storage.ts`: **no se toca**. Decisions estrena un seam propio en lugar de reutilizar aquel, porque `load()` allí devuelve `T | null` y aquí vacío y no-disponible tienen que ser respuestas distintas (ver `design.md`, D9).
+- Nuevo backend IndexedDB para el almacén de Decisions.
+
+**Dependencias**
+
+- `fake-indexeddb` como dependencia de desarrollo. Los tests corren en Node, que no trae IndexedDB, y la alternativa era dejar sin probar justo la pieza con más riesgo del change.
 
 **Interfaz**
 
 - Nuevos: la lista de decisiones, el panel de detalle, el diálogo de captura rápida y el editor de alternativas.
 - `src/lib/hub/apps.ts` y `registry.ts`: Decisions pasa a `live` y estrena resumen, ruta y acciones.
+- `src/lib/hub/types.ts` y `components/AppCard.svelte`: el contrato gana el rótulo de la acción de crear.
 - `src/lib/components/Topbar.svelte`: las acciones propias de Decisions, por la misma vía condicional que ya usa Roadmaps.
 
 **Tests existentes que dejan de valer**
 
 - `src/lib/hub/apps.test.ts` y `routes.test.ts` afirman hoy que existe una aplicación anunciada y que su ruta cae al hub. Al no quedar ninguna, esos casos pasan a apoyarse en una definición de prueba en lugar de en el registro real: la regla que comprueban sigue viva, el ejemplo que usaban no.
+
+**Tests que además hubo que hacer verificables de otro modo**
+
+- `src/lib/hub/routes.ts`: `parseHash` acepta un registro inyectable. La regla "una aplicación no viva cae al hub" se quedó sin ningún ejemplo en el registro real al pasar Decisions a viva, y se prefirió una definición de prueba antes que perder la cobertura de una regla que sigue vigente.
 
 **Sin impacto**
 

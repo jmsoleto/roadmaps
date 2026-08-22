@@ -190,3 +190,33 @@ Las cifras MUST contar decisiones **abiertas** y no el total histórico, que cre
 #### Scenario: Sin decisiones
 - **WHEN** no existe ninguna decisión
 - **THEN** el sistema muestra las tres cifras a cero, ninguna con tono de gravedad, y la lista vacía con su indicación propia
+
+### Requirement: Borrar una decisión
+El sistema MUST permitir borrar una decisión, cualquiera que sea su estado, desde su propio detalle. El borrado MUST llevarse por delante sus alternativas, su recomendación y su resolución, y MUST dejar de contarla en las cifras del hub.
+
+El sistema MUST NOT ofrecer el borrado desde la lista: la lista se recorre decenas de veces al día y un control destructivo no tiene sitio en un camino de navegación. Es el mismo criterio que sigue Roadmaps, que solo borra desde la vista "Todos" y nunca desde el selector.
+
+#### Scenario: Borrar desde el detalle
+- **WHEN** el usuario borra la decisión que tiene abierta
+- **THEN** el sistema la elimina, deja de mostrarla en la lista y cierra su detalle
+
+#### Scenario: La lista no borra
+- **WHEN** el usuario recorre la lista de decisiones
+- **THEN** el sistema no ofrece en ella ningún control de borrado
+
+### Requirement: Reabrir una decisión resuelta
+El sistema MUST permitir retirar la resolución de una decisión resuelta, devolviéndola al estado en que estaba antes de cerrarse.
+
+Reabrir MUST NOT descongelar la recomendación ni borrar la fecha en que la decisión se planteó: lo que se deshace es la respuesta, no el hecho de haberla puesto delante de negocio. Una decisión reabierta MUST volver a poder caducar si su fecha límite ya pasó.
+
+#### Scenario: Retirar una resolución
+- **WHEN** el usuario reabre una decisión resuelta
+- **THEN** el sistema la muestra de nuevo como planteada, o como caducada si su fecha límite ya pasó, y vuelve a ofrecer registrar una resolución
+
+#### Scenario: La recomendación sigue congelada al reabrir
+- **WHEN** el usuario reabre una decisión que se planteó con recomendación
+- **THEN** el sistema conserva esa recomendación y su fecha, y sigue sin permitir cambiarla
+
+#### Scenario: El desenlace desaparece con la resolución
+- **WHEN** el usuario reabre una decisión cuyo desenlace se estaba mostrando
+- **THEN** el sistema deja de mostrar la comparación entre recomendación y resolución

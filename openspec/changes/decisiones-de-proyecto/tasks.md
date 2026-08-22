@@ -1,6 +1,7 @@
 ## 1. Almacén, antes que nada
 
-- [x] 1.1 Backend IndexedDB tras el `Storage` seam existente: apertura, versión de esquema, un almacén de objetos para las decisiones (D1)
+- [x] 1.1 Backend IndexedDB para Decisions: apertura, versión de esquema, un almacén de objetos para las decisiones (D1). **Con su propio seam**, no el de Roadmaps: aquella firma no admite la tercera respuesta (D9)
+- [x] 1.1b `fake-indexeddb` como dependencia de desarrollo, para poder probar el backend en Node
 - [x] 1.2 Distinguir "abrió y está vacío" de "no se pudo abrir", como estados distintos y no como el mismo
 - [x] 1.3 Test: primer arranque sin base, lectura y escritura con ida y vuelta, y fallo de apertura reportado como fallo y no como vacío
 - [x] 1.4 Test: el backend de Roadmaps no se toca — sus claves de `localStorage` siguen siendo las mismas antes y después de escribir decisiones
@@ -60,7 +61,7 @@
 - [x] 6.4 Acciones propias de Decisions en el topbar, por la vía condicional que ya existe
 - [x] 6.5 Rehacer los casos de `apps.test.ts` y `routes.test.ts` que se apoyaban en que existía una aplicación anunciada: la regla sigue, el ejemplo pasa a ser una definición de prueba
 - [x] 6.6 Test: las cifras cuentan abiertas y no el total histórico, y la caducada lleva tono solo si es mayor que cero
-- [x] 6.7 **Comprobar que `hub-landing` y `hub-shell` no han necesitado ni un requisito nuevo.** Es la prueba del contrato del change anterior; si hiciera falta tocarlos, hay que parar y entender por qué
+- [x] 6.7 **Comprobar que `hub-landing` y `hub-shell` no han necesitado ni un requisito nuevo.** Resultado: `hub-shell` intacto; `hub-landing` necesitó una extensión —el rótulo de crear pasa a ser de la aplicación (D10)—, registrada como delta en lugar de darla por buena en silencio
 
 ## 7. Verificación
 
