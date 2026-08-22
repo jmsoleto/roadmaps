@@ -24,6 +24,7 @@
   import { todayIso } from '../../time/timeline';
   import type { Decision, Impact } from '../../decisions/model/types';
   import OptionsEditor from './OptionsEditor.svelte';
+  import VisualSupport from './VisualSupport.svelte';
 
   interface Props {
     decision: Decision;
@@ -212,6 +213,8 @@
       </div>
     </div>
   </section>
+
+  <VisualSupport {decision} />
 
   <OptionsEditor {decision} />
 

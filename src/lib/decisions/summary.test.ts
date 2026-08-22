@@ -16,6 +16,7 @@ const decision = (over: Partial<Decision> = {}): Decision => ({
   impact: null,
   notes: '',
   internalNote: '',
+  attachments: [],
   capturedAt: null,
   captureSource: 'tecleado',
   options: [],

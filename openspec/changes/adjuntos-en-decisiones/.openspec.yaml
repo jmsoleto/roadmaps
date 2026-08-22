@@ -1,0 +1,5 @@
+schema: spec-driven
+created: 2026-08-22
+goal: "Apoyo visual en la fase de estudio: imagenes pegadas o arrastradas,
+  guardadas como blobs en su propio almacen de IndexedDB, con manifiesto en el
+  export y el hueco visible al importar"

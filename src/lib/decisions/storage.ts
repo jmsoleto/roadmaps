@@ -36,11 +36,26 @@ export type LoadOutcome =
 export interface DecisionsBackend {
   load(): Promise<LoadOutcome>;
   save(data: DecisionsData): Promise<void>;
+  /** Store one attachment's bytes under its own key. */
+  putBlob(id: string, blob: Blob): Promise<void>;
+  getBlob(id: string): Promise<Blob | null>;
+  deleteBlobs(ids: string[]): Promise<void>;
+  /** Every attachment key currently held, for the orphan sweep. */
+  blobKeys(): Promise<string[]>;
 }
 
 const DB_NAME = 'tech-lead-hub';
-const DB_VERSION = 1;
+/** v2 added the attachment store. */
+const DB_VERSION = 2;
 const STORE = 'decisions';
+/**
+ * Attachment bytes, one record per attachment, apart from the document.
+ *
+ * The document is rewritten whole on every save, so bytes living inside it
+ * would mean re-serialising every image on every keystroke (D1). Here each blob
+ * is written once and never touched again.
+ */
+const BLOBS = 'attachments';
 /** Single record holding the whole app state, as Roadmaps does with its key. */
 const DOC_KEY = 'doc:v1';
 
@@ -67,7 +82,9 @@ export function openDatabase(): Promise<IDBDatabase> {
     }
     const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = () => {
-      if (!req.result.objectStoreNames.contains(STORE)) req.result.createObjectStore(STORE);
+      const db = req.result;
+      if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);
+      if (!db.objectStoreNames.contains(BLOBS)) db.createObjectStore(BLOBS);
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error ?? new Error('no se pudo abrir la base de datos'));
@@ -123,6 +140,50 @@ export class IndexedDbBackend implements DecisionsBackend {
       tx.onabort = () => reject(tx.error ?? new Error('el guardado se canceló'));
     });
     await put;
+  }
+
+  async putBlob(id: string, blob: Blob): Promise<void> {
+    const db = await this.db_();
+    const tx = db.transaction(BLOBS, 'readwrite');
+    tx.objectStore(BLOBS).put(blob, id);
+    await this.settled(tx, 'no se pudo guardar el adjunto');
+  }
+
+  async getBlob(id: string): Promise<Blob | null> {
+    try {
+      const db = await this.db_();
+      const tx = db.transaction(BLOBS, 'readonly');
+      const out = await request(tx.objectStore(BLOBS).get(id));
+      return out instanceof Blob ? out : null;
+    } catch {
+      // A missing blob is a declared absence, not a failure of the app: an
+      // imported decision has fiches whose bytes live on another machine.
+      return null;
+    }
+  }
+
+  async deleteBlobs(ids: string[]): Promise<void> {
+    if (ids.length === 0) return;
+    const db = await this.db_();
+    const tx = db.transaction(BLOBS, 'readwrite');
+    for (const id of ids) tx.objectStore(BLOBS).delete(id);
+    await this.settled(tx, 'no se pudieron borrar los adjuntos');
+  }
+
+  async blobKeys(): Promise<string[]> {
+    const db = await this.db_();
+    const tx = db.transaction(BLOBS, 'readonly');
+    const keys = await request(tx.objectStore(BLOBS).getAllKeys());
+    return keys.map(String);
+  }
+
+  /** Resolve when a transaction finishes, reject when it does not. */
+  private settled(tx: IDBTransaction, message: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error ?? new Error(message));
+      tx.onabort = () => reject(tx.error ?? new Error(message));
+    });
   }
 }
 

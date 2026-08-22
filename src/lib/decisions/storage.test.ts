@@ -16,6 +16,7 @@ const doc = (n: number): DecisionsData => ({
     impact: null,
     notes: '',
     internalNote: '',
+    attachments: [],
     capturedAt: null,
     captureSource: 'tecleado',
     options: [],
@@ -110,5 +111,55 @@ describe('the Decisions store', () => {
       typeof localStorage === 'undefined' ? [] : Object.keys(localStorage).sort(),
     );
     expect(after).toBe(before);
+  });
+});
+
+describe('the attachment store', () => {
+  const blob = (n = 32) => new Blob([new Uint8Array(n)], { type: 'image/png' });
+
+  it('round-trips an attachment', async () => {
+    const backend = new IndexedDbBackend();
+    await backend.putBlob('att1', blob(64));
+
+    const out = await backend.getBlob('att1');
+    expect(out).toBeInstanceOf(Blob);
+    expect(out!.size).toBe(64);
+  });
+
+  it('survives a new connection', async () => {
+    await new IndexedDbBackend().putBlob('att1', blob());
+    expect(await new IndexedDbBackend().getBlob('att1')).toBeInstanceOf(Blob);
+  });
+
+  it('reports nothing for an attachment it does not hold', async () => {
+    expect(await new IndexedDbBackend().getBlob('de-otra-maquina')).toBe(null);
+  });
+
+  it('deletes attachments and lists what is left', async () => {
+    const backend = new IndexedDbBackend();
+    await backend.putBlob('a', blob());
+    await backend.putBlob('b', blob());
+    await backend.putBlob('c', blob());
+
+    await backend.deleteBlobs(['a', 'c']);
+    expect((await backend.blobKeys()).sort()).toEqual(['b']);
+  });
+
+  it('deleting nothing is not an error', async () => {
+    await expect(new IndexedDbBackend().deleteBlobs([])).resolves.toBeUndefined();
+  });
+
+  /** The point of D1: bytes and document live in separate records. */
+  it('keeps the document out of the attachment store and vice versa', async () => {
+    const backend = new IndexedDbBackend();
+    await backend.save(doc(2));
+    await backend.putBlob('att1', blob(128));
+
+    const out = await backend.load();
+    expect(out.kind === 'loaded' && out.data.decisions).toHaveLength(2);
+    expect(await backend.blobKeys()).toEqual(['att1']);
+    // Writing the document again leaves the bytes untouched.
+    await backend.save(doc(3));
+    expect((await backend.getBlob('att1'))!.size).toBe(128);
   });
 });

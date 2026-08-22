@@ -17,6 +17,7 @@
 
 import type { IsoDate } from '../../model/types';
 import type { CriterionId, RiskLevel } from './criteria';
+import type { Attachment } from './attachments';
 
 /**
  * What one alternative is worth on one criterion.
@@ -129,6 +130,16 @@ export interface Decision {
    * this never leaves the study.
    */
   internalNote: string;
+
+  /**
+   * Visual support for the study: diagrams, screenshots.
+   *
+   * Only the fiches. The bytes live in their own object store, keyed by the
+   * fiche's id, so writing text never rewrites an image (D1). A fiche whose
+   * bytes are missing is not an error — it is what an imported document
+   * produces, and it is shown as a declared absence.
+   */
+  attachments: Attachment[];
 
   options: Option[];
   /**

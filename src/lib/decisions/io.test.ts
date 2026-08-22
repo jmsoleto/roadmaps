@@ -14,6 +14,9 @@ const full = (): Decision => ({
   impact: 'alto',
   notes: 'lo habló también Iván',
   internalNote: 'el equipo de pagos no llega a Q4',
+  attachments: [
+    { id: 'att1', name: 'flujo-psp.png', size: 412_336, mime: 'image/png', addedAt: '2026-08-14' },
+  ],
   capturedAt: '2026-08-12',
   captureSource: 'tecleado',
   options: [
@@ -272,5 +275,74 @@ describe('importing a document written by the previous version', () => {
     const b = parseDecisionsImport(legacy);
     expect(a[0].id).not.toBe(b[0].id);
     expect(a[0].options[0].id).not.toBe(b[0].options[0].id);
+  });
+});
+
+describe('the attachment manifest', () => {
+  it('carries the fiche of each attachment', () => {
+    const [back] = roundTrip([full()]);
+    // Everything but the key, which is reissued on the way in — see below.
+    expect(back.attachments).toHaveLength(1);
+    expect(back.attachments[0]).toMatchObject({
+      name: 'flujo-psp.png',
+      size: 412_336,
+      mime: 'image/png',
+      addedAt: '2026-08-14',
+    });
+  });
+
+  /** The whole reason the bytes stay out: a backup nobody makes is no backup. */
+  it('does not let the document grow with the images', () => {
+    const light = full();
+    const heavy = full();
+    heavy.attachments = [{ ...heavy.attachments[0], size: 18 * 1024 * 1024 }];
+
+    const diff = Math.abs(exportDecisions([heavy]).length - exportDecisions([light]).length);
+    expect(diff).toBeLessThan(50);
+  });
+
+  it('carries no binary content', () => {
+    const doc = exportDecisions([full()]);
+    expect(doc).not.toMatch(/base64|blob|data:image/i);
+  });
+
+  it('tolerates a document from before attachments existed', () => {
+    const older = JSON.stringify({
+      kind: 'tech-lead-hub/decisions',
+      version: 2,
+      decisions: [{ id: 'd1', origin: 'x' }],
+    });
+    expect(parseDecisionsImport(older)[0].attachments).toEqual([]);
+  });
+
+  /**
+   * The aliasing bug this guards: the bytes never travel, so a kept id would
+   * point at whatever lived under that key here — and two imports of the same
+   * document would share blobs, making a delete blank the other's images.
+   */
+  it('reissues attachment ids, so an import never borrows local bytes', () => {
+    const a = roundTrip([full()]);
+    const b = roundTrip([full()]);
+
+    expect(a[0].attachments[0].id).not.toBe('att1');
+    expect(a[0].attachments[0].id).not.toBe(b[0].attachments[0].id);
+    // The fiche itself is untouched: only the key changes.
+    expect(a[0].attachments[0].name).toBe('flujo-psp.png');
+    expect(a[0].attachments[0].size).toBe(412_336);
+  });
+
+  it('drops a malformed fiche', () => {
+    const doc = JSON.stringify({
+      kind: 'tech-lead-hub/decisions',
+      version: 2,
+      decisions: [
+        { id: 'd1', origin: 'x', attachments: [{ name: 'sin id' }, { id: 'a', size: 10 }] },
+      ],
+    });
+    const back = parseDecisionsImport(doc)[0].attachments;
+    expect(back).toHaveLength(1);
+    expect(back[0].size).toBe(10);
+    // The one without an id is dropped; the survivor gets a fresh key.
+    expect(back[0].id).not.toBe('a');
   });
 });

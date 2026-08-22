@@ -7,12 +7,29 @@ import { outcome, phaseOf, recommendationIsFrozen } from './model/state';
 /** In-memory backend, so the store can be exercised without IndexedDB. */
 class FakeBackend implements DecisionsBackend {
   saved: DecisionsData | null = null;
+  blobs = new Map<string, Blob>();
+  deleted: string[] = [];
   constructor(private outcome: LoadOutcome = { kind: 'empty' }) {}
   async load(): Promise<LoadOutcome> {
     return this.outcome;
   }
   async save(data: DecisionsData): Promise<void> {
     this.saved = data;
+  }
+  async putBlob(id: string, blob: Blob): Promise<void> {
+    this.blobs.set(id, blob);
+  }
+  async getBlob(id: string): Promise<Blob | null> {
+    return this.blobs.get(id) ?? null;
+  }
+  async deleteBlobs(ids: string[]): Promise<void> {
+    for (const id of ids) {
+      this.blobs.delete(id);
+      this.deleted.push(id);
+    }
+  }
+  async blobKeys(): Promise<string[]> {
+    return [...this.blobs.keys()];
   }
 }
 
@@ -23,6 +40,14 @@ class FailingSave implements DecisionsBackend {
   }
   async save(): Promise<void> {
     throw new Error('la base de datos se cerró');
+  }
+  async putBlob(): Promise<void> {}
+  async getBlob(): Promise<Blob | null> {
+    return null;
+  }
+  async deleteBlobs(): Promise<void> {}
+  async blobKeys(): Promise<string[]> {
+    return [];
   }
 }
 
@@ -49,6 +74,7 @@ describe('opening the store', () => {
       originContext: '',
       question: '¿?',
       internalNote: '',
+      attachments: [],
       capturedAt: null,
       captureSource: 'tecleado',
       project: '',
@@ -342,5 +368,159 @@ describe('counting', () => {
     store.markReady(d.id, '2026-07-20');
 
     expect(store.countLapsed('2026-08-20')).toBe(1);
+  });
+});
+
+describe('visual support', () => {
+  const png = (bytes = 1024) =>
+    new File([new Uint8Array(bytes)], 'flujo.png', { type: 'image/png' });
+
+  async function withDecision() {
+    const { store, backend } = await storeWith();
+    const d = store.capture('duda')!;
+    return { store, backend, id: d.id, live: () => store.all.find((x) => x.id === d.id)! };
+  }
+
+  it('attaches an image, keeping its fiche and its bytes apart', async () => {
+    const { store, backend, id, live } = await withDecision();
+    expect(await store.attach(id, png(2048))).toBe(null);
+
+    const [fiche] = live().attachments;
+    expect(fiche.name).toBe('flujo.png');
+    expect(fiche.size).toBe(2048);
+    expect(backend.blobs.get(fiche.id)).toBeInstanceOf(Blob);
+    // The document carries no bytes.
+    expect(JSON.stringify(live())).not.toMatch(/blob|base64/i);
+  });
+
+  it('names something pasted, which arrives without one', async () => {
+    const { store, id, live } = await withDecision();
+    await store.attach(id, new Blob([new Uint8Array(10)], { type: 'image/png' }));
+    expect(live().attachments[0].name).toMatch(/^captura-\d{8}-\d{6}\.png$/);
+  });
+
+  it('refuses anything that is not an image', async () => {
+    const { store, id, live } = await withDecision();
+    const msg = await store.attach(id, new File(['x'], 'notas.pdf', { type: 'application/pdf' }));
+    expect(msg).toMatch(/solo se pueden adjuntar imágenes/i);
+    expect(live().attachments).toEqual([]);
+  });
+
+  it('refuses a file over the limit, saying what it weighs', async () => {
+    const { store, id, live } = await withDecision();
+    const huge = new File([], 'enorme.png', { type: 'image/png' });
+    Object.defineProperty(huge, 'size', { value: 40 * 1024 * 1024 });
+
+    const msg = await store.attach(id, huge);
+    expect(msg).toMatch(/40\.0 MB/);
+    expect(msg).toMatch(/máximo/);
+    expect(live().attachments).toEqual([]);
+  });
+
+  it('removes the fiche and the bytes together', async () => {
+    const { store, backend, id, live } = await withDecision();
+    await store.attach(id, png());
+    const attId = live().attachments[0].id;
+
+    store.detach(id, attId);
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(live().attachments).toEqual([]);
+    expect(backend.blobs.has(attId)).toBe(false);
+  });
+
+  it('takes the bytes with it when the decision is deleted', async () => {
+    const { store, backend, id, live } = await withDecision();
+    await store.attach(id, png());
+    const attId = live().attachments[0].id;
+
+    store.delete(id);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(backend.blobs.has(attId)).toBe(false);
+  });
+
+  it('reads back the bytes it stored', async () => {
+    const { store, id, live } = await withDecision();
+    await store.attach(id, png(64));
+    expect(await store.blobFor(live().attachments[0].id)).toBeInstanceOf(Blob);
+  });
+
+  /** What an imported document produces: a fiche whose image is elsewhere. */
+  it('reports no bytes for a fiche that has none', async () => {
+    const { store } = await withDecision();
+    expect(await store.blobFor('att-de-otra-maquina')).toBe(null);
+  });
+
+  it('refuses to attach when the store is unavailable', async () => {
+    const { store } = await storeWith({ kind: 'unavailable', reason: 'otra pestaña' });
+    expect(await store.attach('cualquiera', png())).toMatch(/no están disponibles/);
+  });
+});
+
+describe('sweeping orphaned bytes', () => {
+  const decisionWith = (attIds: string[]): DecisionsData => ({
+    decisions: [
+      {
+        id: 'd1',
+        origin: 'duda',
+        originContext: '',
+        question: '',
+        internalNote: '',
+        attachments: attIds.map((id) => ({
+          id,
+          name: `${id}.png`,
+          size: 10,
+          mime: 'image/png',
+          addedAt: '2026-08-20',
+        })),
+        capturedAt: null,
+        captureSource: 'tecleado',
+        project: '',
+        stakeholder: '',
+        deadline: null,
+        impact: null,
+        notes: '',
+        options: [],
+        readyAt: null,
+        recommendation: null,
+        resolution: null,
+      },
+    ],
+  });
+
+  /** Bytes nobody can reach are rubbish; a fiche without bytes is a record. */
+  it('drops bytes no fiche mentions', async () => {
+    const backend = new FakeBackend({ kind: 'loaded', data: decisionWith(['vivo']) });
+    backend.blobs.set('vivo', new Blob(['a']));
+    backend.blobs.set('huerfano', new Blob(['b']));
+
+    const store = new DecisionsStore(backend);
+    await store.init();
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(backend.blobs.has('vivo')).toBe(true);
+    expect(backend.blobs.has('huerfano')).toBe(false);
+  });
+
+  it('keeps a fiche whose bytes are missing', async () => {
+    const backend = new FakeBackend({ kind: 'loaded', data: decisionWith(['sin-bytes']) });
+    const store = new DecisionsStore(backend);
+    await store.init();
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(store.all[0].attachments.map((a) => a.id)).toEqual(['sin-bytes']);
+    expect(backend.deleted).toEqual([]);
+  });
+
+  it('sweeps nothing when the document could not be read', async () => {
+    const backend = new FakeBackend({ kind: 'unavailable', reason: 'otra pestaña' });
+    backend.blobs.set('cualquiera', new Blob(['a']));
+
+    const store = new DecisionsStore(backend);
+    await store.init();
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(backend.blobs.has('cualquiera')).toBe(true);
+    expect(backend.deleted).toEqual([]);
   });
 });

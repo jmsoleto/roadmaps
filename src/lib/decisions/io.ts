@@ -74,7 +74,15 @@ function reissueIdentity(d: Decision): Decision {
         : null;
   }
 
-  return { ...d, id: uid('dec'), options, recommendation, resolution };
+  // Attachment ids are reissued too, and for a sharper reason than the rest.
+  // The bytes never travel, so a kept id would point at whatever happened to
+  // live under that key on *this* machine — and importing the same document
+  // twice would leave two decisions sharing blobs, so deleting one would blank
+  // the other's images. A new id points at nothing, which is the truth: the
+  // fiche arrived, the image did not.
+  const attachments = d.attachments.map((a) => ({ ...a, id: uid('att') }));
+
+  return { ...d, id: uid('dec'), attachments, options, recommendation, resolution };
 }
 
 /**

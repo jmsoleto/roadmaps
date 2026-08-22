@@ -38,6 +38,7 @@ import {
 import { normalizeDecisions } from './model/normalize';
 import { suggestProjects } from './model/projects';
 import type { CriterionId } from './model/criteria';
+import { pastedName, rejectionMessage, rejectionOf, type Attachment } from './model/attachments';
 
 const SAVE_DEBOUNCE_MS = 250;
 
@@ -78,8 +79,32 @@ export class DecisionsStore {
           ? (normalizeDecisions(out.data) ?? emptyDecisionsData())
           : emptyDecisionsData();
       this.unavailable = null;
+      // Only once the document has been read: with the store unavailable we
+      // know nothing about what is referenced, and must not delete anything.
+      void this.sweepOrphanBlobs();
     }
     this.ready = true;
+  }
+
+  /**
+   * Drop attachment bytes that no fiche mentions (D4).
+   *
+   * One direction only. Bytes without a fiche are unreachable — nobody can see
+   * them and nothing will ever claim them — so they are rubbish. A fiche
+   * without bytes is the opposite: it is exactly what importing produces, and
+   * deleting it would destroy the record that the image ever existed.
+   */
+  private async sweepOrphanBlobs(): Promise<void> {
+    try {
+      const referenced = new Set(
+        this.data.decisions.flatMap((d) => d.attachments.map((a) => a.id)),
+      );
+      const stored = await this.backend.blobKeys();
+      const orphans = stored.filter((id) => !referenced.has(id));
+      if (orphans.length > 0) await this.backend.deleteBlobs(orphans);
+    } catch {
+      // Housekeeping: failing to tidy up must never stop the app from starting.
+    }
   }
 
   // ---- reading ----
@@ -145,6 +170,7 @@ export class DecisionsStore {
       impact: null,
       notes: '',
       internalNote: '',
+      attachments: [],
       options: [],
       readyAt: null,
       recommendation: null,
@@ -193,9 +219,68 @@ export class DecisionsStore {
     if (this.unavailable) return;
     const i = this.data.decisions.findIndex((d) => d.id === id);
     if (i === -1) return;
+    const orphaned = this.data.decisions[i].attachments.map((a) => a.id);
     this.data.decisions.splice(i, 1);
+    void this.backend.deleteBlobs(orphaned).catch(() => {
+      // Swept on the next load if this fails.
+    });
     if (this.selectedId === id) this.selectedId = null;
     this.scheduleSave();
+  }
+
+  // ---- visual support ----
+
+  /**
+   * Attach an image, writing its bytes before recording the fiche.
+   *
+   * That order matters: a fiche whose bytes never made it would show as a
+   * permanent absence, while bytes without a fiche are swept on next load.
+   * Failing safe means failing towards the recoverable side.
+   *
+   * Returns the rejection message when the file is not admissible.
+   */
+  async attach(id: string, file: File | Blob, name?: string): Promise<string | null> {
+    if (this.unavailable) return 'Las decisiones no están disponibles.';
+    const d = this.find(id);
+    if (!d) return null;
+
+    const mime = file.type;
+    const reason = rejectionOf({ type: mime, size: file.size });
+    if (reason) return rejectionMessage(reason, file.size);
+
+    const attachment: Attachment = {
+      id: uid('att'),
+      name: name?.trim() || (file instanceof File ? file.name : '') || pastedName(new Date(), mime),
+      size: file.size,
+      mime,
+      addedAt: todayIso(),
+    };
+
+    try {
+      await this.backend.putBlob(attachment.id, file);
+    } catch (e) {
+      return e instanceof Error ? e.message : 'No se pudo guardar el adjunto.';
+    }
+
+    d.attachments.push(attachment);
+    this.scheduleSave();
+    return null;
+  }
+
+  /** Remove an attachment and the bytes behind it. */
+  detach(id: string, attachmentId: string): void {
+    this.patch(id, (d) => {
+      d.attachments = d.attachments.filter((a) => a.id !== attachmentId);
+    });
+    void this.backend.deleteBlobs([attachmentId]).catch(() => {
+      // The fiche is already gone; the bytes get swept on the next load.
+    });
+  }
+
+  /** The bytes of an attachment, or `null` when they are not on this machine. */
+  async blobFor(attachmentId: string): Promise<Blob | null> {
+    if (this.unavailable) return null;
+    return this.backend.getBlob(attachmentId);
   }
 
   // ---- alternatives ----

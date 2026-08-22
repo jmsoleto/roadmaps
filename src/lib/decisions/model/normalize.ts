@@ -18,6 +18,7 @@
 
 import { isCriterionId, isRiskLevel, isAppraisal, type CriterionId } from './criteria';
 import { isIsoDate } from '../../time/timeline';
+import type { Attachment } from './attachments';
 import type {
   Assessment,
   AssessmentValue,
@@ -136,6 +137,19 @@ function normalizeOption(raw: unknown): Option | null {
   return { id: o.id, text: str(o.text), assessments };
 }
 
+function normalizeAttachment(raw: unknown): Attachment | null {
+  if (typeof raw !== 'object' || raw === null) return null;
+  const a = raw as Record<string, unknown>;
+  if (typeof a.id !== 'string' || typeof a.size !== 'number') return null;
+  return {
+    id: a.id,
+    name: str(a.name) || a.id,
+    size: a.size,
+    mime: str(a.mime) || 'image/png',
+    addedAt: isIsoDate(a.addedAt) ? a.addedAt : '',
+  };
+}
+
 const captureSource = (v: unknown): CaptureSource => (v === 'dictado' ? 'dictado' : 'tecleado');
 
 export function normalizeDecision(raw: unknown): Decision | null {
@@ -186,6 +200,12 @@ export function normalizeDecision(raw: unknown): Decision | null {
     impact: d.impact === 'alto' || d.impact === 'medio' || d.impact === 'bajo' ? d.impact : null,
     notes: str(d.notes),
     internalNote: str(d.internalNote),
+    attachments: Array.isArray(d.attachments)
+      ? d.attachments.flatMap((a) => {
+          const parsed = normalizeAttachment(a);
+          return parsed ? [parsed] : [];
+        })
+      : [],
     options,
     readyAt,
     recommendation,
