@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-08-23
+goal: "Registro retroactivo: que un almacen de IndexedDB que no responde no
+  impida arrancar al resto de la aplicacion"

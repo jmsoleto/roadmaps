@@ -5,6 +5,8 @@
 Import/export en JSON como copia de seguridad e intercambio manual, preservando la integridad referencial. Es el único mecanismo de trasvase que existe: sin servidor, un documento exportado es la única forma de mover algo entre navegadores o de recuperarlo.
 
 Cubre los roadmaps —en el formato actual y en el heredado—, los temas, y las decisiones. Cada uno es un documento independiente: un fichero de decisiones nunca lleva roadmaps ni al revés, y cada aplicación rechaza el documento de la otra diciendo cuál es.
+
+Un documento de decisiones lleva la ficha de cada imagen adjunta pero no su contenido, para que exportar siga siendo algo que se hace. Lo que no puede es callárselo: el manifiesto viaja precisamente para que quien importe vea qué falta.
 ## Requirements
 ### Requirement: Exportar un roadmap a JSON
 El sistema MUST permitir exportar un roadmap a un archivo JSON autocontenido apto como backup e intercambio manual.
@@ -219,4 +221,21 @@ El sistema MUST asignar identidad nueva a las decisiones importadas, de modo que
 #### Scenario: Importar un documento de roadmaps en Decisions
 - **WHEN** el usuario intenta importar en Decisions un documento exportado desde Roadmaps
 - **THEN** el sistema lo rechaza indicando que no es un documento de decisiones
+
+### Requirement: El documento de decisiones lleva el manifiesto de adjuntos, no sus bytes
+El documento exportado MUST incluir, por cada adjunto, su nombre, su peso, su tipo y cuándo se añadió, y MUST NOT incluir su contenido binario.
+
+Omitir el contenido es deliberado: un documento con imágenes dentro pesa decenas de megas y deja de hacerse. Lo que MUST NOT ocurrir es que se omita en silencio — el manifiesto viaja precisamente para que quien importe vea qué falta y cuánto pesaba.
+
+#### Scenario: Exportar decisiones con adjuntos
+- **WHEN** el usuario exporta decisiones que tienen imágenes adjuntas
+- **THEN** el documento incluye la ficha de cada imagen y no su contenido
+
+#### Scenario: El tamaño del documento no depende de las imágenes
+- **WHEN** se exportan dos conjuntos iguales salvo por el peso de sus adjuntos
+- **THEN** los dos documentos tienen un tamaño equivalente
+
+#### Scenario: Importar un documento con manifiesto
+- **WHEN** el usuario importa un documento cuyas decisiones declaran adjuntos
+- **THEN** el sistema conserva las fichas y las presenta como ausencias, sin dar la decisión por completa
 

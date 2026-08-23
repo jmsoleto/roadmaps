@@ -1,3 +1,13 @@
+## RENAMED Requirements
+
+### Requirement: La recomendación se congela al declarar la decisión lista
+FROM: `### Requirement: La recomendación se congela al plantear`
+TO: `### Requirement: La recomendación se congela al declarar la decisión lista`
+
+### Requirement: Alternativas valoradas criterio a criterio
+FROM: `### Requirement: Alternativas con ejes de intercambio`
+TO: `### Requirement: Alternativas valoradas criterio a criterio`
+
 ## MODIFIED Requirements
 
 ### Requirement: El estado de una decisión se deriva de sus datos

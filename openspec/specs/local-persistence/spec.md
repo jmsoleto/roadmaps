@@ -4,7 +4,7 @@
 
 Cómo sobreviven los datos entre sesiones, sabiendo que no hay servidor y que perderlos no tiene vuelta atrás.
 
-**Un almacén por aplicación**, y ninguna lee el de otra. El de Roadmaps es el almacenamiento de clave-valor del navegador, bajo una clave versionada, y no se mueve de ahí. El de Decisions vive fuera de él, en un almacén cuya cuota no compite con aquella: agotar la del primero haría fallar el guardado de Roadmaps, y ese fallo no es visible para el usuario.
+**Un almacén por aplicación**, y ninguna lee el de otra. El de Roadmaps es el almacenamiento de clave-valor del navegador, bajo una clave versionada, y no se mueve de ahí. El de Decisions vive fuera de él, en un almacén cuya cuota no compite con aquella: agotar la del primero haría fallar el guardado de Roadmaps, y ese fallo no es visible para el usuario. Dentro de ese almacén, el contenido binario de los adjuntos va aparte del documento, que se reescribe entero en cada guardado.
 
 Cubre además las fechas absolutas como formato canónico, el autosave con agrupación de escrituras, la persistencia del estado de sesión y de las preferencias de tema, el volcado de los cambios pendientes al cerrar, y la distinción entre un almacén vacío y uno que no se ha podido abrir.
 ## Requirements
@@ -217,4 +217,53 @@ Arrancar en blanco sobre un almacén que sí tiene datos invita a volver a escri
 
 - **WHEN** el almacén de Decisions no se puede abrir
 - **THEN** Roadmaps y la landing del hub siguen funcionando con normalidad
+
+### Requirement: Los bytes de los adjuntos se guardan aparte del documento
+El sistema MUST guardar el contenido binario de los adjuntos en un almacén distinto del que guarda el documento de decisiones, dentro del mismo almacén de la aplicación, referenciado desde la ficha de cada adjunto.
+
+El documento se reescribe entero en cada guardado; con los bytes dentro, escribir una letra en una nota reescribiría todas las imágenes de todas las decisiones.
+
+#### Scenario: Escribir texto no reescribe las imágenes
+- **WHEN** el usuario edita el texto de una decisión que tiene adjuntos
+- **THEN** el sistema guarda el documento sin volver a escribir el contenido de los adjuntos
+
+#### Scenario: Los adjuntos sobreviven al cierre del navegador
+- **WHEN** el usuario adjunta imágenes a una decisión y cierra el navegador por completo
+- **THEN** al volver a abrir siguen ahí, con su ficha y su contenido
+
+### Requirement: Recogida de contenidos huérfanos
+Al arrancar, y solo tras haber leído el documento con éxito, el sistema MUST borrar el contenido de los adjuntos que ninguna ficha menciona.
+
+El sistema MUST NOT borrar fichas cuyo contenido falte: una ficha sin bytes es lo que produce una importación, y borrarla destruiría el registro de que esa imagen existió.
+
+#### Scenario: Contenido sin dueño
+- **WHEN** el almacén contiene el contenido de un adjunto que ninguna decisión menciona
+- **THEN** el sistema lo borra al arrancar
+
+#### Scenario: Ficha sin contenido
+- **WHEN** una decisión declara un adjunto cuyo contenido no está en el almacén
+- **THEN** el sistema conserva la ficha y no borra nada
+
+#### Scenario: No se recoge nada si no se pudo leer
+- **WHEN** el almacén de Decisions no se puede abrir
+- **THEN** el sistema no borra ningún contenido
+
+### Requirement: Un almacén que no responde no impide arrancar
+El sistema MUST acotar la espera al abrir el almacén de una aplicación. Si no obtiene respuesta —ni éxito, ni error, ni el aviso de estar bloqueado— MUST darlo por no disponible y explicar la causa probable.
+
+Ninguna aplicación MUST poder impedir que el resto arranque por culpa de su almacén. El arranque MUST completarse aunque el almacén de una de ellas no conteste, y esa aplicación MUST reflejar por sí misma que no está disponible.
+
+Mientras el almacén todavía está respondiendo, el sistema MUST distinguirlo de un almacén vacío: enseñar una lista vacía sobre datos que aún no se han leído es el mismo error que enseñarla sobre datos que no se han podido leer.
+
+#### Scenario: El almacén no contesta
+- **WHEN** la apertura del almacén de una aplicación no produce ninguna respuesta en un plazo razonable
+- **THEN** el sistema la da por no disponible e indica que puede haber otra pestaña con una versión anterior abierta
+
+#### Scenario: El resto de la aplicación arranca igual
+- **WHEN** el almacén de una aplicación no responde
+- **THEN** el hub y las demás aplicaciones se montan y funcionan con normalidad
+
+#### Scenario: Mientras se está abriendo
+- **WHEN** el usuario entra en una aplicación cuyo almacén todavía está respondiendo
+- **THEN** el sistema indica que se está abriendo, y no muestra una lista vacía
 
