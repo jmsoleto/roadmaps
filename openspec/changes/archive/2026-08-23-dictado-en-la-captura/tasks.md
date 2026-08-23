@@ -32,4 +32,4 @@
 - [x] 4.2 Comprobar que no se ha añadido ninguna dependencia de ejecución
 - [x] 4.3 Comprobar que en ningún sitio del código se guarda audio
 - [x] 4.4 Recorrido manual: la captura sin dictado sigue igual de rápida
-- [ ] 4.5 Recorrido manual: con la transcripción real, el texto entra, se corrige y se guarda como dictado — **pendiente**: exige micrófono y conceder el permiso, que no se puede hacer sin una persona delante. La lógica está cubierta por 16 tests con un reconocedor de mentira
+- [x] 4.5 Recorrido manual: con la transcripción real, el texto entra, se corrige y se guarda como dictado — verificado por Jose en Chrome, con micrófono y permiso concedido. La transcripción de castellano técnico resulta utilizable, así que la marca de fragmentos dudosos se queda como el detalle que se diseñó y no como pieza central
