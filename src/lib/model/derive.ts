@@ -1,6 +1,7 @@
 /** Pure derivations over the data model (no reactivity, easy to test). */
 
 import { addDays, dayIndex } from '../time/timeline';
+import { ROW_H } from '../config';
 import type { Item, Phase, Roadmap, IsoDate } from './types';
 
 /** A flattened, render-ready row: a phase header, one of its items, or its "add" row. */
@@ -20,6 +21,130 @@ export function getVisibleRows(rm: Roadmap): VisibleRow[] {
     }
   }
   return out;
+}
+
+/**
+ * A stable identity for a visible row, independent of its position.
+ *
+ * Rows are rendered from `getVisibleRows` but positioned from `previewRows`,
+ * and the two lists hold different objects (the preview is built over shallow
+ * copies). Ids are what survives that, so they are what pairs the two.
+ */
+export function rowKey(v: VisibleRow): string {
+  if (v.kind === 'item') return `i:${v.item.id}`;
+  if (v.kind === 'add') return `a:${v.phase.id}`;
+  return `p:${v.phase.id}`;
+}
+
+/** Where one phase's block of visible rows starts, and how many rows it spans. */
+export interface PhaseBlock {
+  phaseId: string;
+  /** Index of the phase header within `getVisibleRows(rm)`. */
+  start: number;
+  /** Rows the block occupies: the header, plus its items and "add" row when expanded. */
+  len: number;
+}
+
+/**
+ * The visible-row span of each phase, read off the flattened list itself.
+ *
+ * Deliberately derived from `getVisibleRows` rather than recomputing
+ * `expanded ? 1 + children + 1 : 1`: that rule would then live in two places and
+ * a third row kind would have to be remembered in both.
+ */
+export function getPhaseBlocks(rm: Roadmap): PhaseBlock[] {
+  const out: PhaseBlock[] = [];
+  getVisibleRows(rm).forEach((v, i) => {
+    if (v.kind === 'phase') out.push({ phaseId: v.phase.id, start: i, len: 1 });
+    else out[out.length - 1].len++;
+  });
+  return out;
+}
+
+/**
+ * Where a row dragged `dy` pixels from index `from` lands, among `len` siblings.
+ *
+ * The clamp *is* the containment rule (design decision D3): an item can never
+ * name a position outside its phase, so nothing downstream has to detect an
+ * invalid drop, refuse it, or animate a rejected row back. The pointer keeps
+ * going and the row stops, which is how the limit gets taught.
+ */
+export function dropIndex(from: number, dy: number, len: number): number {
+  return Math.max(0, Math.min(len - 1, from + Math.round(dy / ROW_H)));
+}
+
+/**
+ * Where a phase dragged `dy` pixels from index `from` lands among its siblings.
+ *
+ * Phases need their own reckoning because their blocks are not all one row
+ * tall: a collapsed phase is a single row, an expanded one is its header plus
+ * its items plus its "add" row. So pixels cannot be divided by `ROW_H` the way
+ * `dropIndex` divides them for items — crossing a collapsed phase is one row of
+ * travel and crossing a long one is many.
+ *
+ * The rule is the one the eye is already applying: lift the block out, let the
+ * rest close up, and pick the slot whose resulting header position is nearest
+ * to where the held header actually is. Landing where you are closest to
+ * landing.
+ *
+ * `blocks` must be the layout as it stood when the gesture began, never the
+ * preview: measuring against a layout that the measurement itself rearranges
+ * feeds back, and the row judders between two positions at the boundary.
+ */
+export function dropBlockIndex(blocks: PhaseBlock[], from: number, dy: number): number {
+  const rest = blocks.filter((_, i) => i !== from);
+  let headerTop = dy / ROW_H;
+  for (let i = 0; i < from; i++) headerTop += blocks[i].len;
+
+  let best = 0;
+  let bestGap = Infinity;
+  let cum = 0;
+  for (let j = 0; j <= rest.length; j++) {
+    const gap = Math.abs(cum - headerTop);
+    if (gap < bestGap) {
+      bestGap = gap;
+      best = j;
+    }
+    if (j < rest.length) cum += rest[j].len;
+  }
+  return best;
+}
+
+/** Move one element of an array to another index, without touching the original. */
+export function moveInArray<T>(arr: T[], from: number, to: number): T[] {
+  const out = arr.slice();
+  const [moved] = out.splice(from, 1);
+  out.splice(to, 0, moved);
+  return out;
+}
+
+/** A reorder in flight: which row is held, where it came from, where it would land. */
+export type RowDrag =
+  | { kind: 'phase'; phaseId: string; from: number; to: number }
+  | { kind: 'item'; phaseId: string; itemId: string; from: number; to: number };
+
+/**
+ * The rows `getVisibleRows` would return if the pending reorder were applied.
+ *
+ * This is what positions every row during a drag (D5): one list drives both
+ * halves of every row — the grid track's `top` and the sidebar label's
+ * `translateY` — and it works the same for a phase block as for a single item.
+ * The held row is the only thing that escapes it, following the pointer in
+ * pixels instead of snapping to the grid.
+ *
+ * The copies are shallow and short-lived; nothing here mutates `rm`, and the
+ * rows it yields are only ever read for their position — `rowKey` is what pairs
+ * them back to the real rows being rendered.
+ */
+export function previewRows(rm: Roadmap, drag: RowDrag | null): VisibleRow[] {
+  if (!drag || drag.from === drag.to) return getVisibleRows(rm);
+  if (drag.kind === 'phase') {
+    return getVisibleRows({ ...rm, rows: moveInArray(rm.rows, drag.from, drag.to) });
+  }
+  const rows = rm.rows.map((p) =>
+    p.id === drag.phaseId ? { ...p, children: moveInArray(p.children, drag.from, drag.to) } : p,
+  );
+  return getVisibleRows({ ...rm, rows });
 }
 
 const minIso = (a: IsoDate, b: IsoDate): IsoDate => (a < b ? a : b);

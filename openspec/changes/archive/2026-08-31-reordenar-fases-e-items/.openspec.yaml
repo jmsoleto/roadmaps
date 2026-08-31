@@ -1,0 +1,5 @@
+schema: spec-driven
+created: 2026-08-31
+goal: Recuperar la reordenación vertical de fases e items arrastrando desde una
+  manija en el canalón, con la cabecera levantada y el resto de filas
+  apartándose en vivo

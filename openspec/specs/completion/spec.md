@@ -11,7 +11,9 @@ Cubre tres cosas que se sostienen entre sí. **La regla de orden**: un item no s
 Distinto de `blockers`, que registra lo que se espera de fuera: una dependencia externa sin resolver **no** impide completar un item. La regla de orden se establece sobre el trabajo propio, no sobre lo que deben terceros.
 
 El movimiento se reserva al momento de completar y vive donde se mira al hacerlo —el detalle del item— y donde queda a la vista —el porcentaje de la fase—, nunca en la marca de la barra, que puede estar tapada por el propio detalle.
+
 ## Requirements
+
 ### Requirement: Marcar y desmarcar un item como completado
 
 El sistema MUST permitir marcar un item como completado y volver a desmarcarlo. Un item recién creado MUST nacer sin completar.
@@ -340,3 +342,18 @@ en la fase del item desmarcado.
 - **WHEN** el usuario tiene activada la preferencia del sistema de reducir el movimiento y marca un item como completado
 - **THEN** el sistema no dibuja la marca y el porcentaje adopta su nuevo valor directamente, conservando toda la información y ninguna animación
 
+### Requirement: El congelamiento alcanza a las fechas, no al orden
+
+Un item completado MUST conservar la posibilidad de ser reordenado dentro de su fase, porque el congelamiento que impone la completitud recae sobre el eje del tiempo y la posición en la lista no pertenece a ese eje.
+
+El sistema MUST mantener por tanto una asimetría visible en la fila de un item completado: conserva su manija de reordenar en la columna de nombres y no ofrece asidero para arrastrar en la barra. Esa asimetría MUST ser legible antes de intentar el gesto, del mismo modo que ya lo es la ausencia de asidero en la barra.
+
+#### Scenario: Reordenar un item completado
+
+- **WHEN** el usuario arrastra por su manija un item que ya está completado
+- **THEN** el sistema cambia su posición dentro de la fase y conserva sin cambios su fecha de completado, sus fechas de inicio y fin, y las referencias que miden su desviación
+
+#### Scenario: La fila de un item completado
+
+- **WHEN** el usuario sitúa el puntero sobre la fila de un item completado
+- **THEN** el sistema muestra la manija de reordenar en el canalón, mientras la barra sigue sin ofrecer ningún asidero de arrastre

@@ -14,7 +14,7 @@ import { seedAppData, newRoadmap } from '../seed';
 import { uid } from '../util/id';
 import { nameKey } from '../util/roadmap-name';
 import { addDays, isIsoDate, snapToWorkday, todayIso } from '../time/timeline';
-import { effectiveStart, effectiveEnd } from '../model/derive';
+import { effectiveStart, effectiveEnd, moveInArray } from '../model/derive';
 import { enforceConstraints } from '../model/constraints';
 import { canComplete, completedDependents, isCompleted } from '../model/completion';
 import {
@@ -271,6 +271,25 @@ export class AppStore {
     this.scheduleSave();
   }
 
+  /**
+   * Move a phase to another position among its roadmap's phases.
+   *
+   * Deliberately `scheduleSave` and not `commit` (design decision D4).
+   * `commit` runs `enforceConstraints`, which is a fixed point over the
+   * `dependsOn` graph and is indifferent to the order of the array: permuting
+   * `rows` changes no date and no edge, so the sweep would have nothing to do.
+   * Adding it "just in case" would buy a full pass per drop in exchange for
+   * nothing.
+   */
+  movePhase(phaseId: string, toIndex: number): void {
+    const rm = this.activeRoadmap;
+    if (!rm) return;
+    const from = rm.rows.findIndex((p) => p.id === phaseId);
+    if (from === -1 || toIndex === from || toIndex < 0 || toIndex >= rm.rows.length) return;
+    rm.rows = moveInArray(rm.rows, from, toIndex);
+    this.scheduleSave();
+  }
+
   setPhaseDates(phaseId: string, startDate: IsoDate, endDate: IsoDate): void {
     const phase = this.findPhase(phaseId);
     if (phase) {
@@ -374,6 +393,26 @@ export class AppStore {
   }
 
   /** Move an item's dates. Does nothing to a completed item: it is frozen (D4). */
+  /**
+   * Move an item to another position among its phase's children.
+   *
+   * An item never leaves its phase (D2): `dependsOn` is resolved strictly
+   * within one phase, so a cross-phase move would leave dangling predecessor
+   * ids that `getMinStart` and the arrow drawing both skip in silence.
+   *
+   * No `commit` here either, for the reason spelled out on `movePhase`. This
+   * holds for a completed item too, which reorders like any other: freezing is
+   * about the time axis, and a position in a list is not a date (D9).
+   */
+  moveItem(phaseId: string, itemId: string, toIndex: number): void {
+    const phase = this.findPhase(phaseId);
+    if (!phase) return;
+    const from = phase.children.findIndex((c) => c.id === itemId);
+    if (from === -1 || toIndex === from || toIndex < 0 || toIndex >= phase.children.length) return;
+    phase.children = moveInArray(phase.children, from, toIndex);
+    this.scheduleSave();
+  }
+
   setItemDates(phaseId: string, itemId: string, startDate: IsoDate, endDate: IsoDate): void {
     const item = this.findItem(phaseId, itemId);
     if (item && !isCompleted(item)) {

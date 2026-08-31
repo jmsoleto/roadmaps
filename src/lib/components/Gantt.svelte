@@ -13,7 +13,18 @@
     snapForward,
   } from '../time/timeline';
   import { getMonthSegments, getSprintSegments } from '../time/segments';
-  import { getVisibleRows, effectiveStart, effectiveEnd } from '../model/derive';
+  import {
+    getVisibleRows,
+    effectiveStart,
+    effectiveEnd,
+    getPhaseBlocks,
+    dropIndex,
+    dropBlockIndex,
+    previewRows,
+    rowKey,
+    type RowDrag,
+    type VisibleRow,
+  } from '../model/derive';
   import { getMinStart } from '../model/constraints';
   import {
     countBlockedChildren,
@@ -272,6 +283,109 @@
     });
   }
 
+  // ---- vertical reordering ----
+
+  /**
+   * A reorder gesture in flight.
+   *
+   * `blocks` is snapshotted at pointerdown on purpose: the drop index is read
+   * against the layout the gesture started from, never against the preview it
+   * produces, or the two would feed each other and the held row would judder at
+   * every boundary (see `dropBlockIndex`).
+   */
+  type RowDragState = {
+    drag: RowDrag;
+    /** Pixels travelled since pointerdown. */
+    dy: number;
+    /** Visible-row index the held row started at, in pixels. */
+    originY: number;
+    /** How far up and down the held row may be drawn, in the same pixels. */
+    minY: number;
+    maxY: number;
+  };
+  let rowDrag = $state<RowDragState | null>(null);
+
+  function startReorder(e: PointerEvent, phase: Phase, item: Item | null) {
+    const blocks = getPhaseBlocks(rm);
+    const phaseIdx = rm.rows.findIndex((p) => p.id === phase.id);
+    if (phaseIdx === -1) return;
+
+    const from = item ? phase.children.findIndex((c) => c.id === item.id) : phaseIdx;
+    if (from === -1) return;
+
+    const base: RowDrag = item
+      ? { kind: 'item', phaseId: phase.id, itemId: item.id, from, to: from }
+      : { kind: 'phase', phaseId: phase.id, from, to: from };
+
+    const block = blocks[phaseIdx];
+    // The held row's resting position: an item sits after its phase header, a
+    // phase header at the top of its own block.
+    const originY = (item ? block.start + 1 + from : block.start) * ROW_H;
+    // And how far it may be drawn. The drop index is already clamped, so this
+    // is what makes the containment *visible* (D3): past the last sibling the
+    // pointer keeps going and the row stops, which is how the limit is taught.
+    // Without it the row would sail over its neighbours to a position it can
+    // never take.
+    const totalRows = blocks.reduce((n, b) => n + b.len, 0);
+    const minY = item ? (block.start + 1) * ROW_H : 0;
+    const maxY = item
+      ? (block.start + phase.children.length) * ROW_H
+      : (totalRows - block.len) * ROW_H;
+
+    const startY = e.clientY;
+    rowDrag = { drag: base, dy: 0, originY, minY, maxY };
+
+    onDrag(e, {
+      move: (ev) => {
+        const dy = ev.clientY - startY;
+        const to = item
+          ? dropIndex(from, dy, phase.children.length)
+          : dropBlockIndex(blocks, from, dy);
+        rowDrag = { drag: { ...base, to }, dy, originY, minY, maxY };
+      },
+      up: () => {
+        const d = rowDrag;
+        rowDrag = null;
+        if (!d || d.drag.to === d.drag.from) return;
+        if (d.drag.kind === 'phase') store.movePhase(d.drag.phaseId, d.drag.to);
+        else store.moveItem(d.drag.phaseId, d.drag.itemId, d.drag.to);
+      },
+    });
+  }
+
+  /**
+   * Every row's vertical position, for both halves of the Gantt (D5).
+   *
+   * Rows are rendered from `visible` but placed by their index in `preview` —
+   * the list that would exist if the pending reorder were already applied — so
+   * what you see mid-gesture is the outcome. The held row is the one exception:
+   * it follows the pointer in pixels instead of snapping to the grid, which for
+   * a phase means its children have already gone on ahead to the destination
+   * while its header is still in your hand (D6).
+   */
+  const preview = $derived(previewRows(rm, rowDrag?.drag ?? null));
+  const previewIndex = $derived.by(() => {
+    const m = new Map<string, number>();
+    preview.forEach((v, i) => m.set(rowKey(v), i));
+    return m;
+  });
+
+  function isHeld(v: VisibleRow): boolean {
+    const d = rowDrag?.drag;
+    if (!d) return false;
+    return d.kind === 'phase'
+      ? v.kind === 'phase' && v.phase.id === d.phaseId
+      : v.kind === 'item' && v.item.id === d.itemId;
+  }
+
+  function rowY(v: VisibleRow, i: number): number {
+    if (rowDrag && isHeld(v)) {
+      const y = rowDrag.originY + rowDrag.dy;
+      return Math.max(rowDrag.minY, Math.min(rowDrag.maxY, y));
+    }
+    return (previewIndex.get(rowKey(v)) ?? i) * ROW_H;
+  }
+
   // ---- inline delete (two-step confirm, no browser dialog) ----
   let confirmDel = $state<string | null>(null);
   function delRow(kind: 'phase' | 'item', phaseId: string, itemId?: string) {
@@ -314,7 +428,9 @@
   const itemRowIndex = $derived.by(() => {
     const m = new Map<string, number>();
     visible.forEach((v, i) => {
-      if (v.kind === 'item') m.set(v.item.id, i);
+      // Fractional while a row is held, so the curves stay pinned to the bars
+      // they connect instead of snapping to where the rows used to be.
+      if (v.kind === 'item') m.set(v.item.id, rowY(v, i) / ROW_H);
     });
     return m;
   });
@@ -394,15 +510,26 @@
   {/if}
 {/snippet}
 
-<div class="gantt-scroll" bind:this={scrollEl}>
+<div class="gantt-scroll" class:reordering={rowDrag !== null} bind:this={scrollEl}>
   <div class="sidebar">
     <div class="sidebar-head"></div>
     <div class="sidebar-head-spacer"></div>
-    <div class="sidebar-rows">
+    <div class="sidebar-rows" class:reordering={rowDrag !== null}>
       {#each visible as v, i (i)}
         {#if v.kind === 'phase'}
           {@const pct = phaseProgress(v.phase)}
-          <div class="row-label">
+          <div
+            class="row-label"
+            class:held={isHeld(v)}
+            style:transform="translateY({rowY(v, i) - i * ROW_H}px)"
+          >
+            <button
+              type="button"
+              class="row-grip"
+              onpointerdown={(ev) => startReorder(ev, v.phase, null)}
+              title="reordenar fase"
+              aria-label="reordenar fase">⠿</button
+            >
             <button
               type="button"
               class="chev"
@@ -440,7 +567,22 @@
             >
           </div>
         {:else if v.kind === 'item'}
-          <div class="row-label item">
+          <!-- The grip stays on a completed item. Completion freezes the time
+               axis, and a position in a list is not a date, so this row keeps
+               its handle in the gutter while its bar gives up the one that
+               moves dates (D9). -->
+          <div
+            class="row-label item"
+            class:held={isHeld(v)}
+            style:transform="translateY({rowY(v, i) - i * ROW_H}px)"
+          >
+            <button
+              type="button"
+              class="row-grip"
+              onpointerdown={(ev) => startReorder(ev, v.phase, v.item)}
+              title="reordenar item"
+              aria-label="reordenar item">⠿</button
+            >
             <span class="dot small" style:background={theme.slotColor(v.item.colorSlot)}></span>
             <input
               class="rl-input"
@@ -456,7 +598,10 @@
             >
           </div>
         {:else}
-          <div class="row-label add-actions">
+          <div
+            class="row-label add-actions"
+            style:transform="translateY({rowY(v, i) - i * ROW_H}px)"
+          >
             <button type="button" class="add-btn" onclick={() => store.addItem(v.phase.id)}
               >+ item</button
             >
@@ -496,7 +641,12 @@
       {/each}
     </div>
 
-    <div class="rows" style:width="{totalWidth}px" style:height="{totalHeight}px">
+    <div
+      class="rows"
+      class:reordering={rowDrag !== null}
+      style:width="{totalWidth}px"
+      style:height="{totalHeight}px"
+    >
       {#each weekends as d (d)}
         <div
           class="weekend-bg"
@@ -575,7 +725,8 @@
           class="track"
           class:item-track={v.kind === 'item'}
           class:add-track={v.kind === 'add'}
-          style:top="{i * ROW_H}px"
+          class:held={isHeld(v)}
+          style:top="{rowY(v, i)}px"
         >
           {#if createPreview && createPreview.rowIndex === i}
             <div
@@ -805,21 +956,92 @@
     background: var(--surface);
     border-bottom: 1px solid var(--line);
   }
+  /* The 18px of left padding beyond the old 10 is the gutter the grip sits in,
+     positioned rather than in flow so that every row's handle lines up in one
+     column whatever its indent. Both indented kinds grow by the same 18 so the
+     dots stay in the relationship they had (D8). */
   .row-label {
+    position: relative;
     display: flex;
     align-items: center;
     gap: 6px;
     height: var(--row-h);
-    padding: 0 10px;
+    padding: 0 10px 0 28px;
     border-bottom: 1px solid var(--line-weak);
+    background: var(--surface);
   }
+  /* The veil is translucent by design, so it is layered over the surface rather
+     than replacing it: identical at rest, and opaque once the row is lifted over
+     its neighbours. */
   .row-label.item {
-    padding-left: 28px;
-    background: var(--veil);
+    padding-left: 46px;
+    background: linear-gradient(var(--veil), var(--veil)), var(--surface);
   }
   .row-label.add-actions {
-    padding-left: 28px;
+    padding-left: 46px;
     gap: 6px;
+  }
+  /* Same reveal as .row-del: the space is always reserved and only the ink
+     fades in, so nothing shifts when the pointer arrives. `touch-action` is the
+     first in this file — without it the vertical gesture is swallowed by the
+     scroll container before it ever reaches us. */
+  .row-grip {
+    position: absolute;
+    left: 6px;
+    top: 0;
+    bottom: 0;
+    width: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: none;
+    background: none;
+    color: var(--text-dim);
+    font-size: 11px;
+    line-height: 1;
+    opacity: 0;
+    cursor: grab;
+    touch-action: none;
+  }
+  .row-label:hover .row-grip,
+  .row-label.held .row-grip {
+    opacity: 1;
+  }
+  .row-grip:hover {
+    color: var(--accent);
+  }
+  .row-grip:active {
+    cursor: grabbing;
+  }
+  /* The held row: lifted out of the stack, translucent, and inert to hit-testing
+     so the gesture keeps talking to the window listeners (D1). It is the real
+     row, not a copy — the bar half of it carries a label, badges, counters and
+     two handles that a clone would have to rebuild. */
+  .row-label.held,
+  .track.held {
+    opacity: 0.8;
+    z-index: 50;
+    pointer-events: none;
+  }
+  .row-label.held {
+    box-shadow: 0 6px 20px var(--shadow-strong);
+  }
+  /* Only while a gesture runs, so the one-shot re-render on drop does not
+     animate rows into their settled places. The held row is exempt: it tracks
+     the pointer and must not lag behind it. */
+  .sidebar-rows.reordering .row-label,
+  .rows.reordering .track {
+    transition:
+      transform 0.12s ease,
+      top 0.12s ease;
+  }
+  .sidebar-rows.reordering .row-label.held,
+  .rows.reordering .track.held {
+    transition: none;
+  }
+  .gantt-scroll.reordering {
+    user-select: none;
   }
   .add-btn {
     background: transparent;

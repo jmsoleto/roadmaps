@@ -263,3 +263,196 @@ describe('deleteRoadmap', () => {
     expect(backend.saved?.activeId).toBe('b');
   });
 });
+
+// ---- reordenación vertical ----
+
+const it_ = (id: string, over: Partial<import('../model/types').Item> = {}) => ({
+  id,
+  label: id,
+  colorSlot: 0,
+  startDate: '2026-02-02',
+  endDate: '2026-02-06',
+  assigneeId: null,
+  notes: '',
+  dependsOn: [] as string[],
+  blockers: [],
+  isMilestone: false,
+  completedDate: null,
+  endAtCompletion: null,
+  baselineEnd: null,
+  ...over,
+});
+
+const ph = (id: string, children: ReturnType<typeof it_>[]) => ({
+  id,
+  name: id,
+  colorSlot: 0,
+  expanded: true,
+  assigneeId: null,
+  notes: '',
+  startDate: null,
+  endDate: null,
+  children,
+});
+
+/** A store on one active roadmap holding the given phases. */
+async function storeWithRows(rows: ReturnType<typeof ph>[]) {
+  const data: AppData = {
+    roadmaps: [{ ...roadmap('r'), rows }],
+    assignees: [],
+    blockers: [],
+    activeId: 'r',
+  };
+  const store = new AppStore(new FakeStorage(data));
+  await store.init();
+  return store;
+}
+
+const phaseIds = (store: AppStore) => store.activeRoadmap!.rows.map((p) => p.id);
+const itemIds = (store: AppStore, phaseId: string) =>
+  store.activeRoadmap!.rows.find((p) => p.id === phaseId)!.children.map((c) => c.id);
+
+describe('movePhase', () => {
+  it('coloca la fase en la posición pedida', async () => {
+    const store = await storeWithRows([ph('a', []), ph('b', []), ph('c', [])]);
+    store.movePhase('a', 2);
+    expect(phaseIds(store)).toEqual(['b', 'c', 'a']);
+  });
+
+  it('mueve la fase hacia atrás igual que hacia delante', async () => {
+    const store = await storeWithRows([ph('a', []), ph('b', []), ph('c', [])]);
+    store.movePhase('c', 0);
+    expect(phaseIds(store)).toEqual(['c', 'a', 'b']);
+  });
+
+  it('la fase se lleva sus items consigo', async () => {
+    const store = await storeWithRows([ph('a', [it_('a0'), it_('a1')]), ph('b', [])]);
+    store.movePhase('a', 1);
+    expect(phaseIds(store)).toEqual(['b', 'a']);
+    expect(itemIds(store, 'a')).toEqual(['a0', 'a1']);
+  });
+
+  it('ignora un índice fuera de rango y un id desconocido', async () => {
+    const store = await storeWithRows([ph('a', []), ph('b', [])]);
+    store.movePhase('a', 5);
+    store.movePhase('a', -1);
+    store.movePhase('zzz', 1);
+    expect(phaseIds(store)).toEqual(['a', 'b']);
+  });
+});
+
+describe('moveItem', () => {
+  it('coloca el item en la posición pedida dentro de su fase', async () => {
+    const store = await storeWithRows([ph('a', [it_('a0'), it_('a1'), it_('a2')])]);
+    store.moveItem('a', 'a0', 2);
+    expect(itemIds(store, 'a')).toEqual(['a1', 'a2', 'a0']);
+  });
+
+  it('no toca las demás fases', async () => {
+    const store = await storeWithRows([
+      ph('a', [it_('a0'), it_('a1')]),
+      ph('b', [it_('b0'), it_('b1')]),
+    ]);
+    store.moveItem('a', 'a0', 1);
+    expect(itemIds(store, 'b')).toEqual(['b0', 'b1']);
+  });
+
+  it('ignora un índice fuera de rango y un id desconocido', async () => {
+    const store = await storeWithRows([ph('a', [it_('a0'), it_('a1')])]);
+    store.moveItem('a', 'a0', 9);
+    store.moveItem('a', 'nope', 1);
+    store.moveItem('nope', 'a0', 1);
+    expect(itemIds(store, 'a')).toEqual(['a0', 'a1']);
+  });
+});
+
+describe('reordenar no altera nada más que el orden', () => {
+  it('conserva las fechas de todo lo que se mueve y de lo que se aparta', async () => {
+    const store = await storeWithRows([
+      ph('a', [
+        it_('a0', { startDate: '2026-03-02', endDate: '2026-03-06' }),
+        it_('a1', { startDate: '2026-04-01', endDate: '2026-04-10' }),
+        it_('a2', { startDate: '2026-05-04', endDate: '2026-05-08' }),
+      ]),
+    ]);
+    const before = exportRoadmap(store.activeRoadmap!, store.data.assignees, store.data.blockers);
+    store.moveItem('a', 'a2', 0);
+    const after = exportRoadmap(store.activeRoadmap!, store.data.assignees, store.data.blockers);
+    // Mismas fechas, otro orden: lo exportado solo difiere en la permutación.
+    const dates = (json: string) =>
+      JSON.parse(json)
+        .roadmap.rows[0].children.map((c: { startDate: string; endDate: string }) => [
+          c.startDate,
+          c.endDate,
+        ])
+        .sort();
+    expect(dates(after)).toEqual(dates(before));
+    expect(itemIds(store, 'a')).toEqual(['a2', 'a0', 'a1']);
+  });
+
+  it('deja intacto dependsOn y no dispara ninguna cascada', async () => {
+    // a1 depende de a0 y arranca *antes* de que a0 termine: un estado que una
+    // pasada de enforceConstraints corregiría. Reordenar no debe provocarla.
+    const store = await storeWithRows([
+      ph('a', [
+        it_('a0', { startDate: '2026-03-02', endDate: '2026-03-20' }),
+        it_('a1', { startDate: '2026-03-03', endDate: '2026-03-10', dependsOn: ['a0'] }),
+      ]),
+    ]);
+    store.moveItem('a', 'a1', 0);
+    const a1 = store.activeRoadmap!.rows[0].children.find((c) => c.id === 'a1')!;
+    expect(a1.dependsOn).toEqual(['a0']);
+    expect(a1.startDate).toBe('2026-03-03');
+    expect(a1.endDate).toBe('2026-03-10');
+  });
+
+  it('mueve un item completado conservando sus fechas y sus referencias', async () => {
+    const store = await storeWithRows([
+      ph('a', [
+        it_('a0'),
+        it_('a1', {
+          startDate: '2026-03-02',
+          endDate: '2026-03-06',
+          completedDate: '2026-03-09',
+          endAtCompletion: '2026-03-06',
+          baselineEnd: '2026-03-04',
+        }),
+      ]),
+    ]);
+    store.moveItem('a', 'a1', 0);
+    const a1 = store.activeRoadmap!.rows[0].children[0];
+    expect(a1.id).toBe('a1');
+    expect(a1.completedDate).toBe('2026-03-09');
+    expect(a1.endAtCompletion).toBe('2026-03-06');
+    expect(a1.baselineEnd).toBe('2026-03-04');
+    expect([a1.startDate, a1.endDate]).toEqual(['2026-03-02', '2026-03-06']);
+  });
+
+  it('el orden sobrevive a exportar e importar', async () => {
+    const store = await storeWithRows([
+      ph('a', [it_('a0'), it_('a1'), it_('a2')]),
+      ph('b', [it_('b0')]),
+    ]);
+    store.movePhase('b', 0);
+    store.moveItem('a', 'a2', 0);
+    const doc = exportRoadmap(store.activeRoadmap!, store.data.assignees, store.data.blockers);
+    store.importFromText(doc);
+    const imported = store.activeRoadmap!;
+    expect(imported.rows.map((p) => p.name)).toEqual(['b', 'a']);
+    expect(imported.rows[1].children.map((c) => c.label)).toEqual(['a2', 'a0', 'a1']);
+  });
+
+  it('persiste el nuevo orden', async () => {
+    const backend = new FakeStorage({
+      roadmaps: [{ ...roadmap('r'), rows: [ph('a', []), ph('b', [])] }],
+      assignees: [],
+      blockers: [],
+      activeId: 'r',
+    });
+    const store = new AppStore(backend);
+    await store.init();
+    store.movePhase('b', 0);
+    await store.flush();
+    expect(backend.saved!.roadmaps[0].rows.map((p) => p.id)).toEqual(['b', 'a']);
+  });
+});
