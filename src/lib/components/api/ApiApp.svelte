@@ -19,6 +19,7 @@
   import { theme } from '../../theme/theme.svelte';
   import ContractRail from './ContractRail.svelte';
   import EndpointEditor from './EndpointEditor.svelte';
+  import ModelEditor from './ModelEditor.svelte';
   import ExamplePanel from './ExamplePanel.svelte';
   import PasteJsonDialog from './PasteJsonDialog.svelte';
   import ExportDialog from './ExportDialog.svelte';
@@ -28,6 +29,7 @@
 
   const open = $derived(apiContracts.open);
   const endpoint = $derived(apiContracts.openEndpoint);
+  const model = $derived(apiContracts.openModel);
 
   function create() {
     const contract = apiContracts.addContract(newTitle);
@@ -68,18 +70,20 @@
     <div class="work">
       {#if endpoint}
         <EndpointEditor {endpoint} />
+      {:else if model}
+        <ModelEditor {model} />
       {:else if open.endpoints.length === 0}
         <p class="nothing">
           Este contrato no tiene endpoints todavía. Crea el primero desde el raíl y descríbelo
           mientras lo habláis.
         </p>
       {:else}
-        <p class="nothing">Elige un endpoint en el raíl para describirlo.</p>
+        <p class="nothing">Elige un endpoint o un modelo en el raíl para describirlo.</p>
       {/if}
     </div>
 
-    {#if endpoint}
-      <ExamplePanel {endpoint} />
+    {#if endpoint || model}
+      <ExamplePanel {endpoint} {model} models={open.models} />
     {/if}
   </div>
 

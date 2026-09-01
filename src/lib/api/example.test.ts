@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { exampleOf, scalarValue } from './example';
 import { newNode, rootNode } from './model/factories';
+import type { ApiModel } from './model/types';
 
 describe('a scalar with an example written', () => {
   it('uses what was written', () => {
@@ -75,26 +76,26 @@ describe('the JSON a tree describes', () => {
     const total = newNode('total', 'integer');
     total.example = '137';
     root.children = [total, newNode('nombre')];
-    expect(exampleOf(root)).toEqual({ total: 137, nombre: 'texto' });
+    expect(exampleOf(root, [])).toEqual({ total: 137, nombre: 'texto' });
   });
 
   it('skips a field with no key, which is one being typed', () => {
     const root = rootNode();
     root.children = [newNode('', 'string'), newNode('nombre')];
-    expect(exampleOf(root)).toEqual({ nombre: 'texto' });
+    expect(exampleOf(root, [])).toEqual({ nombre: 'texto' });
   });
 
   it('shows an array of objects as one element', () => {
     const items = newNode('items', 'array');
     items.itemType = 'object';
     items.children = [newNode('id')];
-    expect(exampleOf(items)).toEqual([{ id: 'texto' }]);
+    expect(exampleOf(items, [])).toEqual([{ id: 'texto' }]);
   });
 
   it('shows an array of scalars shaped like its element type', () => {
     const tallas = newNode('tallas', 'array');
     tallas.itemType = 'integer';
-    expect(exampleOf(tallas)).toEqual([1]);
+    expect(exampleOf(tallas, [])).toEqual([1]);
   });
 
   it('nests', () => {
@@ -102,15 +103,97 @@ describe('the JSON a tree describes', () => {
     const direccion = newNode('direccion', 'object');
     direccion.children = [newNode('calle')];
     root.children = [direccion];
-    expect(exampleOf(root)).toEqual({ direccion: { calle: 'texto' } });
+    expect(exampleOf(root, [])).toEqual({ direccion: { calle: 'texto' } });
   });
 
-  /** Models are not resolvable yet; the marker is honest about that. */
-  it('marks a reference rather than pretending to resolve it', () => {
-    expect(exampleOf(newNode('paginacion', 'ref'))).toEqual({ '⚠': 'referencia a un modelo' });
+  it('says so rather than resolving a reference to a model that is not there', () => {
+    expect(exampleOf(newNode('paginacion', 'ref'), [])).toEqual({
+      '⚠': 'referencia a un modelo que no existe',
+    });
   });
 
   it('describes an empty object as an empty object', () => {
-    expect(exampleOf(rootNode())).toEqual({});
+    expect(exampleOf(rootNode(), [])).toEqual({});
+  });
+});
+
+/** A model whose tree is the given fields. */
+function model(id: string, name: string, fields: ReturnType<typeof newNode>[]): ApiModel {
+  const node = rootNode();
+  node.children = fields;
+  return { id, name, description: '', node };
+}
+
+describe('resolving a reference', () => {
+  const paginacion = model('mod-pag', 'Paginacion', [
+    newNode('pagina', 'integer'),
+    newNode('total', 'integer'),
+  ]);
+
+  it('shows the shape the model describes', () => {
+    const field = newNode('paginacion', 'ref');
+    field.ref = 'mod-pag';
+    expect(exampleOf(field, [paginacion])).toEqual({ pagina: 1, total: 1 });
+  });
+
+  it('shows an array of a model as one element with that shape', () => {
+    const items = newNode('items', 'array');
+    items.itemType = 'ref';
+    items.itemRef = 'mod-pag';
+    expect(exampleOf(items, [paginacion])).toEqual([{ pagina: 1, total: 1 }]);
+  });
+
+  /** The cut is per cycle, not per repetition (D5). */
+  it('expands the same model twice when two siblings point at it', () => {
+    const root = rootNode();
+    const a = newNode('uno', 'ref');
+    a.ref = 'mod-pag';
+    const b = newNode('dos', 'ref');
+    b.ref = 'mod-pag';
+    root.children = [a, b];
+    expect(exampleOf(root, [paginacion])).toEqual({
+      uno: { pagina: 1, total: 1 },
+      dos: { pagina: 1, total: 1 },
+    });
+  });
+});
+
+describe('a model that contains itself', () => {
+  /** A tree of categories is a legitimate and frequent contract. */
+  it('cuts the recursion instead of hanging', () => {
+    const hijas = newNode('hijas', 'array');
+    hijas.itemType = 'ref';
+    hijas.itemRef = 'mod-cat';
+    const categoria = model('mod-cat', 'Categoria', [newNode('nombre'), hijas]);
+
+    const field = newNode('raiz', 'ref');
+    field.ref = 'mod-cat';
+
+    expect(exampleOf(field, [categoria])).toEqual({ nombre: 'texto', hijas: [] });
+  });
+
+  it('cuts a cycle between two models', () => {
+    const toB = newNode('b', 'ref');
+    toB.ref = 'mod-b';
+    const toA = newNode('a', 'ref');
+    toA.ref = 'mod-a';
+    const a = model('mod-a', 'A', [newNode('nombre'), toB]);
+    const b = model('mod-b', 'B', [toA]);
+
+    const field = newNode('raiz', 'ref');
+    field.ref = 'mod-a';
+
+    expect(exampleOf(field, [a, b])).toEqual({ nombre: 'texto', b: { a: {} } });
+  });
+
+  it('cuts a model that references itself directly', () => {
+    const yo = newNode('yo', 'ref');
+    yo.ref = 'mod-x';
+    const x = model('mod-x', 'X', [yo]);
+
+    const field = newNode('raiz', 'ref');
+    field.ref = 'mod-x';
+
+    expect(exampleOf(field, [x])).toEqual({ yo: {} });
   });
 });

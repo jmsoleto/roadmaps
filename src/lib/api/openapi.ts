@@ -19,6 +19,7 @@
 
 import { standardDescription } from './model/factories';
 import { pathMarkers } from './model/paths';
+import { pascal } from './model/models';
 import { scalarValue, exampleOf } from './example';
 import type { YamlValue } from './yaml';
 import type { ApiEndpoint, ApiModel, ApiNode, ApiParam, Contract, NodeType } from './model/types';
@@ -29,25 +30,7 @@ type Schema = { [k: string]: YamlValue };
 /** The name each model gets under `components/schemas`, by model id. */
 export type SchemaNames = Record<string, string>;
 
-/**
- * `mi modelo raro` → `MiModeloRaro`.
- *
- * Accents are folded before the split, not treated as separators. Without that
- * step `paginación` becomes `PaginaciN` — the `ó` splits the word and the
- * leftover `n` gets capitalised — and this is a tool used in Spanish, so model
- * names carry accents as a matter of course. The prototype has that bug; it
- * would have shipped in the exported document.
- */
-export function pascal(name: string): string {
-  const words = name
-    .normalize('NFD')
-    .replace(/\p{Diacritic}/gu, '')
-    .replace(/[^A-Za-z0-9]+/g, ' ')
-    .trim()
-    .split(' ')
-    .filter(Boolean);
-  return words.map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join('') || 'Modelo';
-}
+export { pascal };
 
 /**
  * A name per model, none of them repeated.
@@ -240,16 +223,20 @@ export function parametersOf(endpoint: ApiEndpoint): YamlValue[] {
   );
 }
 
-function bodyContent(body: ApiNode, names: SchemaNames): YamlValue {
+function bodyContent(body: ApiNode, models: readonly ApiModel[], names: SchemaNames): YamlValue {
   return {
     'application/json': {
       schema: schemaOf(body, names),
-      example: exampleOf(body) as YamlValue,
+      example: exampleOf(body, models) as YamlValue,
     },
   };
 }
 
-function operationOf(endpoint: ApiEndpoint, names: SchemaNames): YamlValue {
+function operationOf(
+  endpoint: ApiEndpoint,
+  models: readonly ApiModel[],
+  names: SchemaNames,
+): YamlValue {
   const responses: { [code: string]: YamlValue } = {};
   for (const response of endpoint.responses) {
     const code = response.code.trim() || '200';
@@ -258,7 +245,7 @@ function operationOf(endpoint: ApiEndpoint, names: SchemaNames): YamlValue {
       // would make the whole document invalid, over a box left blank mid-
       // meeting.
       description: response.description.trim() || standardDescription(code),
-      content: response.body ? bodyContent(response.body, names) : undefined,
+      content: response.body ? bodyContent(response.body, models, names) : undefined,
     });
   }
 
@@ -271,7 +258,7 @@ function operationOf(endpoint: ApiEndpoint, names: SchemaNames): YamlValue {
     tags: endpoint.tags.length > 0 ? [...endpoint.tags] : undefined,
     parameters: parameters.length > 0 ? parameters : undefined,
     requestBody: endpoint.body
-      ? { required: true, content: bodyContent(endpoint.body, names) }
+      ? { required: true, content: bodyContent(endpoint.body, models, names) }
       : undefined,
     // An endpoint with no responses describes nothing, and an empty `responses`
     // is invalid. A generic success is the least wrong thing to emit.
@@ -286,7 +273,7 @@ export function buildOpenApi(contract: Contract): OpenApiDocument {
   for (const endpoint of contract.endpoints) {
     const path = endpoint.path.trim() || '/';
     paths[path] = paths[path] ?? {};
-    paths[path][endpoint.method.toLowerCase()] = operationOf(endpoint, names);
+    paths[path][endpoint.method.toLowerCase()] = operationOf(endpoint, contract.models, names);
   }
 
   const schemas: { [name: string]: YamlValue } = {};

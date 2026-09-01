@@ -47,13 +47,13 @@
     const parts: string[] = [];
     if (endpoint.body) {
       parts.push(
-        `// petición ${endpoint.method} ${endpoint.path}\n${JSON.stringify(exampleOf(endpoint.body), null, 2)}`,
+        `// petición ${endpoint.method} ${endpoint.path}\n${JSON.stringify(exampleOf(endpoint.body, contract?.models ?? []), null, 2)}`,
       );
     }
     for (const response of endpoint.responses) {
       if (!response.body) continue;
       parts.push(
-        `// respuesta ${response.code}${response.description ? ` — ${response.description}` : ''}\n${JSON.stringify(exampleOf(response.body), null, 2)}`,
+        `// respuesta ${response.code}${response.description ? ` — ${response.description}` : ''}\n${JSON.stringify(exampleOf(response.body, contract?.models ?? []), null, 2)}`,
       );
     }
     return parts.join('\n\n') || '(este endpoint no tiene ningún cuerpo)';

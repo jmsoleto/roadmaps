@@ -6,13 +6,15 @@
  * field with no example written must still show *something* plausible — a blank
  * would make the panel useless exactly when the contract is least finished.
  *
- * Models are not resolvable yet, so a `ref` shows as a marker rather than as
- * the model's shape. The recursion guard that R10 asks for belongs with them:
- * without references there is no cycle to cut.
+ * References are resolved here, which is why every caller has to hand over the
+ * catalogue of models. There is deliberately **no default** for it (D4): a
+ * consumer left unmigrated would still compile and would quietly stop resolving
+ * references, which is the kind of bug that shows up in an exported document
+ * weeks later.
  */
 
 import { isContainer } from './model/tree';
-import type { ApiNode } from './model/types';
+import type { ApiModel, ApiNode } from './model/types';
 
 /** What a scalar with no example of its own should look like. */
 const BY_FORMAT: Record<string, string> = {
@@ -60,25 +62,61 @@ export function scalarValue(
   return 'texto';
 }
 
+/** The models a contract holds, for resolving a reference. */
+export type ModelCatalog = readonly ApiModel[];
+
+/**
+ * Which models the current branch has already entered (D5).
+ *
+ * The **path**, not the depth. Entering a model that is already on the path is
+ * a cycle and gets cut; entering the same model from two sibling fields is not,
+ * and both expand. A depth counter would also truncate the legitimate nesting
+ * of a deep contract that has no cycle at all.
+ */
+type Seen = ReadonlySet<string>;
+
 /** The children of a container, as an object. Fields without a key are skipped. */
-function objectOf(node: ApiNode): { [k: string]: JsonValue } {
+function objectOf(node: ApiNode, models: ModelCatalog, seen: Seen): { [k: string]: JsonValue } {
   const out: { [k: string]: JsonValue } = {};
-  for (const child of node.children) {
+  for (const child of node.children ?? []) {
     if (child.key.trim() === '') continue;
-    out[child.key] = exampleOf(child);
+    out[child.key] = exampleOf(child, models, seen);
   }
   return out;
 }
 
-/** The JSON one node describes. */
-export function exampleOf(node: ApiNode): JsonValue {
-  if (node.type === 'ref') return { '⚠': 'referencia a un modelo' };
+/**
+ * The shape a model describes, or an empty one when we are already inside it.
+ *
+ * The empty object is what "cutting the recursion" looks like: `Categoria` with
+ * `hijas: array<Categoria>` shows one category whose daughters are empty, which
+ * teaches the shape without pretending to enumerate it. The example is
+ * illustrative; the **schema** keeps the recursion, because there it is the
+ * contract.
+ */
+function modelShape(modelId: string, models: ModelCatalog, seen: Seen): JsonValue {
+  const model = models.find((m) => m.id === modelId);
+  if (!model?.node) return { '⚠': 'referencia a un modelo que no existe' };
+  if (seen.has(modelId)) return {};
+  const next = new Set(seen);
+  next.add(modelId);
+  return exampleOf(model.node, models, next);
+}
 
-  if (node.type === 'object') return objectOf(node);
+/** The JSON one node describes. */
+export function exampleOf(node: ApiNode, models: ModelCatalog, seen: Seen = new Set()): JsonValue {
+  if (node.type === 'ref') return modelShape(node.ref, models, seen);
+
+  if (node.type === 'object') return objectOf(node, models, seen);
 
   if (node.type === 'array') {
-    if (node.itemType === 'object') return [objectOf(node)];
-    if (node.itemType === 'ref') return [{ '⚠': 'referencia a un modelo' }];
+    if (node.itemType === 'object') return [objectOf(node, models, seen)];
+    if (node.itemType === 'ref') {
+      const shape = modelShape(node.itemRef, models, seen);
+      // An empty array is the honest cut for a list of itself: one element that
+      // is `{}` would read as "a category holds an empty category".
+      return seen.has(node.itemRef) ? [] : [shape];
+    }
     // An array of scalars: one element, shaped like the element type. The node's
     // own example describes that element, not the array.
     return [scalarValue({ ...node, type: node.itemType })];

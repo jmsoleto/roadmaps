@@ -11,29 +11,40 @@
    */
   import { apiUi } from '../../api/ui.svelte';
   import { exampleOf } from '../../api/example';
-  import type { ApiEndpoint } from '../../api/model/types';
+  import type { ApiEndpoint, ApiModel } from '../../api/model/types';
 
   interface Props {
-    endpoint: ApiEndpoint;
+    /** The endpoint being edited, when it is one. */
+    endpoint: ApiEndpoint | null;
+    /** The model being edited, when it is one instead. */
+    model: ApiModel | null;
+    /** The contract's models, so a reference shows the shape it points at. */
+    models: readonly ApiModel[];
   }
 
-  let { endpoint }: Props = $props();
+  let { endpoint, model, models }: Props = $props();
 
-  /** Every body of this endpoint, each under the heading it answers to. */
-  const blocks = $derived([
-    ...(endpoint.body
-      ? [
-          {
-            id: 'req',
-            label: `${endpoint.method} ${endpoint.path} · petición`,
-            body: endpoint.body,
-          },
-        ]
-      : []),
-    ...endpoint.responses
-      .filter((r) => r.body !== null)
-      .map((r) => ({ id: r.id, label: `respuesta ${r.code}`, body: r.body! })),
-  ]);
+  /** Every body on screen, each under the heading it answers to. */
+  const blocks = $derived(
+    model !== null
+      ? [{ id: model.id, label: `modelo ${model.name}`, body: model.node }]
+      : endpoint === null
+        ? []
+        : [
+            ...(endpoint.body
+              ? [
+                  {
+                    id: 'req',
+                    label: `${endpoint.method} ${endpoint.path} · petición`,
+                    body: endpoint.body,
+                  },
+                ]
+              : []),
+            ...endpoint.responses
+              .filter((r) => r.body !== null)
+              .map((r) => ({ id: r.id, label: `respuesta ${r.code}`, body: r.body! })),
+          ],
+  );
 </script>
 
 {#if apiUi.exampleOpen}
@@ -47,12 +58,12 @@
     </header>
 
     {#if blocks.length === 0}
-      <p class="empty">Este endpoint no tiene ningún cuerpo que enseñar todavía.</p>
+      <p class="empty">No hay ningún cuerpo que enseñar todavía.</p>
     {:else}
       {#each blocks as block (block.id)}
         <div class="block">
           <div class="label">{block.label}</div>
-          <pre>{JSON.stringify(exampleOf(block.body), null, 2)}</pre>
+          <pre>{JSON.stringify(exampleOf(block.body, models), null, 2)}</pre>
         </div>
       {/each}
     {/if}

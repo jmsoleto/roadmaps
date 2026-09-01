@@ -23,11 +23,10 @@ export type NodeType =
 /**
  * The types the picker offers.
  *
- * Seven, not eight: `ref` is missing on purpose (D3). It points at a reusable
- * model and there are none yet, so offering it would mean offering a dropdown
- * with nothing in it. The type itself stays in `NodeType` and every function
- * here handles it — a case that cannot be produced yet is not a case that does
- * not exist.
+ * `ref` joined the list once models existed to point at. It had been in
+ * `NodeType` from the first change and handled everywhere — a case that cannot
+ * be produced yet is not a case that does not exist — which is why turning it
+ * on was a line in this array rather than a rewrite.
  */
 export const NODE_TYPES: readonly NodeType[] = [
   'string',
@@ -36,11 +35,19 @@ export const NODE_TYPES: readonly NodeType[] = [
   'boolean',
   'object',
   'array',
+  'ref',
   'null',
 ];
 
-/** What an array can be told to hold. `ref` is absent for the same reason. */
-export const ITEM_TYPES: readonly ItemType[] = ['object', 'string', 'number', 'integer', 'boolean'];
+/** What an array can be told to hold. */
+export const ITEM_TYPES: readonly ItemType[] = [
+  'object',
+  'ref',
+  'string',
+  'number',
+  'integer',
+  'boolean',
+];
 
 /** The methods an endpoint can use. */
 export const HTTP_METHODS: readonly HttpMethod[] = [

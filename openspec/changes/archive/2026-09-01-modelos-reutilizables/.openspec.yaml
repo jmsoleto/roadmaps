@@ -1,0 +1,6 @@
+schema: spec-driven
+created: 2026-09-01
+goal: "Bloques reutilizables dentro de un contrato: modelos con nombre, campos que
+  los referencian, extraer un bloque sin que cambie el ejemplo, expandir una
+  referencia en el sitio, proteccion frente a ciclos, y las cuatro comprobaciones
+  del validador que dependian de ellos; con components/schemas emitiendose por fin"

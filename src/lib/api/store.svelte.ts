@@ -26,6 +26,7 @@ import {
   type ApiNode,
   type ApiResponse,
   type Contract,
+  type ApiModel,
   type ContractView,
   type HttpMethod,
   type ItemType,
@@ -50,6 +51,12 @@ import {
   walk,
 } from './model/tree';
 import { readPaste } from './infer';
+import {
+  extractedName,
+  uniqueModelName,
+  usesOf as usesOfModel,
+  contractBodies,
+} from './model/models';
 
 const SAVE_DEBOUNCE_MS = 250;
 
@@ -246,13 +253,7 @@ export class ApiContractsStore {
   private bodies(): ApiNode[] {
     const contract = this.open;
     if (!contract) return [];
-    const out: ApiNode[] = [];
-    for (const endpoint of contract.endpoints) {
-      if (endpoint.body) out.push(endpoint.body);
-      for (const response of endpoint.responses) if (response.body) out.push(response.body);
-    }
-    for (const model of contract.models) out.push(model.node);
-    return out;
+    return contractBodies(contract).map((b) => b.root);
   }
 
   /** Locate a node by id anywhere in the open contract. */
@@ -515,6 +516,183 @@ export class ApiContractsStore {
         ?.responses.find((r) => r.id === responseId);
       if (!response) return null;
       response.body = present ? (response.body ?? rootNode()) : null;
+      return null;
+    });
+  }
+
+  // ---- models ----
+
+  /** The model being edited, or `null` when it is an endpoint or nothing. */
+  get openModel(): ApiModel | null {
+    const contract = this.open;
+    if (contract?.view?.kind !== 'model') return null;
+    return contract.models.find((m) => m.id === contract.view!.id) ?? null;
+  }
+
+  /** Where a model is used, named. Computed on read, never stored (D8). */
+  usesOf(modelId: string): string[] {
+    const contract = this.open;
+    return contract ? usesOfModel(contract, modelId) : [];
+  }
+
+  addModel(name = 'Modelo'): ApiModel | null {
+    return this.structural((contract) => {
+      const node = rootNode();
+      node.children = [newNode('campo', 'string')];
+      const model: ApiModel = {
+        id: uid('mod'),
+        name: uniqueModelName(contract.models, name),
+        description: '',
+        node,
+      };
+      contract.models.push(model);
+      contract.view = { kind: 'model', id: model.id };
+      return model;
+    });
+  }
+
+  renameModel(modelId: string, name: string): void {
+    this.structural((contract) => {
+      const model = contract.models.find((m) => m.id === modelId);
+      if (model) model.name = name;
+      return null;
+    });
+  }
+
+  setModelDescription(modelId: string, description: string): void {
+    this.structural((contract) => {
+      const model = contract.models.find((m) => m.id === modelId);
+      if (model) model.description = description;
+      return null;
+    });
+  }
+
+  duplicateModel(modelId: string): ApiModel | null {
+    return this.structural((contract) => {
+      const source = contract.models.find((m) => m.id === modelId);
+      if (!source) return null;
+      const copy = structuredClone($state.snapshot(source) as ApiModel);
+      copy.id = uid('mod');
+      copy.name = uniqueModelName(contract.models, `${source.name} copia`);
+      reissueNodeIds(copy.node);
+      contract.models.splice(contract.models.indexOf(source) + 1, 0, copy);
+      contract.view = { kind: 'model', id: copy.id };
+      return copy;
+    });
+  }
+
+  /**
+   * Delete a model.
+   *
+   * The fields pointing at it are **left as they are**. Repointing them
+   * somewhere would be inventing a decision, and blanking them would silently
+   * throw away the comment and the obligation somebody wrote. A dangling
+   * reference is a reachable state that the validator names and the exporter
+   * survives; the warning before this runs is what makes it a choice.
+   */
+  deleteModel(modelId: string): void {
+    this.structural((contract) => {
+      const i = contract.models.findIndex((m) => m.id === modelId);
+      if (i === -1) return null;
+      contract.models.splice(i, 1);
+      if (contract.view?.kind === 'model' && contract.view.id === modelId) contract.view = null;
+      return null;
+    });
+  }
+
+  /**
+   * Turn a written block into a named model, leaving a reference behind (D2).
+   *
+   * The guarantee is that **the generated example does not change**: the
+   * children move across untouched, the field keeps its key, its comment and
+   * its obligation — those belong to the field, not to the block — and the
+   * example generator resolves the reference back to the same object. That is
+   * what makes this safe to do live, in front of somebody.
+   */
+  extractToModel(nodeId: string): ApiModel | null {
+    return this.structural((contract) => {
+      const node = this.locate(nodeId)?.node;
+      if (!node) return null;
+
+      const asArray = node.type === 'array';
+      if (!isContainer(node)) return null;
+
+      const modelNode = rootNode();
+      modelNode.children = structuredClone($state.snapshot(node.children) as ApiNode[]);
+      const model: ApiModel = {
+        id: uid('mod'),
+        name: uniqueModelName(contract.models, extractedName(node.key, asArray)),
+        description: '',
+        node: modelNode,
+      };
+      contract.models.push(model);
+
+      if (asArray) {
+        node.itemType = 'ref';
+        node.itemRef = model.id;
+      } else {
+        node.type = 'ref';
+        node.ref = model.id;
+      }
+      // A reference has no children of its own; its shape is the model's.
+      node.children = [];
+      node.example = '';
+      return model;
+    });
+  }
+
+  /**
+   * Undo a reference in place (D3).
+   *
+   * Copies, never moves: the model stays where it was and the other fields
+   * pointing at it keep pointing at it. The copied children get new ids, or the
+   * expanded field and the model would share nodes and editing one would edit
+   * the other.
+   */
+  expandRef(nodeId: string): void {
+    this.structural((contract) => {
+      const node = this.locate(nodeId)?.node;
+      if (!node) return null;
+      const asArray = node.type === 'array' && node.itemType === 'ref';
+      if (node.type !== 'ref' && !asArray) return null;
+
+      const model = contract.models.find((m) => m.id === (asArray ? node.itemRef : node.ref));
+      if (!model?.node) return null;
+
+      node.children = (
+        structuredClone($state.snapshot(model.node.children) as ApiNode[]) ?? []
+      ).map((child) => {
+        walk(child, (n) => {
+          n.id = uid('nod');
+        });
+        return child;
+      });
+      if (asArray) {
+        node.itemType = 'object';
+        node.itemRef = '';
+      } else {
+        node.type = 'object';
+        node.ref = '';
+      }
+      node.open = true;
+      return null;
+    });
+  }
+
+  /** Point a field at a model. */
+  setNodeRef(nodeId: string, modelId: string): void {
+    this.structural(() => {
+      const node = this.locate(nodeId)?.node;
+      if (node) node.ref = modelId;
+      return null;
+    });
+  }
+
+  /** Point an array's elements at a model. */
+  setNodeItemRef(nodeId: string, modelId: string): void {
+    this.structural(() => {
+      const node = this.locate(nodeId)?.node;
+      if (node) node.itemRef = modelId;
       return null;
     });
   }

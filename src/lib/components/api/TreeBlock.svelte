@@ -52,6 +52,9 @@
     {#if container}
       <button class="btn" onclick={() => apiContracts.addChild(root.id)}>+ campo</button>
       <button class="btn" onclick={() => apiUi.openPaste(root.id)}>pegar JSON</button>
+      <button class="btn" onclick={() => apiContracts.extractToModel(root.id)}
+        >extraer a modelo</button
+      >
     {/if}
     {#if onDrop}
       <button class="btn" onclick={onDrop}>sin cuerpo</button>

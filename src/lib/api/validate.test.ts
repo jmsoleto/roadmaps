@@ -146,3 +146,96 @@ describe('a document that is not what it should be', () => {
     expect(() => validateContract(contract([endpoint]))).not.toThrow();
   });
 });
+
+// ---- what models make possible to check ----
+
+const withRef = (key: string, modelId: string) => {
+  const node = newNode(key, 'ref');
+  node.ref = modelId;
+  return node;
+};
+
+const withArrayOf = (key: string, modelId: string) => {
+  const node = newNode(key, 'array');
+  node.itemType = 'ref';
+  node.itemRef = modelId;
+  return node;
+};
+
+const model = (id: string, name: string, fields: ReturnType<typeof newNode>[] = []) => {
+  const node = newNode('', 'object');
+  node.children = fields;
+  return { id, name, description: '', node };
+};
+
+function withModels(models: ReturnType<typeof model>[], endpoints = [withFields([newNode('id')])]) {
+  return { ...contract(endpoints), models };
+}
+
+describe('references', () => {
+  it('catches a field pointing at a model that is not there', () => {
+    const c = withModels([], [withFields([withRef('paginacion', 'mod-borrado')])]);
+    const issue = validateContract(c).find((i) => i.what.includes('no existe'));
+    expect(issue?.what).toContain('«paginacion»');
+    expect(issue?.severity).toBe('rompe');
+  });
+
+  it('catches an array of a model that is not there', () => {
+    const c = withModels([], [withFields([withArrayOf('items', 'mod-borrado')])]);
+    expect(validateContract(c).map((i) => i.what)).toContain(
+      '«items» es un array de un modelo que no existe',
+    );
+  });
+
+  it('says nothing about a reference that resolves', () => {
+    const c = withModels(
+      [model('mod-pag', 'Paginacion', [newNode('pagina')])],
+      [withFields([withRef('paginacion', 'mod-pag')])],
+    );
+    expect(validateContract(c)).toEqual([]);
+  });
+});
+
+describe('model names', () => {
+  it('catches two models that normalise to the same schema name', () => {
+    const c = withModels(
+      [model('a', 'paginación', [newNode('x')]), model('b', 'Paginacion', [newNode('y')])],
+      [withFields([withRef('p', 'a'), withRef('q', 'b')])],
+    );
+    const issue = validateContract(c).find((i) => i.what.includes('mismo nombre de schema'));
+    expect(issue?.what).toContain('«Paginacion»');
+    expect(issue?.severity).toBe('rompe');
+  });
+});
+
+describe('orphan models', () => {
+  /** Correct with a block too many is not the same as broken (D6). */
+  it('reports one nobody uses, as the lesser thing', () => {
+    const c = withModels([model('mod-x', 'X', [newNode('a')])]);
+    const issue = validateContract(c).find((i) => i.what.includes('no lo usa'));
+    expect(issue?.severity).toBe('sobra');
+    expect(issue?.where).toBe('modelo X');
+  });
+
+  it('does not report one that is used', () => {
+    const c = withModels(
+      [model('mod-pag', 'Paginacion', [newNode('pagina')])],
+      [withFields([withRef('p', 'mod-pag')])],
+    );
+    expect(validateContract(c).filter((i) => i.what.includes('no lo usa'))).toEqual([]);
+  });
+});
+
+describe('what the hub counts', () => {
+  /** A spare model must not compete with Roadmaps for the alert strip (D6). */
+  it('leaves out what only spares', () => {
+    const c = withModels([model('mod-x', 'X', [newNode('a')])]);
+    expect(validateContract(c).length).toBeGreaterThan(0);
+    expect(issueCount(c)).toBe(0);
+  });
+
+  it('counts what breaks', () => {
+    const c = withModels([], [withFields([withRef('p', 'mod-borrado')])]);
+    expect(issueCount(c)).toBe(1);
+  });
+});

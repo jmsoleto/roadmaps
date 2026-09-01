@@ -15,7 +15,8 @@
 
   let { contract }: Props = $props();
 
-  const openId = $derived(contract.view?.kind === 'endpoint' ? contract.view.id : null);
+  const openEndpointId = $derived(contract.view?.kind === 'endpoint' ? contract.view.id : null);
+  const openModelId = $derived(contract.view?.kind === 'model' ? contract.view.id : null);
 </script>
 
 <aside class="rail">
@@ -56,7 +57,7 @@
           <li>
             <button
               class="ep"
-              class:current={endpoint.id === openId}
+              class:current={endpoint.id === openEndpointId}
               onclick={() => apiContracts.setView({ kind: 'endpoint', id: endpoint.id })}
             >
               <span class="method">{endpoint.method}</span>
@@ -69,8 +70,31 @@
   </div>
 
   <div class="section">
-    <h3>Modelos</h3>
-    <p class="empty">Los bloques reutilizables llegan en el cambio siguiente.</p>
+    <h3>
+      Modelos
+      <span class="spacer"></span>
+      <button class="icon" title="añadir modelo" onclick={() => apiContracts.addModel()}>+</button>
+    </h3>
+
+    {#if contract.models.length === 0}
+      <p class="empty">
+        Ninguno. Extrae un bloque que ya esté escrito, o crea uno para dejar de repetirlo.
+      </p>
+    {:else}
+      <ul class="list">
+        {#each contract.models as model (model.id)}
+          <li>
+            <button
+              class="ep"
+              class:current={model.id === openModelId}
+              onclick={() => apiContracts.setView({ kind: 'model', id: model.id })}
+            >
+              <span class="path">{model.name}</span>
+            </button>
+          </li>
+        {/each}
+      </ul>
+    {/if}
   </div>
 </aside>
 

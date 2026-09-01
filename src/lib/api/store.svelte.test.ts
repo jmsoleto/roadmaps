@@ -3,6 +3,7 @@ import { ApiContractsStore } from './store.svelte';
 import type { ApiBackend, LoadOutcome } from './storage';
 import { emptyApiData, type ApiData, type ApiNode, type Contract } from './model/types';
 import { PALETTE_SLOTS } from '../theme/tokens';
+import { exampleOf } from './example';
 
 class FakeBackend implements ApiBackend {
   saved: ApiData | null = null;
@@ -557,5 +558,188 @@ describe('a store that will not open refuses the tree too', () => {
     expect(store.duplicateNode('nod-1')).toBeNull();
     expect(store.pasteInto('nod-1', '{}')).not.toBeNull();
     expect(store.contracts).toEqual([]);
+  });
+});
+
+// ---- models ----
+
+describe('models', () => {
+  async function withBody() {
+    const { store } = await opened();
+    const ep = store.addEndpoint()!;
+    return { store, root: ep.responses[0].body! };
+  }
+
+  it('creates one already open, with a first field', async () => {
+    const { store } = await opened();
+    const model = store.addModel('Paginacion')!;
+    expect(model.node.children).toHaveLength(1);
+    expect(store.openModel?.id).toBe(model.id);
+  });
+
+  it('duplicates one into an independent copy', async () => {
+    const { store } = await opened();
+    const original = store.addModel('Paginacion')!;
+    const copy = store.duplicateModel(original.id)!;
+
+    expect(copy.name).not.toBe(original.name);
+    expect(copy.node.children[0].id).not.toBe(original.node.children[0].id);
+    copy.node.children[0].key = 'de-la-copia';
+    expect(original.node.children[0].key).toBe('campo');
+  });
+
+  it('clears the open view when the model being edited is deleted', async () => {
+    const { store } = await opened();
+    const model = store.addModel()!;
+    store.deleteModel(model.id);
+    expect(store.openModel).toBeNull();
+  });
+
+  /**
+   * Repointing them would invent a decision; blanking them would throw away the
+   * comment and the obligation somebody wrote.
+   */
+  it('leaves the fields pointing at a deleted model as they were', async () => {
+    const { store, root } = await withBody();
+    const model = store.addModel()!;
+    const field = store.addChild(root.id)!;
+    store.setNodeType(field.id, 'ref');
+    store.setNodeRef(field.id, model.id);
+
+    store.deleteModel(model.id);
+
+    expect(store.node(field.id)?.type).toBe('ref');
+    expect(store.node(field.id)?.ref).toBe(model.id);
+  });
+});
+
+describe('extracting a block to a model', () => {
+  async function withObject() {
+    const { store } = await opened();
+    const ep = store.addEndpoint()!;
+    const root = ep.responses[0].body!;
+    const block = store.addChild(root.id)!;
+    block.key = 'paginacion';
+    block.description = 'El bloque de siempre';
+    block.required = false;
+    store.setNodeType(block.id, 'object');
+    block.children[0].key = 'pagina';
+    store.addChild(block.id)!.key = 'total';
+    return { store, root, block };
+  }
+
+  /** The guarantee that makes it safe to do live, in front of somebody (D2). */
+  it('does not change the generated example', async () => {
+    const { store, root, block } = await withObject();
+    const before = exampleOf(root, store.open!.models);
+
+    store.extractToModel(block.id);
+
+    expect(exampleOf(root, store.open!.models)).toEqual(before);
+  });
+
+  it('leaves the field as a reference with no children of its own', async () => {
+    const { store, block } = await withObject();
+    const model = store.extractToModel(block.id)!;
+
+    expect(block.type).toBe('ref');
+    expect(block.ref).toBe(model.id);
+    expect(block.children).toEqual([]);
+    expect(model.node.children.map((c) => c.key)).toEqual(['pagina', 'total']);
+  });
+
+  /** They belong to the field, not to the block. */
+  it('keeps the key, the comment and the obligation on the field', async () => {
+    const { store, block } = await withObject();
+    store.extractToModel(block.id);
+
+    expect(block.key).toBe('paginacion');
+    expect(block.description).toBe('El bloque de siempre');
+    expect(block.required).toBe(false);
+  });
+
+  it('names the model after the key', async () => {
+    const { store, block } = await withObject();
+    expect(store.extractToModel(block.id)?.name).toBe('Paginacion');
+  });
+
+  it('turns an array of objects into an array of the model', async () => {
+    const { store } = await opened();
+    const ep = store.addEndpoint()!;
+    const items = store.addChild(ep.responses[0].body!.id)!;
+    items.key = 'items';
+    store.setNodeType(items.id, 'array');
+    store.setNodeItemType(items.id, 'object');
+
+    const model = store.extractToModel(items.id)!;
+
+    expect(items.type).toBe('array');
+    expect(items.itemType).toBe('ref');
+    expect(items.itemRef).toBe(model.id);
+    expect(model.name).toBe('ItemsItem');
+  });
+});
+
+describe('expanding a reference', () => {
+  async function withTwoRefs() {
+    const { store } = await opened();
+    const ep = store.addEndpoint()!;
+    const root = ep.responses[0].body!;
+    const model = store.addModel('Paginacion')!;
+    model.node.children[0].key = 'pagina';
+
+    const a = store.addChild(root.id)!;
+    store.setNodeType(a.id, 'ref');
+    store.setNodeRef(a.id, model.id);
+    const b = store.addChild(root.id)!;
+    store.setNodeType(b.id, 'ref');
+    store.setNodeRef(b.id, model.id);
+
+    return { store, model, a, b };
+  }
+
+  it('turns the field into an object with a copy of the model’s fields', async () => {
+    const { store, a } = await withTwoRefs();
+    store.expandRef(a.id);
+
+    expect(a.type).toBe('object');
+    expect(a.ref).toBe('');
+    expect(a.children.map((c) => c.key)).toEqual(['pagina']);
+  });
+
+  /** Expanding copies; it does not move. */
+  it('leaves the model and the other references alone', async () => {
+    const { store, model, a, b } = await withTwoRefs();
+    store.expandRef(a.id);
+
+    expect(store.open!.models).toHaveLength(1);
+    expect(model.node.children.map((c) => c.key)).toEqual(['pagina']);
+    expect(b.type).toBe('ref');
+    expect(b.ref).toBe(model.id);
+  });
+
+  it('gives the copied fields new identifiers', async () => {
+    const { store, model, a } = await withTwoRefs();
+    store.expandRef(a.id);
+
+    expect(a.children[0].id).not.toBe(model.node.children[0].id);
+    a.children[0].key = 'cambiado';
+    expect(model.node.children[0].key).toBe('pagina');
+  });
+
+  it('expands an array of a model into an array of objects', async () => {
+    const { store } = await opened();
+    const ep = store.addEndpoint()!;
+    const model = store.addModel('Item')!;
+    const items = store.addChild(ep.responses[0].body!.id)!;
+    store.setNodeType(items.id, 'array');
+    store.setNodeItemType(items.id, 'ref');
+    store.setNodeItemRef(items.id, model.id);
+
+    store.expandRef(items.id);
+
+    expect(items.itemType).toBe('object');
+    expect(items.itemRef).toBe('');
+    expect(items.children).toHaveLength(1);
   });
 });

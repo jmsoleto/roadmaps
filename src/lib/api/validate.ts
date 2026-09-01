@@ -18,29 +18,25 @@
  */
 
 import { isContainer, walk } from './model/tree';
-import type { ApiNode, Contract } from './model/types';
+import { contractBodies, pascal, usesOf } from './model/models';
+import type { Contract } from './model/types';
+
+/**
+ * How much an issue costs if it is ignored (D6).
+ *
+ * `rompe` means what gets handed over describes something that is not there;
+ * `sobra` means it is correct with a block too many. Presenting the two the
+ * same way teaches people to ignore the whole list, which is the usual way a
+ * validator dies.
+ */
+export type Severity = 'rompe' | 'sobra';
 
 export interface Issue {
   /** Where it happens, e.g. `GET /catalogo/productos · 200`. */
   where: string;
   /** What is wrong, in one sentence. */
   what: string;
-}
-
-/** Every body of a contract, each with the place it belongs to. */
-function bodies(contract: Contract): { where: string; root: ApiNode }[] {
-  const out: { where: string; root: ApiNode }[] = [];
-  for (const endpoint of contract.endpoints) {
-    const at = `${endpoint.method ?? '?'} ${endpoint.path ?? ''}`;
-    if (endpoint.body) out.push({ where: `${at} · petición`, root: endpoint.body });
-    for (const response of endpoint.responses ?? []) {
-      if (response.body) out.push({ where: `${at} · ${response.code}`, root: response.body });
-    }
-  }
-  for (const model of contract.models) {
-    if (model.node) out.push({ where: `modelo ${model.name}`, root: model.node });
-  }
-  return out;
+  severity: Severity;
 }
 
 export function validateContract(contract: Contract): Issue[] {
@@ -56,19 +52,23 @@ export function validateContract(contract: Contract): Issue[] {
     const path = endpoint.path ?? '';
     const where = `${endpoint.method ?? '?'} ${path}`;
     if (!path.startsWith('/')) {
-      issues.push({ where, what: 'la ruta debe empezar por «/»' });
+      issues.push({ where, what: 'la ruta debe empezar por «/»', severity: 'rompe' });
     }
     if ((endpoint.responses ?? []).length === 0) {
-      issues.push({ where, what: 'no tiene ninguna respuesta declarada' });
+      issues.push({ where, what: 'no tiene ninguna respuesta declarada', severity: 'rompe' });
     }
   }
 
-  for (const { where, root } of bodies(contract)) {
+  for (const { where, root } of contractBodies(contract)) {
     // A body that was declared and left empty is somebody who started and got
     // interrupted. A contract with no endpoints at all is not the same thing —
     // that one is unstarted, and it says nothing (D5).
     if (isContainer(root) && (root.children ?? []).length === 0) {
-      issues.push({ where, what: 'el cuerpo está declarado y no tiene ningún campo' });
+      issues.push({
+        where,
+        what: 'el cuerpo está declarado y no tiene ningún campo',
+        severity: 'rompe',
+      });
     }
 
     walk(root, (node) => {
@@ -85,17 +85,72 @@ export function validateContract(contract: Contract): Issue[] {
           // thing to go and fix, not three lines of the same sentence.
           if (!unnamed) {
             unnamed = true;
-            issues.push({ where, what: 'hay un campo sin nombre' });
+            issues.push({ where, what: 'hay un campo sin nombre', severity: 'rompe' });
           }
           continue;
         }
         if (seen.has(key) && !reported.has(key)) {
           reported.add(key);
-          issues.push({ where, what: `la clave «${key}» está repetida en el mismo objeto` });
+          issues.push({
+            where,
+            what: `la clave «${key}» está repetida en el mismo objeto`,
+            severity: 'rompe',
+          });
         }
         seen.add(key);
       }
     });
+  }
+
+  // ---- what models make possible to check ----
+
+  const known = new Set(contract.models.map((m) => m.id));
+
+  for (const { where, root } of contractBodies(contract)) {
+    walk(root, (node) => {
+      const field = node.key.trim() === '' ? 'el cuerpo' : `«${node.key}»`;
+      if (node.type === 'ref' && !known.has(node.ref)) {
+        issues.push({
+          where,
+          what: `${field} apunta a un modelo que no existe`,
+          severity: 'rompe',
+        });
+      }
+      if (node.type === 'array' && node.itemType === 'ref' && !known.has(node.itemRef)) {
+        issues.push({
+          where,
+          what: `${field} es un array de un modelo que no existe`,
+          severity: 'rompe',
+        });
+      }
+    });
+  }
+
+  // Two models whose names normalise to the same schema name: the exporter
+  // numbers the second so the document stays correct, but the two blocks end up
+  // with names nobody chose, and only the author can say which is which.
+  const bySchemaName = new Map<string, string[]>();
+  for (const model of contract.models) {
+    const name = pascal(model.name);
+    bySchemaName.set(name, [...(bySchemaName.get(name) ?? []), model.name]);
+  }
+  for (const [schemaName, names] of bySchemaName) {
+    if (names.length < 2) continue;
+    issues.push({
+      where: `modelos ${names.join(' y ')}`,
+      what: `los dos generan el mismo nombre de schema «${schemaName}»`,
+      severity: 'rompe',
+    });
+  }
+
+  for (const model of contract.models) {
+    if (usesOf(contract, model.id).length === 0) {
+      issues.push({
+        where: `modelo ${model.name}`,
+        what: 'no lo usa ningún campo',
+        severity: 'sobra',
+      });
+    }
   }
 
   return issues;
@@ -110,5 +165,8 @@ export function validateContract(contract: Contract): Issue[] {
  */
 export function issueCount(contract: Contract): number {
   if (contract.endpoints.length === 0) return 0;
-  return validateContract(contract).length;
+  // Only what breaks what gets handed over. A spare model is worth saying in
+  // the export panel and is not worth a line in the strip that competes with
+  // Roadmaps and Decisions for attention (D6).
+  return validateContract(contract).filter((i) => i.severity === 'rompe').length;
 }

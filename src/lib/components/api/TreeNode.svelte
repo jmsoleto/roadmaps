@@ -48,6 +48,12 @@
   const scalar = $derived(isScalar(node));
   const advanced = $derived(apiUi.isAdvancedOpen(node.id));
 
+  const models = $derived(apiContracts.open?.models ?? []);
+  /** Whether this field points at a model, straight or as an array of one. */
+  const isRef = $derived(node.type === 'ref');
+  const isArrayOfRef = $derived(node.type === 'array' && node.itemType === 'ref');
+  const pointsAtModel = $derived(isRef ? node.ref : isArrayOfRef ? node.itemRef : '');
+
   // The enumeration is a list in the document and a comma box on screen (D7).
   //
   // The box needs its own state rather than being derived: typing "alta, " has
@@ -107,6 +113,21 @@
           onchange={(e) => apiContracts.setNodeItemType(node.id, e.currentTarget.value as ItemType)}
         >
           {#each ITEM_TYPES as type (type)}<option value={type}>de {type}</option>{/each}
+        </select>
+      {/if}
+
+      {#if isRef || isArrayOfRef}
+        <select
+          class="type model"
+          value={pointsAtModel}
+          aria-label="modelo al que apunta"
+          onchange={(e) =>
+            isRef
+              ? apiContracts.setNodeRef(node.id, e.currentTarget.value)
+              : apiContracts.setNodeItemRef(node.id, e.currentTarget.value)}
+        >
+          <option value="">— elige un modelo —</option>
+          {#each models as model (model.id)}<option value={model.id}>{model.name}</option>{/each}
         </select>
       {/if}
 
@@ -217,6 +238,20 @@
       >
       {#if container}
         <button class="icon wide" onclick={() => apiUi.openPaste(node.id)}>pegar JSON aquí</button>
+        <button class="icon wide" onclick={() => apiContracts.extractToModel(node.id)}
+          >extraer a modelo</button
+        >
+      {/if}
+      {#if isRef || isArrayOfRef}
+        <button class="icon wide" onclick={() => apiContracts.expandRef(node.id)}
+          >expandir aquí</button
+        >
+        <button
+          class="icon wide"
+          disabled={pointsAtModel === ''}
+          onclick={() => apiContracts.setView({ kind: 'model', id: pointsAtModel })}
+          >abrir el modelo</button
+        >
       {/if}
     </div>
   {/if}
@@ -306,6 +341,10 @@
   .example {
     width: 110px;
     flex-shrink: 0;
+  }
+  .type.model {
+    max-width: 160px;
+    color: var(--accent);
   }
   .comment {
     flex: 1;

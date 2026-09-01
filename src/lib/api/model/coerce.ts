@@ -46,6 +46,10 @@ export function applyType(node: ApiNode, type: NodeType): void {
     node.enums = [];
   }
 
+  // A reference has no children of its own: its shape is the model's, and
+  // leaving the old ones behind would export nothing and confuse everything.
+  if (type === 'ref') node.children = [];
+
   // What is NOT touched, and it is the whole point: `key`, `description` and
   // `required`. They are true of the field whatever shape it turns out to have,
   // and losing the comment because you realised the field was an object would
