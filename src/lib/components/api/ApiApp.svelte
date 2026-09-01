@@ -17,23 +17,22 @@
   import { usage } from '../../hub/usage.svelte';
   import { API_ID } from '../../hub/apps';
   import { theme } from '../../theme/theme.svelte';
+  import ContractRail from './ContractRail.svelte';
+  import EndpointEditor from './EndpointEditor.svelte';
+  import ExamplePanel from './ExamplePanel.svelte';
+  import PasteJsonDialog from './PasteJsonDialog.svelte';
 
   let newTitle = $state('');
-  let titleEl = $state<HTMLInputElement | null>(null);
   let newEl = $state<HTMLInputElement | null>(null);
 
   const open = $derived(apiContracts.open);
+  const endpoint = $derived(apiContracts.openEndpoint);
 
   function create() {
     const contract = apiContracts.addContract(newTitle);
     newTitle = '';
     apiUi.closeCreate();
-    if (contract) {
-      usage.touch(API_ID, contract.id);
-      // Straight into the contract with the cursor on its title: the name typed
-      // in the list was a first guess, and this is a live refinement.
-      queueMicrotask(() => titleEl?.select());
-    }
+    if (contract) usage.touch(API_ID, contract.id);
   }
 
   function openContract(id: string) {
@@ -63,52 +62,27 @@
   </div>
 {:else if open}
   <div class="contract">
-    <div class="fields">
-      <label class="field wide">
-        <span>Título</span>
-        <input
-          bind:this={titleEl}
-          class="in"
-          value={open.title}
-          oninput={(e) => apiContracts.setTitle(open.id, e.currentTarget.value)}
-        />
-      </label>
-      <label class="field">
-        <span>Versión</span>
-        <input
-          class="in mono"
-          value={open.version}
-          placeholder="1.0.0"
-          oninput={(e) => apiContracts.setVersion(open.id, e.currentTarget.value)}
-        />
-      </label>
-      <label class="field wide">
-        <span>Servidor base</span>
-        <input
-          class="in mono"
-          value={open.server}
-          placeholder="https://api.ejemplo.com"
-          oninput={(e) => apiContracts.setServer(open.id, e.currentTarget.value)}
-        />
-      </label>
-      <label class="field full">
-        <span>Descripción</span>
-        <textarea
-          class="in"
-          rows="2"
-          value={open.description}
-          oninput={(e) => apiContracts.setDescription(open.id, e.currentTarget.value)}
-        ></textarea>
-      </label>
+    <ContractRail contract={open} />
+
+    <div class="work">
+      {#if endpoint}
+        <EndpointEditor {endpoint} />
+      {:else if open.endpoints.length === 0}
+        <p class="nothing">
+          Este contrato no tiene endpoints todavía. Crea el primero desde el raíl y descríbelo
+          mientras lo habláis.
+        </p>
+      {:else}
+        <p class="nothing">Elige un endpoint en el raíl para describirlo.</p>
+      {/if}
     </div>
 
-    <div class="pending">
-      <p>
-        Este contrato todavía no tiene endpoints ni modelos: el editor del árbol de campos y la
-        exportación a OpenAPI llegan en los cambios siguientes.
-      </p>
-    </div>
+    {#if endpoint}
+      <ExamplePanel {endpoint} />
+    {/if}
   </div>
+
+  <PasteJsonDialog />
 {:else}
   <div class="home">
     <div class="head">
@@ -246,12 +220,32 @@
     color: var(--text-dim);
   }
 
-  .home,
-  .contract {
+  .home {
     flex: 1;
     min-height: 0;
     overflow-y: auto;
     padding: 20px 24px;
+  }
+  /* Rail, work, example: three columns that each scroll on their own, so the
+     endpoint list stays put while a long body is being described. */
+  .contract {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    align-items: stretch;
+  }
+  .work {
+    flex: 1;
+    min-width: 0;
+    overflow-y: auto;
+  }
+  .nothing {
+    margin: 0;
+    padding: 28px 24px;
+    max-width: 52ch;
+    color: var(--text-dim);
+    font-size: 13.5px;
+    line-height: 1.5;
   }
   .head {
     display: flex;
@@ -369,50 +363,6 @@
     border-color: var(--danger);
   }
 
-  .fields {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-    gap: 12px;
-    max-width: 860px;
-  }
-  .field {
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
-  }
-  .field.wide {
-    grid-column: span 2;
-  }
-  .field.full {
-    grid-column: 1 / -1;
-  }
-  .field span {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 11px;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--text-dim);
-  }
-  .in {
-    width: 100%;
-    box-sizing: border-box;
-    background: var(--surface-2);
-    border: var(--line-width) solid var(--line);
-    border-radius: 6px;
-    color: var(--text);
-    font-family: inherit;
-    font-size: 13.5px;
-    padding: 7px 9px;
-    outline: none;
-    resize: vertical;
-  }
-  .in.mono {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 12.5px;
-  }
-  .in:focus {
-    border-color: var(--accent);
-  }
   .btn {
     background: var(--surface-2);
     border: var(--line-width) solid var(--line);
@@ -431,18 +381,6 @@
   .btn.primary {
     background: var(--accent);
     border-color: var(--accent);
-    color: var(--accent-ink);
-  }
-  .pending {
-    margin-top: 22px;
-    padding-top: 16px;
-    border-top: var(--line-width) solid var(--line-weak);
-    max-width: 60ch;
-  }
-  .pending p {
-    margin: 0;
-    color: var(--text-dim);
-    font-size: 13px;
-    line-height: 1.5;
+    color: var(--ink-on-accent);
   }
 </style>

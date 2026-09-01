@@ -14,7 +14,7 @@
  */
 
 import { PALETTE_SLOTS } from '../../theme/tokens';
-import type { ApiData, Contract } from './types';
+import type { ApiData, Contract, ContractView } from './types';
 
 function str(value: unknown, fallback = ''): string {
   return typeof value === 'string' ? value : fallback;
@@ -24,6 +24,9 @@ function normalizeContract(raw: unknown, index: number): Contract | null {
   if (raw === null || typeof raw !== 'object') return null;
   const c = raw as Partial<Contract>;
   if (typeof c.id !== 'string' || c.id === '') return null;
+
+  const endpoints = Array.isArray(c.endpoints) ? c.endpoints : [];
+  const models = Array.isArray(c.models) ? c.models : [];
 
   return {
     id: c.id,
@@ -38,9 +41,23 @@ function normalizeContract(raw: unknown, index: number): Contract | null {
         ? c.colorSlot
         : index % PALETTE_SLOTS,
     models: Array.isArray(c.models) ? c.models : [],
-    endpoints: Array.isArray(c.endpoints) ? c.endpoints : [],
-    view: c.view ?? null,
+    endpoints,
+    // A view naming something that is no longer there would open the contract
+    // on a blank editor over a list that still has entries. Same treatment
+    // `openId` already gets when it names a contract that is not there (D10).
+    view: resolvableView(c.view ?? null, endpoints, models),
   };
+}
+
+/** The remembered view, or `null` when what it names has been deleted. */
+function resolvableView(
+  view: ContractView,
+  endpoints: readonly { id?: unknown }[],
+  models: readonly { id?: unknown }[],
+): ContractView {
+  if (view === null) return null;
+  const pool = view.kind === 'endpoint' ? endpoints : models;
+  return pool.some((x) => x.id === view.id) ? view : null;
 }
 
 /**

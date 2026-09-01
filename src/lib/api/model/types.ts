@@ -21,6 +21,45 @@ export type NodeType =
   'string' | 'number' | 'integer' | 'boolean' | 'object' | 'array' | 'ref' | 'null';
 
 /**
+ * The types the picker offers.
+ *
+ * Seven, not eight: `ref` is missing on purpose (D3). It points at a reusable
+ * model and there are none yet, so offering it would mean offering a dropdown
+ * with nothing in it. The type itself stays in `NodeType` and every function
+ * here handles it — a case that cannot be produced yet is not a case that does
+ * not exist.
+ */
+export const NODE_TYPES: readonly NodeType[] = [
+  'string',
+  'number',
+  'integer',
+  'boolean',
+  'object',
+  'array',
+  'null',
+];
+
+/** What an array can be told to hold. `ref` is absent for the same reason. */
+export const ITEM_TYPES: readonly ItemType[] = ['object', 'string', 'number', 'integer', 'boolean'];
+
+/** The methods an endpoint can use. */
+export const HTTP_METHODS: readonly HttpMethod[] = [
+  'GET',
+  'POST',
+  'PUT',
+  'PATCH',
+  'DELETE',
+  'HEAD',
+  'OPTIONS',
+];
+
+/** Where a parameter can travel. */
+export const PARAM_INS: readonly ParamIn[] = ['query', 'path', 'header'];
+
+/** The types a parameter can take: scalars only. */
+export const PARAM_TYPES: readonly ApiParam['type'][] = ['string', 'number', 'integer', 'boolean'];
+
+/**
  * What an array holds.
  *
  * Arrays of arrays are out: they are rare in a real contract and they double
@@ -28,8 +67,41 @@ export type NodeType =
  */
 export type ItemType = 'object' | 'ref' | 'string' | 'number' | 'integer' | 'boolean';
 
-/** The string formats OpenAPI knows and a pasted JSON can be recognised as. */
-export type NodeFormat = '' | 'date-time' | 'date' | 'uuid' | 'email' | 'uri';
+/**
+ * The string formats OpenAPI knows.
+ *
+ * Two groups, and the split is not visible from the list itself (D8):
+ *
+ *  - **Inferred**: `date-time`, `date`, `uuid`, `email` and `uri` are recognised
+ *    from the shape of a value when a JSON is pasted.
+ *  - **Chosen by hand only**: `password`, `byte`, `int64` and `float`. Nothing
+ *    in a string says it is a password, so no inference will ever set these.
+ */
+export type NodeFormat =
+  '' | 'date-time' | 'date' | 'uuid' | 'email' | 'uri' | 'password' | 'byte' | 'int64' | 'float';
+
+/** Every format, in the order the picker offers them. */
+export const NODE_FORMATS: readonly NodeFormat[] = [
+  '',
+  'date',
+  'date-time',
+  'uuid',
+  'email',
+  'uri',
+  'password',
+  'byte',
+  'int64',
+  'float',
+];
+
+/** The formats a pasted JSON can recognise on its own. */
+export const INFERRED_FORMATS: readonly NodeFormat[] = [
+  'date-time',
+  'date',
+  'uuid',
+  'email',
+  'uri',
+];
 
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | 'OPTIONS';
 

@@ -1,0 +1,6 @@
+schema: spec-driven
+created: 2026-09-01
+goal: "El contrato deja de estar vacio: endpoints con sus parametros y respuestas,
+  el arbol de campos con el comentario en la propia fila, duplicar un nodo entero,
+  construir el arbol pegando un JSON real, y el ejemplo en vivo en un panel
+  lateral plegable"

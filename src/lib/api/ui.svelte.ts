@@ -36,6 +36,57 @@ class ApiUiStore {
   cancelDelete(): void {
     this.deletingId = null;
   }
+
+  // ---- the field tree ----
+
+  /**
+   * Which fields have their advanced strip open.
+   *
+   * Session state, unlike the fold state of a branch, which lives on the node
+   * and is persisted: a folded branch is a decision about *this contract*, and
+   * an open options strip is something you did two seconds ago.
+   */
+  private advanced = $state<Set<string>>(new Set());
+
+  isAdvancedOpen(nodeId: string): boolean {
+    return this.advanced.has(nodeId);
+  }
+
+  toggleAdvanced(nodeId: string): void {
+    const next = new Set(this.advanced);
+    if (!next.delete(nodeId)) next.add(nodeId);
+    this.advanced = next;
+  }
+
+  /** The field whose paste dialog is up, or `null`. */
+  pasteTargetId = $state<string | null>(null);
+  /** Why the last paste was refused, shown inside the dialog. */
+  pasteError = $state<string | null>(null);
+
+  openPaste(nodeId: string): void {
+    this.pasteTargetId = nodeId;
+    this.pasteError = null;
+  }
+
+  closePaste(): void {
+    this.pasteTargetId = null;
+    this.pasteError = null;
+  }
+
+  /**
+   * Whether the example panel is showing (D4).
+   *
+   * Open by default, because watching the shape of the response appear while
+   * the field names are typed is half the value of the tool in a projected
+   * meeting. Not persisted: it is a preference about the screen, not about the
+   * contract. If reopening it every session turns out to grate, the right home
+   * is the same `getPref` seam where Roadmaps keeps its zoom.
+   */
+  exampleOpen = $state<boolean>(true);
+
+  toggleExample(): void {
+    this.exampleOpen = !this.exampleOpen;
+  }
 }
 
 export const apiUi = new ApiUiStore();
