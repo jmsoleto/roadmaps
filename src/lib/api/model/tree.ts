@@ -26,7 +26,10 @@ export function walk(
   parent: ApiNode | null = null,
 ): void {
   fn(node, parent);
-  for (const child of node.children) walk(child, fn, node);
+  // `?? []` because this walk also runs over documents read from the store,
+  // which the normaliser does not descend into yet: a node missing its children
+  // must not throw, it must simply have none.
+  for (const child of node.children ?? []) walk(child, fn, node);
 }
 
 /** Locate a node and the parent that holds it. The root has no parent. */

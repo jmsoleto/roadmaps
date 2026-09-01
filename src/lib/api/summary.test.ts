@@ -1,6 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import { apiSummary, recentRows } from './summary';
+import { newEndpoint, newNode, rootNode } from './model/factories';
 import type { Contract } from './model/types';
+
+/** An endpoint whose 200 body has one field, which is a coherent contract. */
+function endpointWithField() {
+  const endpoint = newEndpoint('GET', '/productos');
+  endpoint.responses[0].body!.children = [newNode('id')];
+  return endpoint;
+}
 
 const slotColor = (slot: number) => `#slot${slot}`;
 
@@ -24,10 +32,10 @@ describe('the figures', () => {
     const summary = apiSummary(
       [
         contract('a', {
-          endpoints: [{}, {}] as Contract['endpoints'],
-          models: [{}] as Contract['models'],
+          endpoints: [endpointWithField(), endpointWithField()],
+          models: [{ id: 'm1', name: 'Paginacion', description: '', node: rootNode() }],
         }),
-        contract('b', { endpoints: [{}] as Contract['endpoints'] }),
+        contract('b', { endpoints: [endpointWithField()] }),
       ],
       [],
       slotColor,
@@ -87,5 +95,54 @@ describe('the short list', () => {
     expect(summary.list.label).toBe('CONTRATOS RECIENTES');
     expect(summary.list.rows).toEqual([]);
     expect(summary.list.emptyLabel).not.toBe('');
+  });
+});
+
+describe('the alerts', () => {
+  /** Same `validate` the export panel shows, never a second set of rules (D4). */
+  it('names a contract with problems and how many it has', () => {
+    const broken = contract('a', {
+      title: 'Mi Cuenta',
+      endpoints: [
+        {
+          ...newEndpoint('GET', 'sin-barra'),
+          responses: [],
+        },
+      ],
+    });
+    const alerts = apiSummary([broken], [], slotColor).alerts;
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0].text).toContain('Mi Cuenta');
+    expect(alerts[0].text).toContain('2 problemas');
+    expect(alerts[0].tone).toBe('warn');
+  });
+
+  it('uses the singular for a single problem', () => {
+    // A valid path with no responses: exactly one thing wrong, and no body to
+    // be empty.
+    const one = contract('a', {
+      endpoints: [{ ...newEndpoint('GET', '/productos'), responses: [] }],
+    });
+    expect(apiSummary([one], [], slotColor).alerts[0].text).toContain('1 problema antes');
+  });
+
+  /** Unstarted is not the same as wrong (D5). */
+  it('says nothing about a contract with no endpoints', () => {
+    expect(apiSummary([contract('a')], [], slotColor).alerts).toEqual([]);
+  });
+
+  it('says nothing about a coherent contract', () => {
+    const ok = contract('a', { endpoints: [endpointWithField()] });
+    expect(apiSummary([ok], [], slotColor).alerts).toEqual([]);
+  });
+
+  it('reports one alert per contract, not one per problem', () => {
+    const broken = () => ({ ...newEndpoint('GET', 'sin-barra'), responses: [] });
+    const alerts = apiSummary(
+      [contract('a', { endpoints: [broken()] }), contract('b', { endpoints: [broken()] })],
+      [],
+      slotColor,
+    ).alerts;
+    expect(alerts).toHaveLength(2);
   });
 });

@@ -87,6 +87,17 @@ class ApiUiStore {
   toggleExample(): void {
     this.exampleOpen = !this.exampleOpen;
   }
+
+  /** Whether the export panel is up. */
+  exporting = $state<boolean>(false);
+
+  openExport(): void {
+    this.exporting = true;
+  }
+
+  closeExport(): void {
+    this.exporting = false;
+  }
 }
 
 export const apiUi = new ApiUiStore();

@@ -5,8 +5,9 @@
  * card's contract out. The store wiring is in `hub/registry.ts`.
  */
 
+import { issueCount } from './validate';
 import type { RecentEntry } from '../hub/usage';
-import type { AppSummary, Row, Stat } from '../hub/types';
+import type { Alert, AppSummary, Row, Stat } from '../hub/types';
 import type { Contract } from './model/types';
 
 /** How many rows the card shows. */
@@ -22,9 +23,12 @@ function stats(contracts: Contract[]): [Stat, Stat, Stat] {
   return [
     { value: contracts.length, label: 'contratos', tone: 'neutral' },
     { value: endpoints, label: 'endpoints', tone: 'neutral' },
-    // Not a problem being counted, so never a grave tone. The figure that will
-    // deserve one is "contracts with warnings", once the validator exists — see
-    // the open question in this change's design.
+    // The three figures stay as they are now that the validator exists (D7).
+    // The first change's open question asked whether "contracts with warnings"
+    // should displace "models" here; it does not need to. The alert already
+    // carries the severity, models start counting next change, and
+    // `hub-landing` only asks that a figure *can* carry a tone, not that one
+    // does.
     { value: models, label: 'modelos', tone: 'neutral' },
   ];
 }
@@ -58,6 +62,35 @@ export function recentRows(
   return out;
 }
 
+/**
+ * What API Hub contributes to "lo que no puede esperar" (D7).
+ *
+ * One alert per contract that has problems, naming it and how many — not one
+ * per problem. Three half-written contracts would fill the strip and bury what
+ * Roadmaps and Decisions have to say.
+ *
+ * The count comes from the same `validate` the export panel shows, never from a
+ * second set of rules: two lists would end up disagreeing about the same
+ * contract, and the hub's would be the one nobody maintains.
+ */
+export function contractAlerts(contracts: Contract[]): Alert[] {
+  const out: Alert[] = [];
+  for (const contract of contracts) {
+    const count = issueCount(contract);
+    if (count === 0) continue;
+    out.push({
+      id: `issues:${contract.id}`,
+      text:
+        count === 1
+          ? `${contract.title}: 1 problema antes de poder entregarlo`
+          : `${contract.title}: ${count} problemas antes de poder entregarlo`,
+      source: 'API Hub',
+      tone: 'warn',
+    });
+  }
+  return out;
+}
+
 export function apiSummary(
   contracts: Contract[],
   recent: RecentEntry[],
@@ -70,8 +103,6 @@ export function apiSummary(
       rows: recentRows(contracts, recent, slotColor),
       emptyLabel: 'aún no has abierto ninguno',
     },
-    // Nothing to warn about yet. The validator is what will fill this, and it
-    // arrives with the change that can actually check a contract.
-    alerts: [],
+    alerts: contractAlerts(contracts),
   };
 }

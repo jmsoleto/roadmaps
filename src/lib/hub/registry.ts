@@ -24,6 +24,7 @@ import { apiSummary } from '../api/summary';
 import { location } from './location.svelte';
 import { roadmapsSummary } from './roadmaps-summary';
 import { usage } from './usage.svelte';
+import { downloadText } from './download';
 import type { AppAction, AppSummary, HubApp } from './types';
 import RoadmapsApp from '../components/RoadmapsApp.svelte';
 import RoadmapSwitcher from '../components/RoadmapSwitcher.svelte';
@@ -127,6 +128,15 @@ function apiActions(): AppAction[] {
         apiUi.openCreate();
       },
     },
+    {
+      kind: 'button',
+      label: '↑ exportar',
+      title: 'exportar el contrato abierto',
+      // Nothing to export without a contract open, and the export panel reads
+      // the open one.
+      disabled: down || apiContracts.open === null,
+      run: () => apiUi.openExport(),
+    },
   ];
 }
 
@@ -146,23 +156,13 @@ function openRoadmap(id: string): void {
   usage.touch(ROADMAPS_ID, id);
 }
 
-/** Hand the browser a file. The one piece of DOM the registry owns. */
-function download(filename: string, json: string): void {
-  const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
 const JSON_FILES = 'application/json,.json';
 
 function exportActiveRoadmap(): void {
   const json = store.exportActive();
   if (!json) return;
   const name = (store.activeRoadmap?.name ?? 'roadmap').replace(/[^\w.-]+/g, '_');
-  download(`${name}.json`, json);
+  downloadText(`${name}.json`, json);
 }
 
 function roadmapsActions(): AppAction[] {
@@ -189,7 +189,7 @@ function exportDecisionsFile(): void {
   // The proxied array is fine here: `exportDecisions` serialises with
   // `JSON.stringify`, which reads straight through a `$state` proxy. It is
   // `structuredClone` that cannot, and that one lives in the storage seam.
-  download('decisiones.json', exportDecisions(decisions.all));
+  downloadText('decisiones.json', exportDecisions(decisions.all));
 }
 
 function decisionsActions(): AppAction[] {

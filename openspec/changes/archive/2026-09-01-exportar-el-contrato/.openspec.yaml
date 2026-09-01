@@ -1,0 +1,6 @@
+schema: spec-driven
+created: 2026-09-01
+goal: "El contrato sale de la aplicacion: OpenAPI 3.0.3 autocontenido en YAML y
+  JSON con emisor propio, ejemplos y briefing en Markdown, todo con copiar y
+  descargar; mas un validador que se ve al exportar sin bloquearlo y que alimenta
+  los avisos de la tarjeta del hub"

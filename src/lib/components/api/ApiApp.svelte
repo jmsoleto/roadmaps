@@ -21,6 +21,7 @@
   import EndpointEditor from './EndpointEditor.svelte';
   import ExamplePanel from './ExamplePanel.svelte';
   import PasteJsonDialog from './PasteJsonDialog.svelte';
+  import ExportDialog from './ExportDialog.svelte';
 
   let newTitle = $state('');
   let newEl = $state<HTMLInputElement | null>(null);
@@ -83,6 +84,7 @@
   </div>
 
   <PasteJsonDialog />
+  <ExportDialog />
 {:else}
   <div class="home">
     <div class="head">

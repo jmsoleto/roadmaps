@@ -34,7 +34,9 @@ export type JsonValue = string | number | boolean | null | JsonValue[] | { [k: s
  * Spanish keyboard in the middle of a conversation, and refusing the comma
  * would put a `0` in the example for no good reason.
  */
-export function scalarValue(node: ApiNode): JsonValue {
+export function scalarValue(
+  node: Pick<ApiNode, 'type' | 'example' | 'format' | 'enums'>,
+): JsonValue {
   const written = node.example.trim();
 
   if (node.type === 'boolean') {
