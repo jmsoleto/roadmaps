@@ -25,7 +25,7 @@ import {
 } from '../model/blockers';
 import { exportRoadmap, parseImport, mergeAssignees, mergeBlockers } from '../io/portability';
 import { normalizeColors } from '../theme/migrate';
-import { normalizeBlockers, normalizeCompletion } from '../model/normalize';
+import { normalizeBlockers, normalizeCompletion, normalizeRoadmapColors } from '../model/normalize';
 import { PALETTE_SLOTS } from '../theme/tokens';
 
 const SAVE_DEBOUNCE_MS = 250;
@@ -66,8 +66,8 @@ export class AppStore {
 
   /** Load persisted state (or seed on first run). Must be awaited before mount. */
   async init(): Promise<void> {
-    const loaded = normalizeCompletion(
-      normalizeBlockers(normalizeColors(await this.storage.load())),
+    const loaded = normalizeRoadmapColors(
+      normalizeCompletion(normalizeBlockers(normalizeColors(await this.storage.load()))),
     );
     if (loaded) {
       this.data = loaded;
@@ -136,7 +136,12 @@ export class AppStore {
 
   /** Import a roadmap from JSON text (current or legacy format). */
   importFromText(text: string): void {
-    const { roadmap, assignees, blockers } = parseImport(text);
+    // The slot only applies when the document brings none; where it lands is
+    // the only thing that can decide it (D4).
+    const { roadmap, assignees, blockers } = parseImport(
+      text,
+      this.data.roadmaps.length % PALETTE_SLOTS,
+    );
     mergeAssignees(this.data, assignees);
     // Merge before pruning: the document brings its own catalog entries along,
     // and its assignments have to resolve against the post-merge catalog.
@@ -184,7 +189,7 @@ export class AppStore {
    */
   addRoadmap(name: string): boolean {
     if (this.roadmapNameError(name)) return false;
-    const rm = newRoadmap(name);
+    const rm = newRoadmap(name, this.data.roadmaps.length % PALETTE_SLOTS);
     this.data.roadmaps.push(rm);
     this.data.activeId = rm.id;
     this.metaView = false;
@@ -218,6 +223,25 @@ export class AppStore {
       rm.windowDays = Math.max(90, Math.round(days));
       this.scheduleSave();
     }
+  }
+
+  /**
+   * Move a roadmap to another position in the list.
+   *
+   * This is the order of the roadmaps everywhere, not of one view: both the
+   * "Todos" view and the switcher walk this array as it stands, so fixing it
+   * once fixes both places a roadmap gets picked from (D1).
+   *
+   * `scheduleSave` and not `commit`, for the reason `movePhase` gives — and
+   * doubly so here, since `commit` only ever looks at the active roadmap.
+   */
+  moveRoadmap(id: string, toIndex: number): void {
+    const from = this.data.roadmaps.findIndex((r) => r.id === id);
+    if (from === -1 || toIndex === from || toIndex < 0 || toIndex >= this.data.roadmaps.length) {
+      return;
+    }
+    this.data.roadmaps = moveInArray(this.data.roadmaps, from, toIndex);
+    this.scheduleSave();
   }
 
   deleteRoadmap(id: string): void {

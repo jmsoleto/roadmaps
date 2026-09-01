@@ -7,7 +7,8 @@
   import { theme } from '../theme/theme.svelte';
   import { dayIndex, dayToX, fmtDate, todayIso } from '../time/timeline';
   import { getQuarterSegments } from '../time/segments';
-  import { getMetaWindow, getRoadmapExtent } from '../model/derive';
+  import { getMetaWindow, getRoadmapExtent, dropIndex, moveInArray } from '../model/derive';
+  import { RowReorder } from '../interactions/reorder.svelte';
   import type { IsoDate } from '../model/types';
 
   let scrollEl = $state<HTMLDivElement | undefined>(undefined);
@@ -23,7 +24,9 @@
   const rows = $derived(
     roadmaps.map((rm, idx) => {
       const extent = getRoadmapExtent(rm);
-      return { rm, idx, slot: idx, extent };
+      // The slot is the roadmap's own, not its position: reordering this list
+      // must not repaint it, nor anything else in it.
+      return { rm, idx, slot: rm.colorSlot, extent };
     }),
   );
 
@@ -59,6 +62,43 @@
   function openRoadmap(id: string) {
     store.setActive(id);
     usage.touch(id);
+  }
+
+  // ---- vertical reordering ----
+
+  /**
+   * The same gesture the Gantt uses, and the easy half of it (D5).
+   *
+   * Every row here is one roadmap and one row tall, so there is no block
+   * arithmetic and nothing a roadmap can be contained by: `dropIndex` clamps at
+   * the ends of the list, which is the only boundary there is.
+   */
+  const reorder = new RowReorder<number>();
+
+  const preview = $derived(
+    reorder.gesture === null
+      ? roadmaps
+      : moveInArray(roadmaps, reorder.gesture.from, reorder.gesture.to),
+  );
+  const previewIndex = $derived.by(() => {
+    const m = new Map<string, number>();
+    preview.forEach((rm, i) => m.set(rm.id, i));
+    return m;
+  });
+
+  const rowY = (id: string, i: number) => reorder.y(id, previewIndex.get(id) ?? i);
+
+  function startReorder(e: PointerEvent, id: string, from: number) {
+    reorder.start(e, {
+      key: id,
+      payload: from,
+      from,
+      originY: from * ROW_H,
+      minY: 0,
+      maxY: (roadmaps.length - 1) * ROW_H,
+      target: (dy) => dropIndex(from, dy, roadmaps.length),
+      drop: (to) => store.moveRoadmap(id, to),
+    });
   }
 
   // ---- inline delete (two-step confirm, no browser dialog) ----
@@ -106,13 +146,24 @@
     >
   </div>
 {:else}
-  <div class="gantt-scroll" bind:this={scrollEl}>
+  <div class="gantt-scroll" class:reordering={reorder.active} bind:this={scrollEl}>
     <div class="sidebar">
       <div class="sidebar-head"></div>
       <div class="sidebar-head-spacer"></div>
-      <div class="sidebar-rows">
-        {#each rows as r (r.rm.id)}
-          <div class="row-label">
+      <div class="sidebar-rows" class:reordering={reorder.active}>
+        {#each rows as r, i (r.rm.id)}
+          <div
+            class="row-label"
+            class:held={reorder.held(r.rm.id)}
+            style:transform="translateY({rowY(r.rm.id, i) - i * ROW_H}px)"
+          >
+            <button
+              type="button"
+              class="row-grip"
+              onpointerdown={(ev) => startReorder(ev, r.rm.id, i)}
+              title="reordenar roadmap"
+              aria-label="reordenar {r.rm.name}">⠿</button
+            >
             <span class="dot" style:background={theme.slotColor(r.slot)}></span>
             <input
               class="rl-input"
@@ -156,7 +207,12 @@
         {/each}
       </div>
 
-      <div class="rows" style:width="{totalWidth}px" style:height="{totalHeight}px">
+      <div
+        class="rows"
+        class:reordering={reorder.active}
+        style:width="{totalWidth}px"
+        style:height="{totalHeight}px"
+      >
         {#each quarters as q (q.year + '-' + q.q)}
           <div
             class="grid-line"
@@ -175,7 +231,7 @@
           <div class="today-flag">HOY</div>
         </div>
         {#each rows as r, i (r.rm.id)}
-          <div class="track" style:top="{i * ROW_H}px">
+          <div class="track" class:held={reorder.held(r.rm.id)} style:top="{rowY(r.rm.id, i)}px">
             {#if r.extent}
               {@const g = geom(r.extent.start, r.extent.end)}
               <button
@@ -261,13 +317,72 @@
     background: var(--surface);
     border-bottom: 1px solid var(--line);
   }
+  /* The 18px of left padding beyond the old 10 is the gutter the grip sits in,
+     positioned rather than in flow so the handles line up in one column — the
+     same treatment the Gantt rows got. */
   .row-label {
+    position: relative;
     display: flex;
     align-items: center;
     gap: 6px;
     height: var(--row-h);
-    padding: 0 10px;
+    padding: 0 10px 0 28px;
     border-bottom: 1px solid var(--line-weak);
+    background: var(--surface);
+  }
+  /* Duplicated from Gantt.svelte, like the rest of the layout in this file.
+     What was worth extracting was the state machine, not the style rules
+     (D6). */
+  .row-grip {
+    position: absolute;
+    left: 6px;
+    top: 0;
+    bottom: 0;
+    width: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: none;
+    background: none;
+    color: var(--text-dim);
+    font-size: 11px;
+    line-height: 1;
+    opacity: 0;
+    cursor: grab;
+    touch-action: none;
+  }
+  .row-label:hover .row-grip,
+  .row-label.held .row-grip {
+    opacity: 1;
+  }
+  .row-grip:hover {
+    color: var(--accent);
+  }
+  .row-grip:active {
+    cursor: grabbing;
+  }
+  .row-label.held,
+  .track.held {
+    opacity: 0.8;
+    z-index: 50;
+    pointer-events: none;
+  }
+  .row-label.held {
+    box-shadow: 0 6px 20px var(--shadow-strong);
+  }
+  .sidebar-rows.reordering .row-label,
+  .rows.reordering .track {
+    transition:
+      transform 0.12s ease,
+      top 0.12s ease;
+  }
+  .sidebar-rows.reordering .row-label.held,
+  .rows.reordering .track.held {
+    transition: none;
+  }
+  .gantt-scroll.reordering {
+    user-select: none;
   }
   /* Same vocabulary as the phase rows in Gantt.svelte: the name is a live
      input, the row reveals its controls on hover. */

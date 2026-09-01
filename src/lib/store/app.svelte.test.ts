@@ -23,6 +23,7 @@ class FakeStorage implements Storage {
 const roadmap = (id: string) => ({
   id,
   name: id,
+  colorSlot: 0,
   startDate: '2026-01-01',
   windowDays: 730,
   baselineDate: null,
@@ -454,5 +455,106 @@ describe('reordenar no altera nada más que el orden', () => {
     store.movePhase('b', 0);
     await store.flush();
     expect(backend.saved!.roadmaps[0].rows.map((p) => p.id)).toEqual(['b', 'a']);
+  });
+});
+
+// ---- el color del roadmap ----
+
+describe('slot de color del roadmap', () => {
+  /** Build a store from a raw document, bypassing the typed fixtures. */
+  async function storeFrom(doc: unknown) {
+    const store = new AppStore(new FakeStorage(doc as AppData));
+    await store.init();
+    return store;
+  }
+
+  /** The same document a version without roadmap colours would have written. */
+  const legacyDoc = (ids: string[]) => ({
+    roadmaps: ids.map((id) => {
+      const rm = roadmap(id) as unknown as { colorSlot?: unknown };
+      delete rm.colorSlot;
+      return rm;
+    }),
+    assignees: [],
+    blockers: [],
+    activeId: ids[0] ?? null,
+  });
+
+  it('rellena el slot por la posición, que es de donde salía el color', async () => {
+    const store = await storeFrom(legacyDoc(['a', 'b', 'c']));
+    expect(store.data.roadmaps.map((r) => r.colorSlot)).toEqual([0, 1, 2]);
+  });
+
+  it('no reasigna el de un documento que ya lo trae', async () => {
+    const store = await storeFrom({
+      roadmaps: [
+        { ...roadmap('a'), colorSlot: 7 },
+        { ...roadmap('b'), colorSlot: 2 },
+      ],
+      assignees: [],
+      blockers: [],
+      activeId: 'a',
+    });
+    expect(store.data.roadmaps.map((r) => r.colorSlot)).toEqual([7, 2]);
+  });
+
+  it('la normalización no fuerza por sí misma un guardado', async () => {
+    const backend = new FakeStorage(legacyDoc(['a', 'b']) as never);
+    const store = new AppStore(backend);
+    await store.init();
+    expect(backend.saved).toBeNull();
+
+    // ...pero se consolida en el siguiente guardado del uso normal.
+    store.renameRoadmap('a', 'otro');
+    await store.flush();
+    expect(backend.saved?.roadmaps.map((r) => r.colorSlot)).toEqual([0, 1]);
+  });
+
+  it('un roadmap nuevo recibe la siguiente posición de la paleta', async () => {
+    const { store } = await storeWith([], null);
+    store.addRoadmap('Uno');
+    store.addRoadmap('Dos');
+    expect(store.data.roadmaps.map((r) => r.colorSlot)).toEqual([0, 1]);
+  });
+
+  it('borrar un roadmap no cambia el color de los demás', async () => {
+    const { store } = await storeWith([], null);
+    store.addRoadmap('Uno');
+    store.addRoadmap('Dos');
+    store.addRoadmap('Tres');
+    const antes = store.data.roadmaps.map((r) => [r.name, r.colorSlot]);
+    store.deleteRoadmap(store.data.roadmaps[0].id);
+    expect(store.data.roadmaps.map((r) => [r.name, r.colorSlot])).toEqual(antes.slice(1));
+  });
+
+  it('reordenar no cambia el color de nadie', async () => {
+    const { store } = await storeWith([], null);
+    store.addRoadmap('Uno');
+    store.addRoadmap('Dos');
+    store.addRoadmap('Tres');
+    const antes = new Map(store.data.roadmaps.map((r) => [r.name, r.colorSlot]));
+    store.moveRoadmap(store.data.roadmaps[2].id, 0);
+    expect(store.data.roadmaps.map((r) => r.name)).toEqual(['Tres', 'Uno', 'Dos']);
+    for (const rm of store.data.roadmaps) expect(rm.colorSlot).toBe(antes.get(rm.name));
+  });
+
+  it('importar respeta el slot que trae el documento', async () => {
+    const { store } = await storeWith([], null);
+    store.addRoadmap('Uno');
+    const doc = exportRoadmap({ ...roadmap('x'), name: 'Traído', colorSlot: 6 }, [], []);
+    store.importFromText(doc);
+    expect(store.activeRoadmap!.colorSlot).toBe(6);
+  });
+
+  it('importar un documento sin slot lo toma de la posición de destino', async () => {
+    const { store } = await storeWith([], null);
+    store.addRoadmap('Uno');
+    store.addRoadmap('Dos');
+    const raw = JSON.parse(exportRoadmap({ ...roadmap('x'), name: 'Traído' }, [], []));
+    delete raw.roadmap.colorSlot;
+    store.importFromText(JSON.stringify(raw));
+    // Entra el tercero, así que le toca el slot 2 — no el 0 que daría el índice
+    // dentro de su propio documento.
+    expect(store.activeRoadmap!.colorSlot).toBe(2);
   });
 });

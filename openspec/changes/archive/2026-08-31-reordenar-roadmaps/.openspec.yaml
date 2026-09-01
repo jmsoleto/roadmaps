@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-08-31
+goal: Reordenar roadmaps arrastrando en la vista Todos, y darle a cada roadmap
+  su propio slot de color para que el orden deje de decidir el color

@@ -44,6 +44,7 @@ const phase = (children: Item[], over: Partial<Phase> = {}): Phase => ({
 const roadmap = (name: string, rows: Phase[], over: Partial<Roadmap> = {}): Roadmap => ({
   id: name,
   name,
+  colorSlot: 0,
   startDate: '2026-01-01',
   windowDays: 730,
   rows,
@@ -131,9 +132,22 @@ describe('the short list', () => {
     expect(rows.map((r) => r.id)).toEqual(['dos', 'uno']);
   });
 
-  it('colours a row by the roadmap position, as the "Todos" view does', () => {
+  it('colours a row by the roadmap\'s own slot, as the "Todos" view does', () => {
     const rows = recentRows(rms, [{ id: 'dos', at: 1 }], TODAY, palette);
-    expect(rows[0].color).toBe('#slot1');
+    expect(rows[0].color).toBe('#slot0');
+  });
+
+  it('the colour follows the roadmap, not its place in the list', () => {
+    // Same two roadmaps, opposite order and distinct slots: the card has to
+    // report each one's own colour, or reordering "Todos" would repaint it.
+    const slotted = [
+      roadmap('uno', [phase([item()])], { colorSlot: 7 }),
+      roadmap('dos', [phase([item()])], { colorSlot: 2 }),
+    ];
+    expect(recentRows(slotted, [{ id: 'dos', at: 1 }], TODAY, palette)[0].color).toBe('#slot2');
+    expect(
+      recentRows([...slotted].reverse(), [{ id: 'dos', at: 1 }], TODAY, palette)[0].color,
+    ).toBe('#slot2');
   });
 
   it('shows the slip as the row detail, in danger tone', () => {

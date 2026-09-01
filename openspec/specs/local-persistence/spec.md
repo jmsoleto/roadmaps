@@ -7,7 +7,9 @@ Cómo sobreviven los datos entre sesiones, sabiendo que no hay servidor y que pe
 **Un almacén por aplicación**, y ninguna lee el de otra. El de Roadmaps es el almacenamiento de clave-valor del navegador, bajo una clave versionada, y no se mueve de ahí. El de Decisions vive fuera de él, en un almacén cuya cuota no compite con aquella: agotar la del primero haría fallar el guardado de Roadmaps, y ese fallo no es visible para el usuario. Dentro de ese almacén, el contenido binario de los adjuntos va aparte del documento, que se reescribe entero en cada guardado.
 
 Cubre además las fechas absolutas como formato canónico, el autosave con agrupación de escrituras, la persistencia del estado de sesión y de las preferencias de tema, el volcado de los cambios pendientes al cerrar, y la distinción entre un almacén vacío y uno que no se ha podido abrir.
+
 ## Requirements
+
 ### Requirement: Fechas absolutas como formato canónico
 El sistema MUST almacenar las fechas de fases, items y milestones como fechas absolutas (ISO `YYYY-MM-DD`), no como índices relativos a una fecha de inicio fija.
 
@@ -267,3 +269,25 @@ Mientras el almacén todavía está respondiendo, el sistema MUST distinguirlo d
 - **WHEN** el usuario entra en una aplicación cuyo almacén todavía está respondiendo
 - **THEN** el sistema indica que se está abriendo, y no muestra una lista vacía
 
+### Requirement: Normalización de roadmaps sin slot de color al cargar
+
+Al cargar datos guardados antes de que el roadmap tuviera su propia posición de paleta, el sistema MUST asignar a cada roadmap que no la traiga la posición que corresponde a su lugar en la lista.
+
+Derivarla de la posición no es una elección arbitraria: es de donde salía el color antes de existir el campo, de modo que la normalización MUST reproducir exactamente el color que cada roadmap ya mostraba. Actualizar la aplicación MUST NOT cambiar ningún color.
+
+La normalización MUST ser idempotente y MUST NOT provocar por sí sola una escritura en el almacén: la conversión se consolida en el siguiente guardado que ocurra por el flujo normal de la aplicación, igual que la normalización de colores a slots.
+
+#### Scenario: Cargar datos sin slot de color en los roadmaps
+
+- **WHEN** el sistema carga un documento cuyos roadmaps no tienen posición de paleta
+- **THEN** cada roadmap recibe la que corresponde a su lugar en la lista y se muestra con el mismo color que antes
+
+#### Scenario: Cargar datos ya normalizados
+
+- **WHEN** el sistema carga un documento cuyos roadmaps ya tienen su posición
+- **THEN** el sistema los deja como están, sin reasignar nada por su lugar en la lista
+
+#### Scenario: Reordenar tras la normalización
+
+- **WHEN** el usuario reordena los roadmaps de un documento recién normalizado
+- **THEN** cada uno conserva el color que tenía antes de moverse

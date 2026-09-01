@@ -44,6 +44,7 @@ function roadmap(p: Phase): Roadmap {
   return {
     id: 'r',
     name: 'r',
+    colorSlot: 0,
     startDate: '2026-01-01',
     windowDays: 730,
     rows: [p],

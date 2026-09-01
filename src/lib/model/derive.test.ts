@@ -52,6 +52,7 @@ function roadmap(id: string, startDate: string, itemStart: string, itemEnd: stri
   return {
     id,
     name: id,
+    colorSlot: 0,
     startDate,
     windowDays: 730,
     baselineDate: null,
@@ -61,7 +62,7 @@ function roadmap(id: string, startDate: string, itemStart: string, itemEnd: stri
 
 /** A roadmap with a configured window but nothing scheduled in it. */
 function emptyRoadmap(id: string, startDate: string): Roadmap {
-  return { id, name: id, startDate, windowDays: 730, rows: [], baselineDate: null };
+  return { id, name: id, colorSlot: 0, startDate, windowDays: 730, rows: [], baselineDate: null };
 }
 
 describe('getMetaWindow', () => {
@@ -163,7 +164,15 @@ function namedPhase(id: string, n: number, expanded = true): Phase {
 }
 
 function rmOf(rows: Phase[]): Roadmap {
-  return { id: 'r', name: 'r', startDate: '2026-01-01', windowDays: 730, rows, baselineDate: null };
+  return {
+    id: 'r',
+    name: 'r',
+    colorSlot: 0,
+    startDate: '2026-01-01',
+    windowDays: 730,
+    rows,
+    baselineDate: null,
+  };
 }
 
 const keys = (rm: Roadmap, drag: Parameters<typeof previewRows>[1]) =>

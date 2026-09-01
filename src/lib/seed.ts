@@ -10,10 +10,11 @@ function defaultStartDate(): string {
 }
 
 /** A fresh, empty roadmap with sensible default timeline (timeline-config). */
-export function newRoadmap(name: string, startDate = defaultStartDate()): Roadmap {
+export function newRoadmap(name: string, colorSlot = 0, startDate = defaultStartDate()): Roadmap {
   return {
     id: uid('rm'),
     name,
+    colorSlot,
     startDate,
     windowDays: DEFAULT_WINDOW_DAYS,
     baselineDate: null,
@@ -29,6 +30,7 @@ export function seedAppData(): AppData {
   const roadmap: Roadmap = {
     id: uid('rm'),
     name: 'Roadmap 1',
+    colorSlot: 0,
     startDate: '2026-01-01',
     windowDays: DEFAULT_WINDOW_DAYS,
     baselineDate: null,

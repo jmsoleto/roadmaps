@@ -2,9 +2,11 @@
 
 ## Purpose
 
-Edición del roadmap en el Gantt: jerarquía fase → item, milestones, dependencias con flechas, drag/resize, reordenación vertical de fases e items, drawer de detalle, responsables, sprints, vista "Todos", navegación y gestión de varios roadmaps, y zoom. Formaliza la paridad funcional con el HTML original (`roadmap_tool_6_6_2.html`); el objetivo es cero regresión percibida.
+Edición del roadmap en el Gantt: jerarquía fase → item, milestones, dependencias con flechas, drag/resize, reordenación vertical de fases, items y roadmaps, drawer de detalle, responsables, sprints, vista "Todos", navegación y gestión de varios roadmaps, y zoom. Formaliza la paridad funcional con el HTML original (`roadmap_tool_6_6_2.html`); el objetivo es cero regresión percibida.
 
-La reordenación entró tarde, en `2026-08-31-reordenar-fases-e-items`: el port original la perdió y nadie lo advirtió porque ninguna spec la recogía. Es el motivo de que esta capacidad enumere lo que cubre.
+La reordenación entró tarde, en `2026-08-31-reordenar-fases-e-items` y `2026-08-31-reordenar-roadmaps`: el port original la perdió y nadie lo advirtió porque ninguna spec la recogía. Es el motivo de que esta capacidad enumere lo que cubre.
+
+El orden de los roadmaps no es el de una vista. Vive en la lista de roadmaps y lo respeta cualquier superficie que los enumere, de modo que fijarlo en "Todos" lo fija también en la navegación.
 
 Roadmaps es **una** de las aplicaciones que aloja el contenedor (ver `hub-shell`), no la aplicación entera. La vista "Todos" es su inicio propio, un nivel por debajo del inicio de la sesión, que es la landing del hub.
 
@@ -105,21 +107,6 @@ El sistema MUST permitir ajustar el nivel de zoom (px por día) y saltar a la fe
 #### Scenario: Recuperar hoy tras alejar el zoom
 - **WHEN** el usuario aleja el zoom hasta que el día de hoy queda fuera de la parte visible y pulsa "ir a hoy"
 - **THEN** el sistema vuelve a desplazar la vista hasta dejar el día de hoy a la vista
-
-### Requirement: Color de fases e items por slot de paleta
-El sistema MUST asignar a cada fase e item una posición dentro de la paleta de barras del tema activo, en lugar de un color absoluto, de modo que su color concreto lo determine el tema.
-
-#### Scenario: Crear una fase
-- **WHEN** el usuario crea una fase
-- **THEN** el sistema le asigna la siguiente posición de la paleta y la barra se pinta con el color que esa posición tiene en el tema activo
-
-#### Scenario: Cambiar el color de un elemento
-- **WHEN** el usuario avanza el color de una fase, item o responsable
-- **THEN** el sistema pasa a la siguiente posición de la paleta y recorre todas las posiciones cíclicamente, sin saltar ni volver al principio de forma inesperada
-
-#### Scenario: Un elemento conserva su posición al cambiar de tema
-- **WHEN** el usuario cambia el tema activo
-- **THEN** cada fase, item y responsable conserva su posición en la paleta y adopta el color que esa posición tiene en el tema nuevo
 
 ### Requirement: Vista "Todos" como inicio y portfolio
 El sistema MUST ofrecer una vista llamada "Todos" que agregue todos los roadmaps, mostrando cada uno como una sola barra que abarca su extensión temporal total sobre una cuadrícula de trimestres. "Todos" MUST ser la vista que el sistema muestra **al entrar en la aplicación Roadmaps**, siempre, con independencia de qué roadmap estuviera activo la última vez. El sistema MUST seguir conservando el roadmap activo persistido, que representa el último roadmap abierto.
@@ -415,3 +402,75 @@ El orden resultante MUST persistirse.
 
 - **WHEN** el usuario arrastra una fila y la suelta en la posición de la que salió
 - **THEN** el sistema deja el orden como estaba
+
+### Requirement: Color de fases, items y roadmaps por slot de paleta
+El sistema MUST asignar a cada fase, item y roadmap una posición dentro de la paleta de barras del tema activo, en lugar de un color absoluto, de modo que su color concreto lo determine el tema.
+
+Esa posición MUST ser una propiedad del elemento y no de su lugar en la lista: mover o borrar un elemento MUST NOT cambiar el color de ningún otro.
+
+#### Scenario: Crear una fase
+- **WHEN** el usuario crea una fase
+- **THEN** el sistema le asigna la siguiente posición de la paleta y la barra se pinta con el color que esa posición tiene en el tema activo
+
+#### Scenario: Crear un roadmap
+- **WHEN** el usuario crea un roadmap
+- **THEN** el sistema le asigna la siguiente posición de la paleta, y ese color lo identifica en todas las superficies que lo enumeran
+
+#### Scenario: Borrar un roadmap
+- **WHEN** el usuario borra un roadmap
+- **THEN** los demás conservan su color
+
+#### Scenario: Cambiar el color de un elemento
+- **WHEN** el usuario avanza el color de un responsable, que es el único elemento que ofrece hacerlo
+- **THEN** el sistema pasa a la siguiente posición de la paleta y recorre todas las posiciones cíclicamente, sin saltar ni volver al principio de forma inesperada
+
+Fases, items y roadmaps reciben su posición al crearse y no ofrecen forma de cambiarla. El escenario decía antes que los tres podían avanzar su color; nunca fue cierto para ninguno salvo el responsable.
+
+#### Scenario: Un elemento conserva su posición al cambiar de tema
+- **WHEN** el usuario cambia el tema activo
+- **THEN** cada fase, item, roadmap y responsable conserva su posición en la paleta y adopta el color que esa posición tiene en el tema nuevo
+
+### Requirement: Reordenación de roadmaps en la vista "Todos"
+
+El sistema MUST permitir cambiar el orden de los roadmaps arrastrándolos en la vista "Todos", con el mismo gesto que reordena fases e items: una manija propia en el canalón de la fila, que ocupa su espacio de forma permanente y se hace visible al situar el puntero sobre la fila.
+
+El orden resultante MUST ser el orden de los roadmaps en toda la aplicación, no el de esa vista: cualquier otra superficie que los enumere MUST presentarlos en él.
+
+Mientras dura el arrastre el sistema MUST desplazar las demás filas a la posición que van a ocupar, en la columna de nombres y en la cuadrícula a la vez, y MUST desplazar la fila arrastrada con el puntero sin dejar que se dibuje fuera de la lista.
+
+El orden MUST persistirse. Es estado local: no viaja en los documentos exportados, porque un documento lleva un solo roadmap.
+
+#### Scenario: Reordenar un roadmap
+
+- **WHEN** el usuario arrastra un roadmap por su manija hasta la posición de otro
+- **THEN** el sistema coloca el roadmap arrastrado en esa posición y persiste el nuevo orden
+
+#### Scenario: El orden alcanza a la navegación
+
+- **WHEN** el usuario reordena los roadmaps en "Todos" y despliega después el selector de roadmaps
+- **THEN** el selector los enumera en el mismo orden
+
+#### Scenario: Ver el resultado durante el arrastre
+
+- **WHEN** el usuario mantiene un roadmap arrastrado sobre una posición de destino
+- **THEN** el sistema desplaza las demás filas a la posición que van a ocupar, dejando libre el hueco donde caerá la fila
+
+#### Scenario: La fila se frena en los extremos de la lista
+
+- **WHEN** el usuario arrastra un roadmap más allá del primero o del último
+- **THEN** el sistema detiene la fila en esa posición extrema aunque el puntero siga avanzando
+
+#### Scenario: Reordenar no cambia ningún color
+
+- **WHEN** el usuario reordena los roadmaps
+- **THEN** cada roadmap conserva el color que tenía, en todas las superficies que lo muestran
+
+#### Scenario: Soltar en el sitio de partida
+
+- **WHEN** el usuario arrastra un roadmap y lo suelta en la posición de la que salió
+- **THEN** el sistema deja el orden como estaba
+
+#### Scenario: Reordenar no altera el contenido
+
+- **WHEN** el usuario reordena los roadmaps
+- **THEN** cada roadmap conserva sus fases, sus fechas, su ventana temporal y su línea base, y el roadmap abierto sigue siendo el mismo

@@ -53,8 +53,23 @@ export function exportRoadmap(
   return JSON.stringify(doc, null, 2);
 }
 
-/** Parse imported JSON (current or legacy) into a roadmap + what it references. */
-export function parseImport(text: string): {
+/**
+ * Parse imported JSON (current or legacy) into a roadmap + what it references.
+ *
+ * `fallbackSlot` is the palette slot to give a roadmap whose document does not
+ * carry one — a legacy file, or one exported before roadmaps had a colour of
+ * their own. It comes from the caller because it depends on where the roadmap
+ * is about to land, not on anything inside the document: a document holds one
+ * roadmap, so its own position is always zero and says nothing (D4).
+ *
+ * A document that does carry a slot keeps it. It is the roadmap's identity, and
+ * re-importing your own export should give you back the colour you had, even if
+ * a roadmap already here happens to use it too.
+ */
+export function parseImport(
+  text: string,
+  fallbackSlot = 0,
+): {
   roadmap: Roadmap;
   assignees: Assignee[];
   blockers: Blocker[];
@@ -74,14 +89,14 @@ export function parseImport(text: string): {
   const known = new Set(blockers.map((b) => b.id));
   if (obj.format === FORMAT && obj.roadmap) {
     return {
-      roadmap: settle(normalizeRoadmap(obj.roadmap, known)),
+      roadmap: settle(normalizeRoadmap(obj.roadmap, known, fallbackSlot)),
       assignees: asAssignees(obj.assignees),
       blockers,
     };
   }
   if (Array.isArray(obj.rows)) {
     return {
-      roadmap: settle(fromLegacy(obj, known)),
+      roadmap: settle(fromLegacy(obj, known, fallbackSlot)),
       assignees: asAssignees(obj.assignees),
       blockers,
     };
@@ -113,11 +128,14 @@ function asAssignees(v: unknown): Assignee[] {
 }
 
 /** Accept a current-format roadmap, giving it a fresh id to avoid collisions. */
-function normalizeRoadmap(v: unknown, knownBlockers: Set<string>): Roadmap {
+function normalizeRoadmap(v: unknown, knownBlockers: Set<string>, fallbackSlot: number): Roadmap {
   const r = v as Roadmap;
   return {
     id: uid('rm'),
     name: String(r.name ?? 'Roadmap importado'),
+    // `toSlot` would turn a missing slot into 0, which is why absence is tested
+    // first: the document either says, or the destination decides.
+    colorSlot: r.colorSlot === undefined ? fallbackSlot : toSlot(r.colorSlot),
     startDate: r.startDate ?? LEGACY_ORIGIN,
     windowDays: typeof r.windowDays === 'number' ? r.windowDays : DEFAULT_WINDOW_DAYS,
     baselineDate: isIsoDate(r.baselineDate) ? r.baselineDate : null,
@@ -179,7 +197,11 @@ function legacyDate(v: unknown): IsoDate | null {
 }
 
 /** Convert a legacy document (either date dialect) into the current model. */
-function fromLegacy(obj: Record<string, unknown>, knownBlockers: Set<string>): Roadmap {
+function fromLegacy(
+  obj: Record<string, unknown>,
+  knownBlockers: Set<string>,
+  fallbackSlot: number,
+): Roadmap {
   const rows: Phase[] = (obj.rows as unknown[]).map((pv) => {
     const p = pv as Record<string, unknown>;
     const colorSlot = toSlot(p.color ?? p.colorSlot);
@@ -223,6 +245,9 @@ function fromLegacy(obj: Record<string, unknown>, knownBlockers: Set<string>): R
   return {
     id: uid('rm'),
     name: String(obj.name ?? 'Roadmap importado'),
+    // A legacy document never carries a roadmap-level colour, so the
+    // destination always decides.
+    colorSlot: fallbackSlot,
     ...fitWindow(rows),
     baselineDate: null,
     rows,

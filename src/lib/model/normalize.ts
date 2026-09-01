@@ -19,6 +19,7 @@
 import { uid } from '../util/id';
 import { isIsoDate } from '../time/timeline';
 import type { Blocker, IsoDate, ItemBlocker } from './types';
+import { PALETTE_SLOTS } from '../theme/tokens';
 
 /** A document as it may arrive from storage or an import: fields may be missing. */
 type MaybeBlockers = {
@@ -132,6 +133,37 @@ function asIsoOrNull(value: unknown): IsoDate | null {
  * Idempotent, and it writes nothing by itself: like `normalizeBlockers`, the
  * result reaches storage on the next save that normal use produces.
  */
+/** A document whose roadmaps may predate the roadmap-level palette slot. */
+type MaybeRoadmapColors = { roadmaps?: { colorSlot?: unknown }[] };
+
+/**
+ * Give a palette slot to every roadmap stored before roadmaps had one.
+ *
+ * The slot comes from the roadmap's position in the list, and that is not an
+ * arbitrary choice: the position is exactly where the colour used to be
+ * computed from, in the "Todos" view, the switcher and the hub card alike. So
+ * filling it in this way reproduces the colour each roadmap was already
+ * showing, and upgrading changes nobody's palette.
+ *
+ * Idempotent, and it writes nothing by itself: like the two passes above, the
+ * result reaches storage on the next save that normal use produces.
+ *
+ * Not reused by the import door. A document carries one roadmap, so its index
+ * is always zero, and deriving the slot there would paint everything imported
+ * with the first colour of the palette (design decision D4).
+ */
+export function normalizeRoadmapColors<T>(data: T): T {
+  const doc = data as MaybeRoadmapColors;
+  if (!doc || typeof doc !== 'object') return data;
+
+  (doc.roadmaps ?? []).forEach((roadmap, i) => {
+    if (typeof roadmap.colorSlot !== 'number' || !Number.isInteger(roadmap.colorSlot)) {
+      roadmap.colorSlot = i % PALETTE_SLOTS;
+    }
+  });
+  return data;
+}
+
 export function normalizeCompletion<T>(data: T): T {
   const doc = data as MaybeCompletion;
   if (!doc || typeof doc !== 'object') return data;

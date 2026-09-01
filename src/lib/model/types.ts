@@ -128,6 +128,17 @@ export interface Phase {
 export interface Roadmap {
   id: string;
   name: string;
+  /**
+   * Position in the active theme's bar palette.
+   *
+   * A property of the roadmap, not of where it sits in the list. It used to be
+   * derived from the array index in three places at once — the "Todos" dot and
+   * bar, the switcher dot, and the hub card — which meant moving or deleting
+   * one roadmap repainted every roadmap after it. A colour is how you recognise
+   * a roadmap across those three surfaces, so it cannot depend on what the
+   * others are doing.
+   */
+  colorSlot: number;
   /** First day of the visible timeline window for this roadmap. */
   startDate: IsoDate;
   /** Length of the visible timeline window, in days. */

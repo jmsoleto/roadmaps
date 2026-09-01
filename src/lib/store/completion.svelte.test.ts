@@ -50,6 +50,7 @@ function roadmapWith(children: Item[]): Roadmap {
   return {
     id: 'r',
     name: 'r',
+    colorSlot: 0,
     startDate: '2026-01-01',
     windowDays: 730,
     baselineDate: null,

@@ -108,15 +108,14 @@ export function recentRows(
 ): Row[] {
   const out: Row[] = [];
   for (const entry of recent) {
-    const idx = roadmaps.findIndex((r) => r.id === entry.id);
-    if (idx === -1) continue;
-    const rm = roadmaps[idx];
+    const rm = roadmaps.find((r) => r.id === entry.id);
+    if (rm === undefined) continue;
     const state = roadmapState(rm, today);
     out.push({
       id: rm.id,
-      // The slot is the roadmap's position, as in the "Todos" view, so the
-      // colour on the card is the colour of its bar.
-      color: slotColor(idx),
+      // The roadmap's own slot, so the colour on the card is the colour of its
+      // bar in "Todos" — and stays that colour when the list is reordered.
+      color: slotColor(rm.colorSlot),
       label: rm.name,
       meta: state.meta,
       metaTone: state.tone,

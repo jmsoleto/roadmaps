@@ -10,6 +10,7 @@ const assignees: Assignee[] = [
 const roadmap: Roadmap = {
   id: 'rm1',
   name: 'Demo',
+  colorSlot: 0,
   startDate: '2026-01-01',
   windowDays: 730,
   baselineDate: null,

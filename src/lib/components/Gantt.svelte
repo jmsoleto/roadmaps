@@ -38,6 +38,7 @@
   import { getInitials, findAssignee } from '../util/assignees';
   import { theme } from '../theme/theme.svelte';
   import { onDrag, clientToDayOffset } from '../interactions/drag';
+  import { RowReorder } from '../interactions/reorder.svelte';
   import type { IsoDate, Item, Phase } from '../model/types';
 
   let scrollEl: HTMLDivElement | undefined;
@@ -286,26 +287,17 @@
   // ---- vertical reordering ----
 
   /**
-   * A reorder gesture in flight.
-   *
-   * `blocks` is snapshotted at pointerdown on purpose: the drop index is read
-   * against the layout the gesture started from, never against the preview it
-   * produces, or the two would feed each other and the held row would judder at
-   * every boundary (see `dropBlockIndex`).
+   * The gesture itself lives in `RowReorder` (D6). What stays here is what only
+   * this view can say: how a phase block differs from an item row, and the
+   * preview list that positions everything.
    */
-  type RowDragState = {
-    drag: RowDrag;
-    /** Pixels travelled since pointerdown. */
-    dy: number;
-    /** Visible-row index the held row started at, in pixels. */
-    originY: number;
-    /** How far up and down the held row may be drawn, in the same pixels. */
-    minY: number;
-    maxY: number;
-  };
-  let rowDrag = $state<RowDragState | null>(null);
+  const reorder = new RowReorder<RowDrag>();
 
   function startReorder(e: PointerEvent, phase: Phase, item: Item | null) {
+    // Snapshotted at pointerdown on purpose: the drop index is read against the
+    // layout the gesture started from, never against the preview it produces,
+    // or the two would feed each other and the held row would judder at every
+    // boundary (see `dropBlockIndex`).
     const blocks = getPhaseBlocks(rm);
     const phaseIdx = rm.rows.findIndex((p) => p.id === phase.id);
     if (phaseIdx === -1) return;
@@ -313,42 +305,29 @@
     const from = item ? phase.children.findIndex((c) => c.id === item.id) : phaseIdx;
     if (from === -1) return;
 
-    const base: RowDrag = item
+    const payload: RowDrag = item
       ? { kind: 'item', phaseId: phase.id, itemId: item.id, from, to: from }
       : { kind: 'phase', phaseId: phase.id, from, to: from };
 
     const block = blocks[phaseIdx];
-    // The held row's resting position: an item sits after its phase header, a
-    // phase header at the top of its own block.
-    const originY = (item ? block.start + 1 + from : block.start) * ROW_H;
-    // And how far it may be drawn. The drop index is already clamped, so this
-    // is what makes the containment *visible* (D3): past the last sibling the
-    // pointer keeps going and the row stops, which is how the limit is taught.
-    // Without it the row would sail over its neighbours to a position it can
-    // never take.
     const totalRows = blocks.reduce((n, b) => n + b.len, 0);
-    const minY = item ? (block.start + 1) * ROW_H : 0;
-    const maxY = item
-      ? (block.start + phase.children.length) * ROW_H
-      : (totalRows - block.len) * ROW_H;
 
-    const startY = e.clientY;
-    rowDrag = { drag: base, dy: 0, originY, minY, maxY };
-
-    onDrag(e, {
-      move: (ev) => {
-        const dy = ev.clientY - startY;
-        const to = item
-          ? dropIndex(from, dy, phase.children.length)
-          : dropBlockIndex(blocks, from, dy);
-        rowDrag = { drag: { ...base, to }, dy, originY, minY, maxY };
-      },
-      up: () => {
-        const d = rowDrag;
-        rowDrag = null;
-        if (!d || d.drag.to === d.drag.from) return;
-        if (d.drag.kind === 'phase') store.movePhase(d.drag.phaseId, d.drag.to);
-        else store.moveItem(d.drag.phaseId, d.drag.itemId, d.drag.to);
+    reorder.start(e, {
+      key: item ? `i:${item.id}` : `p:${phase.id}`,
+      payload,
+      from,
+      // The held row's resting position: an item sits after its phase header, a
+      // phase header at the top of its own block.
+      originY: (item ? block.start + 1 + from : block.start) * ROW_H,
+      // An item may only be drawn among the item rows of its own phase; a phase
+      // header anywhere a block of its height could start.
+      minY: item ? (block.start + 1) * ROW_H : 0,
+      maxY: item ? (block.start + phase.children.length) * ROW_H : (totalRows - block.len) * ROW_H,
+      target: (dy) =>
+        item ? dropIndex(from, dy, phase.children.length) : dropBlockIndex(blocks, from, dy),
+      drop: (to) => {
+        if (item) store.moveItem(phase.id, item.id, to);
+        else store.movePhase(phase.id, to);
       },
     });
   }
@@ -363,27 +342,21 @@
    * a phase means its children have already gone on ahead to the destination
    * while its header is still in your hand (D6).
    */
-  const preview = $derived(previewRows(rm, rowDrag?.drag ?? null));
+  const pending = $derived(
+    reorder.gesture === null ? null : { ...reorder.gesture.payload, to: reorder.gesture.to },
+  );
+  const preview = $derived(previewRows(rm, pending));
   const previewIndex = $derived.by(() => {
     const m = new Map<string, number>();
     preview.forEach((v, i) => m.set(rowKey(v), i));
     return m;
   });
 
-  function isHeld(v: VisibleRow): boolean {
-    const d = rowDrag?.drag;
-    if (!d) return false;
-    return d.kind === 'phase'
-      ? v.kind === 'phase' && v.phase.id === d.phaseId
-      : v.kind === 'item' && v.item.id === d.itemId;
-  }
+  const isHeld = (v: VisibleRow) => reorder.held(rowKey(v));
 
   function rowY(v: VisibleRow, i: number): number {
-    if (rowDrag && isHeld(v)) {
-      const y = rowDrag.originY + rowDrag.dy;
-      return Math.max(rowDrag.minY, Math.min(rowDrag.maxY, y));
-    }
-    return (previewIndex.get(rowKey(v)) ?? i) * ROW_H;
+    const key = rowKey(v);
+    return reorder.y(key, previewIndex.get(key) ?? i);
   }
 
   // ---- inline delete (two-step confirm, no browser dialog) ----
@@ -510,11 +483,11 @@
   {/if}
 {/snippet}
 
-<div class="gantt-scroll" class:reordering={rowDrag !== null} bind:this={scrollEl}>
+<div class="gantt-scroll" class:reordering={reorder.active} bind:this={scrollEl}>
   <div class="sidebar">
     <div class="sidebar-head"></div>
     <div class="sidebar-head-spacer"></div>
-    <div class="sidebar-rows" class:reordering={rowDrag !== null}>
+    <div class="sidebar-rows" class:reordering={reorder.active}>
       {#each visible as v, i (i)}
         {#if v.kind === 'phase'}
           {@const pct = phaseProgress(v.phase)}
@@ -643,7 +616,7 @@
 
     <div
       class="rows"
-      class:reordering={rowDrag !== null}
+      class:reordering={reorder.active}
       style:width="{totalWidth}px"
       style:height="{totalHeight}px"
     >

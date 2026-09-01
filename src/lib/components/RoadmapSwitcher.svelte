@@ -36,16 +36,18 @@
       .replace(/\p{Diacritic}/gu, '')
       .toLowerCase();
 
-  /** A roadmap's palette slot is its position in the list, as in the "Todos" view. */
-  const activeSlot = $derived(store.data.roadmaps.findIndex((r) => r.id === store.data.activeId));
+  /** A roadmap carries its own palette slot, so reordering the list never repaints it. */
+  const activeSlot = $derived(
+    store.data.roadmaps.find((r) => r.id === store.data.activeId)?.colorSlot ?? 0,
+  );
 
   const allOptions = $derived<Option[]>([
     { kind: 'all', label: 'Todos', current: store.metaView },
-    ...store.data.roadmaps.map((rm, i): Option => ({
+    ...store.data.roadmaps.map((rm): Option => ({
       kind: 'roadmap',
       id: rm.id,
       label: rm.name,
-      slot: i,
+      slot: rm.colorSlot,
       current: !store.metaView && rm.id === store.data.activeId,
     })),
   ]);
