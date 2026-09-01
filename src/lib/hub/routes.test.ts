@@ -8,6 +8,10 @@ describe('hub routes', () => {
     expect(parseHash('#/roadmaps')).toEqual({ kind: 'app', id: 'roadmaps' });
   });
 
+  it('resolves the third live application', () => {
+    expect(parseHash('#/api')).toEqual({ kind: 'app', id: 'api' });
+  });
+
   it('tolerates the hash with and without its slash', () => {
     expect(parseHash('#roadmaps')).toEqual({ kind: 'app', id: 'roadmaps' });
   });

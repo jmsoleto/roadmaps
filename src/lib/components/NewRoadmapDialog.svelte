@@ -13,6 +13,7 @@
    */
   import { store } from '../store/app.svelte';
   import { usage } from '../hub/usage.svelte';
+  import { ROADMAPS_ID } from '../hub/apps';
   import { ui } from '../store/ui.svelte';
 
   let name = $state('');
@@ -45,7 +46,7 @@
     // The store activates the roadmap and leaves the "Todos" view itself.
     if (!store.addRoadmap(name)) return;
     // Creating one is opening it, so it heads the hub's recent list too.
-    if (store.data.activeId) usage.touch(store.data.activeId);
+    if (store.data.activeId) usage.touch(ROADMAPS_ID, store.data.activeId);
     close();
   }
 

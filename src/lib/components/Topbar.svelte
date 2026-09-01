@@ -1,72 +1,60 @@
 <script lang="ts">
+  /**
+   * The container's bar. It names no application (design decision D1).
+   *
+   * Three things sit here, in this order: what belongs to the container (the
+   * wordmark, the app switcher, the theme), what the open application declares
+   * (its breadcrumb control and its actions), and what says where the data is.
+   *
+   * The application's half arrives as data, not markup, so the bar stays one
+   * bar: an app says it has an action called "↑ exportar" that is disabled when
+   * there is nothing to export, and this file decides that an action is a
+   * `.add-tab` button.
+   */
   import { store } from '../store/app.svelte';
   import { ui } from '../store/ui.svelte';
-  import { DECISIONS_ID, ROADMAPS_ID } from '../hub/apps';
-  import { decisions } from '../decisions/store.svelte';
-  import { decisionsUi } from '../decisions/ui.svelte';
-  import { exportDecisions, parseDecisionsImport } from '../decisions/io';
   import { location } from '../hub/location.svelte';
+  import { hubApp } from '../hub/registry';
+  import type { AppAction } from '../hub/types';
   import AppSwitcher from './AppSwitcher.svelte';
-  import RoadmapSwitcher from './RoadmapSwitcher.svelte';
 
   let fileInput: HTMLInputElement;
-  let decisionsFileInput: HTMLInputElement;
   let importError = $state<string | null>(null);
-
   /**
-   * The topbar carries only the open application's actions.
+   * The file action whose picker is open.
    *
-   * Creating, importing and exporting belong to Roadmaps, so they have no
-   * business on the hub or inside another app. The theme does belong to the
-   * container, so it stays available everywhere.
+   * One hidden input for the whole bar, pointed at whichever action asked for
+   * it (D2). One input per application is what this replaced, and it did not
+   * survive contact with a third app.
    */
-  const inRoadmaps = $derived(location.appId === ROADMAPS_ID);
-  const inDecisions = $derived(location.appId === DECISIONS_ID);
+  let pending: Extract<AppAction, { kind: 'file' }> | null = null;
 
-  function exportActive() {
-    const json = store.exportActive();
-    if (!json) return;
-    const name = (store.activeRoadmap?.name ?? 'roadmap').replace(/[^\w.-]+/g, '_');
-    const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${name}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }
+  const app = $derived(location.appId !== null ? (hubApp(location.appId) ?? null) : null);
+  /** The application's own breadcrumb control, when it has one. */
+  const Context = $derived(app?.context ?? null);
+  const actions = $derived(app?.actions?.() ?? []);
 
-  function exportDecisionsFile() {
-    const json = exportDecisions($state.snapshot(decisions.all) as typeof decisions.all);
-    const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'decisiones.json';
-    a.click();
-    URL.revokeObjectURL(url);
-  }
-
-  async function onImportDecisionsFile(e: Event) {
-    const input = e.currentTarget as HTMLInputElement;
-    const file = input.files?.[0];
-    input.value = '';
-    if (!file) return;
-    try {
-      importError = null;
-      decisions.append(parseDecisionsImport(await file.text()));
-    } catch (err) {
-      importError = err instanceof Error ? err.message : 'No se pudo importar el archivo.';
-      setTimeout(() => (importError = null), 4000);
+  function run(action: AppAction) {
+    if (action.disabled) return;
+    if (action.kind === 'button') {
+      action.run();
+      return;
     }
+    pending = action;
+    fileInput.accept = action.accept;
+    fileInput.click();
   }
 
-  async function onImportFile(e: Event) {
+  async function onFile(e: Event) {
     const input = e.currentTarget as HTMLInputElement;
     const file = input.files?.[0];
     input.value = '';
-    if (!file) return;
+    const action = pending;
+    pending = null;
+    if (!file || !action) return;
     try {
       importError = null;
-      store.importFromText(await file.text());
+      action.run(await file.text());
     } catch (err) {
       importError = err instanceof Error ? err.message : 'No se pudo importar el archivo.';
       setTimeout(() => (importError = null), 4000);
@@ -77,58 +65,22 @@
 <div class="topbar">
   <div class="brand">TECH LEAD HUB</div>
   <AppSwitcher />
-  {#if inRoadmaps}
+  {#if Context}
     <span class="sep" aria-hidden="true">▸</span>
-    <RoadmapSwitcher />
-    <button class="add-tab" onclick={() => ui.openNewRoadmap()}>+ nuevo</button>
-    <button class="add-tab" onclick={() => fileInput.click()} title="importar JSON"
-      >↓ importar</button
-    >
-    <button
-      class="add-tab"
-      onclick={exportActive}
-      disabled={!store.activeRoadmap}
-      title="exportar roadmap activo">↑ exportar</button
-    >
-  {:else if inDecisions}
-    <div class="spacer"></div>
-    <!-- With the store down, nothing may be created or changed: offering a
-         control that would silently do nothing is worse than not offering it. -->
-    <button
-      class="add-tab"
-      onclick={() => decisionsUi.openCapture()}
-      disabled={decisions.unavailable !== null}>+ capturar</button
-    >
-    <button
-      class="add-tab"
-      onclick={() => decisionsFileInput.click()}
-      disabled={decisions.unavailable !== null}
-      title="importar decisiones JSON">↓ importar</button
-    >
-    <button
-      class="add-tab"
-      onclick={exportDecisionsFile}
-      disabled={decisions.all.length === 0}
-      title="exportar decisiones">↑ exportar</button
-    >
+    <Context />
   {:else}
     <div class="spacer"></div>
   {/if}
+  {#each actions as action (action.label)}
+    <button
+      class="add-tab"
+      onclick={() => run(action)}
+      disabled={action.disabled}
+      title={action.title}>{action.label}</button
+    >
+  {/each}
   <button class="add-tab" onclick={() => ui.openTheme()} title="tema de colores">◐ tema</button>
-  <input
-    bind:this={fileInput}
-    type="file"
-    accept="application/json,.json"
-    class="hidden-file"
-    onchange={onImportFile}
-  />
-  <input
-    bind:this={decisionsFileInput}
-    type="file"
-    accept="application/json,.json"
-    class="hidden-file"
-    onchange={onImportDecisionsFile}
-  />
+  <input bind:this={fileInput} type="file" class="hidden-file" onchange={onFile} />
   {#if importError}<span class="import-error">{importError}</span>{/if}
   <!-- Not a user name (D10): there are no accounts, and suggesting a session in
        an app whose data dies with the site's storage is the expensive
@@ -162,8 +114,8 @@
     font-family: 'IBM Plex Mono', monospace;
     font-size: 13px;
   }
-  /* Stands in for the roadmap switcher's `flex: 1` so the trailing controls
-     keep their place when no application is open. */
+  /* Stands in for the breadcrumb control's `flex: 1` so the trailing controls
+     keep their place when the open application has no second level. */
   .spacer {
     flex: 1;
   }

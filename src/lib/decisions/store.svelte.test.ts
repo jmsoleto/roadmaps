@@ -9,8 +9,8 @@ class FakeBackend implements DecisionsBackend {
   saved: DecisionsData | null = null;
   blobs = new Map<string, Blob>();
   deleted: string[] = [];
-  constructor(private outcome: LoadOutcome = { kind: 'empty' }) {}
-  async load(): Promise<LoadOutcome> {
+  constructor(private outcome: LoadOutcome<DecisionsData> = { kind: 'empty' }) {}
+  async load(): Promise<LoadOutcome<DecisionsData>> {
     return this.outcome;
   }
   async save(data: DecisionsData): Promise<void> {
@@ -35,7 +35,7 @@ class FakeBackend implements DecisionsBackend {
 
 /** A backend that opened but then went away, as a closed database would. */
 class FailingSave implements DecisionsBackend {
-  async load(): Promise<LoadOutcome> {
+  async load(): Promise<LoadOutcome<DecisionsData>> {
     return { kind: 'empty' };
   }
   async save(): Promise<void> {
@@ -51,7 +51,7 @@ class FailingSave implements DecisionsBackend {
   }
 }
 
-async function storeWith(outcome?: LoadOutcome) {
+async function storeWith(outcome?: LoadOutcome<DecisionsData>) {
   const backend = new FakeBackend(outcome);
   const store = new DecisionsStore(backend);
   await store.init();

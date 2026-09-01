@@ -1,39 +1,45 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { store } from './lib/store/app.svelte';
+  import { apiContracts } from './lib/api/store.svelte';
   import { location } from './lib/hub/location.svelte';
-  import { DECISIONS_ID, ROADMAPS_ID } from './lib/hub/apps';
+  import { hubApp } from './lib/hub/registry';
   import Topbar from './lib/components/Topbar.svelte';
-  import Toolbar from './lib/components/Toolbar.svelte';
-  import Gantt from './lib/components/Gantt.svelte';
-  import MetaView from './lib/components/MetaView.svelte';
   import Drawer from './lib/components/Drawer.svelte';
   import DragTooltip from './lib/components/DragTooltip.svelte';
   import NewRoadmapDialog from './lib/components/NewRoadmapDialog.svelte';
   import HubLanding from './lib/components/HubLanding.svelte';
-  import DecisionsApp from './lib/components/decisions/DecisionsApp.svelte';
   import QuickCapture from './lib/components/decisions/QuickCapture.svelte';
 
-  let gantt = $state<Gantt | undefined>(undefined);
-  let meta = $state<MetaView | undefined>(undefined);
-
-  // The outer level: the hub, or one application. What shows *inside* an
-  // application is still that application's own business.
-  const inRoadmaps = $derived(location.appId === ROADMAPS_ID);
-  const inDecisions = $derived(location.appId === DECISIONS_ID);
-
-  // Which view is on screen. Both the toolbar's "ir a hoy" and the markup below
-  // need the answer, and they must not be able to disagree.
-  const showMeta = $derived(store.metaView || !store.activeRoadmap);
+  /**
+   * The outer level: the hub, or one application's own screen.
+   *
+   * *Which* application is none of the shell's business (design decision D1).
+   * It asks the registry what the active app looks like and paints that, so
+   * adding, removing or renaming one never reaches this file. Anything that
+   * fails to resolve falls back to the landing, which is the same degradation
+   * `parseHash` already applies to a route it does not recognise.
+   */
+  const Screen = $derived(
+    (location.appId !== null ? hubApp(location.appId)?.root : null) ?? HubLanding,
+  );
 
   onMount(() => {
-    // Flush the pending autosave before the page goes away (local-persistence).
+    // Flush the pending autosaves before the page goes away
+    // (local-persistence).
     //
-    // `flush` runs synchronously up to its `localStorage.setItem`, so the write
-    // lands inside this handler rather than racing the unload. What this does
-    // not cover is the browser discarding the tab without warning, where the
-    // event never fires at all.
-    const flush = () => void store.flush();
+    // Roadmaps' `flush` runs synchronously up to its `localStorage.setItem`, so
+    // that write lands inside this handler rather than racing the unload. The
+    // IndexedDB stores cannot promise as much — the write is started here and
+    // the browser is under no obligation to finish it — but starting it is
+    // strictly better than letting the debounce swallow it.
+    //
+    // What none of this covers is the browser discarding the tab without
+    // warning, where the event never fires at all.
+    const flush = () => {
+      void store.flush();
+      void apiContracts.flush();
+    };
     window.addEventListener('beforeunload', flush);
 
     return () => window.removeEventListener('beforeunload', flush);
@@ -42,43 +48,29 @@
 
 <div class="app">
   <Topbar />
-  {#if inRoadmaps}
-    <!-- Both views mark today, so "ir a hoy" goes to whichever one is mounted.
-         The two branches are exclusive, so only one reference is ever live. -->
-    <Toolbar onToday={() => (showMeta ? meta : gantt)?.scrollToToday()} />
-    <div class="gantt-wrapper">
-      <!-- Falling back to "Todos" when there is no active roadmap keeps any
-           degenerate state on the app's home, which carries its own empty state. -->
-      {#if showMeta}
-        <MetaView bind:this={meta} />
-      {:else}
-        <Gantt bind:this={gantt} />
-      {/if}
-    </div>
-  {:else if inDecisions}
-    <div class="gantt-wrapper">
-      <DecisionsApp />
-    </div>
-  {:else}
-    <div class="gantt-wrapper">
-      <HubLanding />
-    </div>
-  {/if}
+  <!-- The same body for every screen: it fills what the topbar leaves, clips
+       its own overflow and provides a positioning context. What a screen does
+       with it — Roadmaps splits it into a toolbar and a view — is its own. -->
+  <div class="app-body">
+    <Screen />
+  </div>
   <Drawer />
   <!-- Mounted once here rather than at each trigger: the topbar button, the
        "Todos" empty-state call to action and the landing card all open the same
-       dialog. -->
+       dialog. They are not part of any application's branch, because there are
+       no branches left — they are the shell's own overlays. -->
   <NewRoadmapDialog />
-  <!-- Mounted once, like the roadmap dialog: the topbar button and the landing
-       card both open the same capture. -->
   <QuickCapture />
   <DragTooltip />
 </div>
 
 <style>
-  .gantt-wrapper {
+  .app-body {
     flex: 1;
+    min-height: 0;
     overflow: hidden;
     position: relative;
+    display: flex;
+    flex-direction: column;
   }
 </style>

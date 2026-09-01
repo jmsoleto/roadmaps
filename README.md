@@ -11,15 +11,17 @@ pedir en qué aplicación entrar: cifras y avisos agregados de cada una.
 
 ## Aplicaciones
 
-|                   | Estado    | Qué hace                                                                                                                    |
-| ----------------- | --------- | --------------------------------------------------------------------------------------------------------------------------- |
-| **Roadmaps Hub**  | viva      | Planificación tipo Gantt por proyecto: fases, dependencias externas, plan fijado y desviación.                              |
-| **Decisions Hub** | anunciada | Las decisiones de proyecto que hay que hablar con negocio, y dónde queda escrita su resolución. Todavía no se puede entrar. |
+|                   | Estado | Qué hace                                                                                        |
+| ----------------- | ------ | ----------------------------------------------------------------------------------------------- |
+| **Roadmaps Hub**  | viva   | Planificación tipo Gantt por proyecto: fases, dependencias externas, plan fijado y desviación.  |
+| **Decisions Hub** | viva   | Las decisiones de proyecto que hay que hablar con negocio, y dónde queda escrita su resolución. |
+| **API Hub**       | viva   | El contrato de una API acordado mientras se habla, y exportado como OpenAPI sin escribir YAML.  |
 
 La rejilla de la landing termina siempre en un hueco: cada frente recurrente puede
 entrar como una aplicación más. Añadir una es registrar una definición en
-`src/lib/hub/apps.ts` y su comportamiento en `src/lib/hub/registry.ts`; ni la
-landing ni la tarjeta se tocan.
+`src/lib/hub/apps.ts` y su comportamiento en `src/lib/hub/registry.ts` —su pantalla,
+su nivel de breadcrumb, sus acciones de topbar y su resumen para la landing—; el
+armazón no se toca, porque no conoce a ninguna aplicación por su nombre.
 
 Roadmaps es la evolución de la miniaplicación original de un solo HTML
 (`roadmap_tool_6_6_2.html`) a una app modular y mantenible. Ver las specs en
@@ -28,9 +30,9 @@ Roadmaps es la evolución de la miniaplicación original de un solo HTML
 ## Stack
 
 - **Frontend:** Svelte 5 + Vite + TypeScript
-- **Persistencia:** `localStorage` del navegador, con export/import JSON como backup
+- **Persistencia:** `localStorage` (Roadmaps) e IndexedDB (Decisions, API Hub), con export/import JSON como backup
 - **Distribución:** PWA en GitHub Pages
-- **Navegación:** rutas por hash a nivel de aplicación (`#/` el hub, `#/roadmaps`)
+- **Navegación:** rutas por hash a nivel de aplicación (`#/` el hub, `#/roadmaps`, `#/decisions`, `#/api`)
 - **Fechas:** ISO absolutas (`YYYY-MM-DD`); la ventana temporal es configurable por roadmap
 
 ## Requisitos

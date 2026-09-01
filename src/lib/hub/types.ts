@@ -10,6 +10,7 @@
  * a system.
  */
 
+import type { Component } from 'svelte';
 import type { AppIdentity } from './identity';
 
 /**
@@ -93,6 +94,30 @@ export interface HubApp {
    * a card that is not live shows no figures at all, never zeroes.
    */
   summary: (() => AppSummary) | null;
+  /**
+   * What the shell paints when this application is entered.
+   *
+   * `null` for anything not live, which is also what makes the shell free of
+   * any application's name: it renders the active app's screen, whatever it is.
+   */
+  root: AppComponent | null;
+  /**
+   * The second level of the breadcrumb, which belongs to the application.
+   *
+   * A component and not a string because it is a control, not a label: Roadmaps
+   * puts its roadmap switcher there. `null` for an application that has no
+   * second level, and the topbar fills the gap itself.
+   */
+  context: AppComponent | null;
+  /**
+   * The application's own topbar actions.
+   *
+   * A function and not an array for the same reason `summary` is one: `disabled`
+   * reads reactive state — whether a roadmap is active, whether the store came
+   * up — and a fixed array would have to be kept in step with it, becoming a
+   * second source of truth.
+   */
+  actions: (() => AppAction[]) | null;
   /** Enter the app. */
   open: (() => void) | null;
   /** Enter the app with its creation flow already started. */
@@ -100,6 +125,43 @@ export interface HubApp {
   /** Open one row of the short list directly, skipping the app's own home. */
   openRow: ((rowId: string) => void) | null;
 }
+
+/**
+ * A component an application contributes to the shell (design decision D1).
+ *
+ * No props on purpose. The shell reads these out of the registry, so typing
+ * their props would mean the registry knowing what each application needs —
+ * exactly the coupling this contract exists to remove. They read their own
+ * stores instead, which is what all three already did inside the shell's
+ * branches.
+ */
+export type AppComponent = Component<Record<string, never>>;
+
+/**
+ * One action an application contributes to the topbar (D1, D2).
+ *
+ * Data and not markup. An application says *what* actions it has and what they
+ * do; the topbar decides how they look. Letting each one ship its own fragment
+ * of the bar would give total freedom and guarantee that by the third the bar
+ * stops reading as one bar — the same argument `hub-landing` already makes
+ * about the cards.
+ *
+ * `file` is its own kind rather than a button that happens to open a picker:
+ * the shell keeps a single hidden input and points it at whichever action was
+ * activated, instead of one input per application.
+ */
+export type AppAction =
+  | { kind: 'button'; label: string; title?: string; disabled?: boolean; run: () => void }
+  | {
+      kind: 'file';
+      label: string;
+      title?: string;
+      disabled?: boolean;
+      /** The picker's filter, e.g. `application/json,.json`. */
+      accept: string;
+      /** Called with the file's text. Throwing shows the topbar's error. */
+      run: (text: string) => void;
+    };
 
 /** Severity order for sorting alerts: loudest first. */
 const TONE_RANK: Record<Tone, number> = { danger: 0, warn: 1, neutral: 2 };

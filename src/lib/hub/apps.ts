@@ -29,11 +29,12 @@ export interface AppDefinition {
 
 export const ROADMAPS_ID = 'roadmaps';
 export const DECISIONS_ID = 'decisions';
+export const API_ID = 'api';
 
 /**
  * The registry.
  *
- * Both applications are live. The grid still shows a third state — the
+ * The three applications are live. The grid still shows a further state — the
  * anonymous marker the landing appends — so "more fit here" stays visible
  * without an app having to pretend to be a placeholder.
  */
@@ -57,6 +58,16 @@ export const APPS: readonly AppDefinition[] = [
     state: 'live',
     createLabel: '+ capturar',
     route: '#/decisions',
+  },
+  {
+    id: API_ID,
+    name: 'API Hub',
+    tagline:
+      'El contrato de una API acordado mientras se habla, y exportado como OpenAPI sin escribir YAML.',
+    identity: APP_IDENTITIES.api,
+    state: 'live',
+    createLabel: '+ nuevo contrato',
+    route: '#/api',
   },
 ];
 

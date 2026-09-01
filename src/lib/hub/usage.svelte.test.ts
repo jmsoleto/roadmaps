@@ -30,7 +30,7 @@ describe('usage store', () => {
     await store.init(1000);
 
     expect(store.lastSeen).toBe(null);
-    expect(store.recent).toEqual([]);
+    expect(store.recent.roadmaps).toEqual([]);
   });
 
   /**
@@ -55,23 +55,62 @@ describe('usage store', () => {
     const backend = new FakePrefs();
     const first = new UsageStore(backend);
     await first.init(1000);
-    first.touch('r1', 1100);
-    first.touch('r2', 1200);
+    first.touch('roadmaps', 'r1', 1100);
+    first.touch('roadmaps', 'r2', 1200);
 
     const second = new UsageStore(backend);
     await second.init(2000);
-    expect(second.recent.map((e) => e.id)).toEqual(['r2', 'r1']);
+    expect(second.recent.roadmaps.map((e) => e.id)).toEqual(['r2', 'r1']);
   });
 
   it('filters recent openings against the roadmaps that still exist', async () => {
     const backend = new FakePrefs();
     const store = new UsageStore(backend);
     await store.init(1000);
-    store.touch('gone', 1100);
-    store.touch('alive', 1200);
+    store.touch('roadmaps', 'gone', 1100);
+    store.touch('roadmaps', 'alive', 1200);
 
-    expect(store.live(['alive']).map((e) => e.id)).toEqual(['alive']);
+    expect(store.live('roadmaps', ['alive']).map((e) => e.id)).toEqual(['alive']);
     // Filtering on read leaves the stored list alone — nothing to keep in step.
-    expect(store.recent.map((e) => e.id)).toEqual(['alive', 'gone']);
+    expect(store.recent.roadmaps.map((e) => e.id)).toEqual(['alive', 'gone']);
+  });
+});
+
+describe('one list per application', () => {
+  it('keeps each application’s openings apart', async () => {
+    const backend = new FakePrefs();
+    const store = new UsageStore(backend);
+    await store.init(1000);
+
+    store.touch('roadmaps', 'r1', 1100);
+    store.touch('api', 'c1', 1200);
+
+    expect(store.recent.roadmaps.map((e) => e.id)).toEqual(['r1']);
+    expect(store.recent.api.map((e) => e.id)).toEqual(['c1']);
+    expect(store.live('api', ['r1'])).toEqual([]);
+  });
+
+  /**
+   * Roadmaps keeps the unscoped key it has written since before there was a
+   * second application, so updating does not empty anyone's list.
+   */
+  it('reads Roadmaps’ openings from the key it already used', async () => {
+    const backend = new FakePrefs();
+    backend.prefs.set('hub.recent', JSON.stringify([{ id: 'viejo', at: 900 }]));
+
+    const store = new UsageStore(backend);
+    await store.init(1000);
+
+    expect(store.recent.roadmaps.map((e) => e.id)).toEqual(['viejo']);
+  });
+
+  it('scopes every other application’s key by its id', async () => {
+    const backend = new FakePrefs();
+    const store = new UsageStore(backend);
+    await store.init(1000);
+    store.touch('api', 'c1', 1100);
+
+    expect(backend.prefs.has('hub.recent:api')).toBe(true);
+    expect(backend.prefs.get('hub.recent')).toBeUndefined();
   });
 });

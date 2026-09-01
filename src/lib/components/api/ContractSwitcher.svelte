@@ -1,20 +1,22 @@
 <script lang="ts">
   /**
-   * Topbar breadcrumb + roadmap picker.
+   * API Hub's second breadcrumb level: which contract is open, and the picker
+   * to change it.
    *
-   * Replaces the old tab strip: its width no longer depends on how many
-   * roadmaps exist. Purely navigational — renaming and deleting live in the
-   * "Todos" view, so a control that gets pressed dozens of times a day never
-   * sits next to a destructive one.
+   * Built to the same shape as `RoadmapSwitcher`, and for the same reason its
+   * comment gives: the width must not depend on how many contracts exist. It is
+   * purely navigational — renaming and deleting live on the application's home,
+   * so the control pressed dozens of times a day never sits next to a
+   * destructive one.
    */
-  import { store } from '../store/app.svelte';
-  import { theme } from '../theme/theme.svelte';
-  import { usage } from '../hub/usage.svelte';
-  import { ROADMAPS_ID } from '../hub/apps';
+  import { apiContracts } from '../../api/store.svelte';
+  import { usage } from '../../hub/usage.svelte';
+  import { API_ID } from '../../hub/apps';
+  import { theme } from '../../theme/theme.svelte';
 
   type Option =
-    | { kind: 'all'; label: string; current: boolean }
-    | { kind: 'roadmap'; id: string; label: string; slot: number; current: boolean };
+    | { kind: 'home'; label: string; current: boolean }
+    | { kind: 'contract'; id: string; label: string; slot: number; current: boolean };
 
   let open = $state(false);
   let query = $state('');
@@ -22,34 +24,21 @@
   let filterEl = $state<HTMLInputElement | null>(null);
   let listEl = $state<HTMLDivElement | null>(null);
 
-  /**
-   * Accent- and case-insensitive, so "diseno" finds "Diseño" and "plat" finds
-   * "Plataforma".
-   *
-   * Deliberately NOT `nameKey()` from `util/roadmap-name`, which looks almost
-   * the same: that one also strips spaces, because it decides whether two
-   * roadmaps count as the same name. Here spaces have to survive so that
-   * typing "plan q" still finds "Plan Q1".
-   */
+  /** Accent- and case-insensitive, so "catalogo" finds "Catálogo". */
   const norm = (s: string) =>
     s
       .normalize('NFD')
       .replace(/\p{Diacritic}/gu, '')
       .toLowerCase();
 
-  /** A roadmap carries its own palette slot, so reordering the list never repaints it. */
-  const activeSlot = $derived(
-    store.data.roadmaps.find((r) => r.id === store.data.activeId)?.colorSlot ?? 0,
-  );
-
   const allOptions = $derived<Option[]>([
-    { kind: 'all', label: 'Todos', current: store.metaView },
-    ...store.data.roadmaps.map((rm): Option => ({
-      kind: 'roadmap',
-      id: rm.id,
-      label: rm.name,
-      slot: rm.colorSlot,
-      current: !store.metaView && rm.id === store.data.activeId,
+    { kind: 'home', label: 'Contratos', current: apiContracts.open === null },
+    ...apiContracts.contracts.map((c): Option => ({
+      kind: 'contract',
+      id: c.id,
+      label: c.title,
+      slot: c.colorSlot,
+      current: apiContracts.open?.id === c.id,
     })),
   ]);
 
@@ -59,23 +48,19 @@
       : allOptions.filter((o) => norm(o.label).includes(norm(query.trim()))),
   );
 
-  function toggle() {
-    open = !open;
-  }
-
   function close() {
     open = false;
     query = '';
   }
 
   function choose(o: Option) {
-    if (o.kind === 'all') {
-      store.toggleMetaView(true);
+    if (o.kind === 'home') {
+      apiContracts.setOpen(null);
     } else {
-      store.setActive(o.id);
-      // The selector is one of the ways into a roadmap, so it feeds the hub's
-      // recent list like the others (D6).
-      usage.touch(ROADMAPS_ID, o.id);
+      apiContracts.setOpen(o.id);
+      // The selector is one of the ways into a contract, so it feeds the hub's
+      // recent list like the others.
+      usage.touch(API_ID, o.id);
     }
     close();
   }
@@ -97,8 +82,6 @@
     }
   }
 
-  // On opening, focus the filter (so typing filters straight away) and start
-  // the highlight on whatever is showing now.
   $effect(() => {
     if (!open) return;
     hi = Math.max(
@@ -108,25 +91,19 @@
     filterEl?.focus();
   });
 
-  // Filtering shrinks the list under the highlight; keep it in range.
   $effect(() => {
     if (hi >= options.length) hi = 0;
   });
 
-  // Keep the highlighted option visible: on opening (the current roadmap may be
-  // far down the list) and while arrowing through it. Reading `hi` into a local
-  // is what subscribes this effect to the highlight moving.
   $effect(() => {
     if (!open) return;
     const idx = hi;
-    listEl?.querySelector<HTMLElement>(`#rs-opt-${idx}`)?.scrollIntoView({ block: 'nearest' });
+    listEl?.querySelector<HTMLElement>(`#cs-opt-${idx}`)?.scrollIntoView({ block: 'nearest' });
   });
 
   // Close on any interaction outside the switcher. `pointerdown` in capture
-  // rather than `blur`: in WebKit (Safari) buttons don't take focus when
-  // clicked, so blur would never fire. Events born inside the switcher are
-  // left alone, so pressing the trigger while open reaches its own handler and
-  // closes instead of being closed here and reopened.
+  // rather than `blur`: in WebKit buttons don't take focus when clicked, so
+  // blur would never fire.
   $effect(() => {
     if (!open) return;
     const outside = (e: PointerEvent) => {
@@ -139,28 +116,27 @@
 </script>
 
 <div class="switcher" data-switcher>
-  {#if !store.metaView}
-    <button type="button" class="crumb" onclick={() => store.toggleMetaView(true)}>Todos</button>
+  {#if apiContracts.open}
+    <button type="button" class="crumb" onclick={() => apiContracts.setOpen(null)}>Contratos</button
+    >
     <span class="sep" aria-hidden="true">▸</span>
   {/if}
 
   <button
     type="button"
     class="trigger"
-    class:home={store.metaView}
+    class:home={apiContracts.open === null}
     aria-haspopup="listbox"
     aria-expanded={open}
-    onclick={toggle}
-    title="cambiar de roadmap"
+    onclick={() => (open = !open)}
+    title="cambiar de contrato"
   >
-    {#if store.metaView}
-      <span class="glyph" aria-hidden="true">▦</span>
-      <span class="label">Todos</span>
-    {:else if store.activeRoadmap}
-      <span class="dot" style:background={theme.slotColor(activeSlot)}></span>
-      <span class="label">{store.activeRoadmap.name}</span>
+    {#if apiContracts.open}
+      <span class="dot" style:background={theme.slotColor(apiContracts.open.colorSlot)}></span>
+      <span class="label">{apiContracts.open.title}</span>
     {:else}
-      <span class="label dim">sin roadmap</span>
+      <span class="glyph" aria-hidden="true">▦</span>
+      <span class="label">Contratos</span>
     {/if}
     <span class="caret" aria-hidden="true">▾</span>
   </button>
@@ -172,26 +148,26 @@
         bind:value={query}
         class="filter"
         type="text"
-        placeholder="buscar roadmap…"
-        aria-label="buscar roadmap"
-        aria-controls="rs-list"
-        aria-activedescendant={options.length ? `rs-opt-${hi}` : undefined}
+        placeholder="buscar contrato…"
+        aria-label="buscar contrato"
+        aria-controls="cs-list"
+        aria-activedescendant={options.length ? `cs-opt-${hi}` : undefined}
         onkeydown={onKeydown}
       />
-      <div class="options" id="rs-list" role="listbox" bind:this={listEl}>
-        {#each options as o, i (o.kind === 'all' ? 'all' : o.id)}
+      <div class="options" id="cs-list" role="listbox" bind:this={listEl}>
+        {#each options as o, i (o.kind === 'home' ? 'home' : o.id)}
           <button
             type="button"
             class="opt"
             class:hl={i === hi}
             class:current={o.current}
-            id="rs-opt-{i}"
+            id="cs-opt-{i}"
             role="option"
             aria-selected={o.current}
             onmousemove={() => (hi = i)}
             onclick={() => choose(o)}
           >
-            {#if o.kind === 'all'}
+            {#if o.kind === 'home'}
               <span class="glyph" aria-hidden="true">▦</span>
             {:else}
               <span class="dot" style:background={theme.slotColor(o.slot)}></span>
@@ -262,9 +238,6 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .label.dim {
-    color: var(--text-dim);
-  }
   .caret {
     flex-shrink: 0;
     color: var(--text-dim);
@@ -281,8 +254,6 @@
     flex-shrink: 0;
     border: var(--line-width) solid var(--bar-border);
   }
-  /* Above the sticky sidebars of the Gantt and "Todos" views (z-index 6),
-     below the drawer (49/50). */
   .pop {
     position: absolute;
     top: calc(100% + 4px);

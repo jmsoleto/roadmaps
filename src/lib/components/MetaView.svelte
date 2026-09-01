@@ -3,6 +3,7 @@
   import { store } from '../store/app.svelte';
   import { ui } from '../store/ui.svelte';
   import { usage } from '../hub/usage.svelte';
+  import { ROADMAPS_ID } from '../hub/apps';
   import { ROW_H } from '../config';
   import { theme } from '../theme/theme.svelte';
   import { dayIndex, dayToX, fmtDate, todayIso } from '../time/timeline';
@@ -61,7 +62,7 @@
    */
   function openRoadmap(id: string) {
     store.setActive(id);
-    usage.touch(id);
+    usage.touch(ROADMAPS_ID, id);
   }
 
   // ---- vertical reordering ----

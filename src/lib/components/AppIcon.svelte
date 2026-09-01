@@ -57,6 +57,27 @@
         stroke-width="1.6"
         stroke-linecap="round"
       />
+    {:else if identity.glyph === 'api'}
+      <!-- Two braces around a value: the shape of a contract. Thick strokes and
+           a solid centre, because thin braces turn to mush at 18px. -->
+      <path
+        d="M9.4 4.4 C6.6 4.4 7.4 10.4 4.6 10.4 C7.4 10.4 6.6 19.6 9.4 19.6"
+        fill="none"
+        stroke={GLYPH_INK}
+        stroke-width="2.3"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      />
+      <path
+        d="M14.6 4.4 C17.4 4.4 16.6 10.4 19.4 10.4 C16.6 10.4 17.4 19.6 14.6 19.6"
+        fill="none"
+        stroke={GLYPH_INK}
+        stroke-width="2.3"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        opacity="0.72"
+      />
+      <circle cx="12" cy="12" r="1.9" fill={GLYPH_INK} />
     {:else}
       <path d="M12 4 V20 M4 12 H20" stroke={GLYPH_INK} stroke-width="2.6" stroke-linecap="round" />
     {/if}

@@ -17,6 +17,13 @@ describe('the app registry', () => {
     expect(IDENTITY_CATALOG).toContain(decisions?.identity);
   });
 
+  it('registers API Hub as the third live application', () => {
+    const api = findApp('api');
+    expect(api?.state).toBe('live');
+    expect(api?.route).toBe('#/api');
+    expect(IDENTITY_CATALOG).toContain(api?.identity);
+  });
+
   it('gives each live application its own route', () => {
     const routes = APPS.filter((a) => a.state === 'live').map((a) => a.route);
     expect(new Set(routes).size).toBe(routes.length);
@@ -30,6 +37,7 @@ describe('the app registry', () => {
   it('shortens the name for the places where width is scarce', () => {
     expect(shortName(findApp(ROADMAPS_ID)!)).toBe('Roadmaps');
     expect(shortName(findApp('decisions')!)).toBe('Decisions');
+    expect(shortName(findApp('api')!)).toBe('API');
   });
 
   it('gives a route to every live app and none to the rest', () => {
