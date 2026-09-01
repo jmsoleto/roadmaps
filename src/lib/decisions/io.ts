@@ -17,6 +17,8 @@
  */
 
 import { uid } from '../util/id';
+import { foreignDocumentMessage } from '../hub/documents';
+import { DECISIONS_ID } from '../hub/apps';
 import { normalizeDecision } from './model/normalize';
 import type { Decision } from './model/types';
 
@@ -122,17 +124,18 @@ export function parseDecisionsImport(text: string): Decision[] {
     throw new ImportError('El archivo no es un JSON válido.');
   }
 
+  // Naming the owning application before rejecting: importing the wrong file
+  // into the wrong app is the likeliest mistake in the whole exchange, and it
+  // grows with every application. The table of formats lives in the container,
+  // because the answer this needs is about the other two's documents.
+  const foreign = foreignDocumentMessage(doc, DECISIONS_ID);
+  if (foreign) throw new ImportError(foreign);
+
   if (typeof doc !== 'object' || doc === null) {
     throw new ImportError('El archivo no contiene un documento de decisiones.');
   }
   const d = doc as Record<string, unknown>;
 
-  // Naming the roadmap case explicitly: importing the wrong file into the wrong
-  // app is the likeliest mistake, and "no es un documento de decisiones" alone
-  // would leave the user guessing.
-  if (Array.isArray(d.roadmaps) || d.roadmap !== undefined || Array.isArray(d.rows)) {
-    throw new ImportError('Esto es un documento de roadmaps, no de decisiones.');
-  }
   if (d.kind !== KIND) {
     throw new ImportError('El archivo no es un documento de decisiones.');
   }

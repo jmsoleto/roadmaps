@@ -51,6 +51,8 @@ import {
   walk,
 } from './model/tree';
 import { readPaste } from './infer';
+import { reissueIds, reissueNodeIds } from './model/identity';
+import { parseContractImport } from './io';
 import {
   extractedName,
   uniqueModelName,
@@ -164,6 +166,26 @@ export class ApiContractsStore {
     this.data.openId = copy.id;
     this.scheduleSave();
     return copy;
+  }
+
+  /**
+   * Bring in a contract from a file.
+   *
+   * Adds, never replaces: overwriting what is here would be irreversible and
+   * there is no server to recover from. Throws what the parser threw, so the
+   * topbar shows the reason — including which application a foreign document
+   * really belongs to.
+   *
+   * The imported contract is opened, as Roadmaps does with an imported roadmap:
+   * you asked for it, so looking at it is what comes next.
+   */
+  importContract(text: string): Contract | null {
+    if (this.unavailable) return null;
+    const contract = parseContractImport(text, this.data.contracts.length % PALETTE_SLOTS);
+    this.data.contracts.push(contract);
+    this.data.openId = contract.id;
+    this.scheduleSave();
+    return contract;
   }
 
   renameContract(id: string, title: string): void {
@@ -753,56 +775,6 @@ export class ApiContractsStore {
       // silently.
       this.unavailable = { reason: e instanceof Error ? e.message : String(e) };
     }
-  }
-}
-
-/** Reissue every id in a copied body, so the copy is nobody else's tree. */
-function reissueNodeIds(node: ApiNode): void {
-  walk(node, (n) => {
-    n.id = uid('nod');
-  });
-}
-
-/**
- * Reissue every id inside a copied contract.
- *
- * References travel by id — a field of type `ref` names a model, an array of a
- * model names it too — so remapping has to rewrite them or the copy would point
- * at the original's models and stop being independent.
- */
-function reissueIds(contract: Contract): void {
-  const models = new Map<string, string>();
-  for (const model of contract.models) {
-    const next = uid('mod');
-    models.set(model.id, next);
-    model.id = next;
-  }
-
-  const walk = (node: { id: string; ref: string; itemRef: string; children: unknown[] }): void => {
-    node.id = uid('nod');
-    node.ref = models.get(node.ref) ?? node.ref;
-    node.itemRef = models.get(node.itemRef) ?? node.itemRef;
-    for (const child of node.children) walk(child as typeof node);
-  };
-
-  for (const model of contract.models) walk(model.node);
-  for (const endpoint of contract.endpoints) {
-    const old = endpoint.id;
-    endpoint.id = uid('ep');
-    if (contract.view?.kind === 'endpoint' && contract.view.id === old) {
-      contract.view = { kind: 'endpoint', id: endpoint.id };
-    }
-    for (const param of endpoint.params) param.id = uid('par');
-    if (endpoint.body) walk(endpoint.body);
-    for (const response of endpoint.responses) {
-      response.id = uid('res');
-      if (response.body) walk(response.body);
-    }
-  }
-
-  if (contract.view?.kind === 'model') {
-    const next = models.get(contract.view.id);
-    contract.view = next ? { kind: 'model', id: next } : null;
   }
 }
 

@@ -346,3 +346,20 @@ describe('the attachment manifest', () => {
     expect(back[0].id).not.toBe('a');
   });
 });
+
+describe('a document from another application', () => {
+  /** With three applications there are six wrong combinations. */
+  it('names API Hub when a contract lands here', () => {
+    expect(() =>
+      parseDecisionsImport('{"kind":"tech-lead-hub/api-contract","contract":{}}'),
+    ).toThrow(/API/);
+  });
+
+  it('still names Roadmaps', () => {
+    expect(() => parseDecisionsImport('{"format":"roadmaps.v1","roadmap":{}}')).toThrow(/Roadmaps/);
+  });
+
+  it('does not blame anyone for a JSON that is nobody’s', () => {
+    expect(() => parseDecisionsImport('{"hola":1}')).not.toThrow(/Roadmaps|API/);
+  });
+});

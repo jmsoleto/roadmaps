@@ -19,8 +19,9 @@
   import { validateContract } from '../../api/validate';
   import { exampleOf } from '../../api/example';
   import { downloadText } from '../../hub/download';
+  import { exportContract, exportFilename } from '../../api/io';
 
-  type TabId = 'yaml' | 'json' | 'examples' | 'brief';
+  type TabId = 'yaml' | 'json' | 'examples' | 'brief' | 'backup';
 
   let panelEl = $state<HTMLDivElement | null>(null);
   let tab = $state<TabId>('yaml');
@@ -79,11 +80,24 @@
       file: 'contrato-api.md',
       text: () => (contract ? briefOf(contract) : ''),
     },
+    // The fifth output is the only one that comes back (D2). Four are for
+    // whoever consumes the contract; this one is for this same application,
+    // later or elsewhere.
+    {
+      id: 'backup',
+      label: 'Contrato JSON',
+      file: 'contrato.json',
+      text: () => (contract ? exportContract(contract) : ''),
+    },
   ];
 
   const current = $derived(TABS.find((t) => t.id === tab) ?? TABS[0]);
   const text = $derived(current.text());
-  const filename = $derived(`${slug}-${current.file}`);
+  const filename = $derived(
+    // The backup names itself: it carries the API's version so two copies taken
+    // at different moments do not overwrite each other in the downloads folder.
+    current.id === 'backup' && contract ? exportFilename(contract) : `${slug}-${current.file}`,
+  );
 
   function close() {
     apiUi.closeExport();
@@ -191,6 +205,11 @@
         <p class="note">
           Autocontenido: todo lo que hace falta va dentro, sin referencias a otros ficheros, que los
           generadores y los agentes resuelven mal.
+        </p>
+      {:else if tab === 'backup'}
+        <p class="note">
+          El formato propio de la aplicación: es lo que se vuelve a traer con «importar», y la única
+          copia de seguridad que existe de un contrato. Los modelos van dentro.
         </p>
       {/if}
 

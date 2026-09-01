@@ -129,6 +129,14 @@ function apiActions(): AppAction[] {
       },
     },
     {
+      kind: 'file',
+      label: '↓ importar',
+      title: 'traer un contrato desde un JSON',
+      disabled: down,
+      accept: JSON_FILES,
+      run: (text) => void apiContracts.importContract(text),
+    },
+    {
       kind: 'button',
       label: '↑ exportar',
       title: 'exportar el contrato abierto',

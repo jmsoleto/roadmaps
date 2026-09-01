@@ -1,0 +1,6 @@
+schema: spec-driven
+created: 2026-09-01
+goal: "API Hub deja de ser la unica aplicacion sin salida: un contrato se guarda
+  como JSON autocontenido y se vuelve a traer con identidad nueva, la copia entra
+  como quinta pestana del diálogo en vez de como un segundo exportar, y el rechazo
+  de un documento pasa a decir de que aplicacion es en las tres"

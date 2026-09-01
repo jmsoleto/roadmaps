@@ -11,6 +11,8 @@
  */
 
 import type { AppData, Assignee, Blocker, Item, Phase, Roadmap, IsoDate } from '../model/types';
+import { foreignDocumentMessage } from '../hub/documents';
+import { ROADMAPS_ID } from '../hub/apps';
 import { DEFAULT_WINDOW_DAYS } from '../model/types';
 import { dateFromDay, dayIndex, isIsoDate } from '../time/timeline';
 import { uid } from '../util/id';
@@ -81,6 +83,12 @@ export function parseImport(
     throw new Error('El archivo no es JSON válido.');
   }
   if (!parsed || typeof parsed !== 'object') throw new Error('Formato no reconocido.');
+
+  // Naming the owning application before rejecting: importing the wrong file
+  // into the wrong app is the likeliest mistake in the whole exchange, and with
+  // three applications there are six wrong combinations.
+  const foreign = foreignDocumentMessage(parsed, ROADMAPS_ID);
+  if (foreign) throw new Error(foreign);
 
   const obj = parsed as Record<string, unknown>;
   // Assignments are kept whenever the document declares their blocker; the store

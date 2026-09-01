@@ -409,3 +409,19 @@ describe('completitud en el intercambio', () => {
     expect(a.baselineEnd).toBeNull();
   });
 });
+
+describe('a document from another application', () => {
+  it('names API Hub when a contract lands in Roadmaps', () => {
+    expect(() => parseImport('{"kind":"tech-lead-hub/api-contract","contract":{}}')).toThrow(/API/);
+  });
+
+  it('names Decisions when a decisions document lands here', () => {
+    expect(() => parseImport('{"kind":"tech-lead-hub/decisions","decisions":[]}')).toThrow(
+      /Decisions/,
+    );
+  });
+
+  it('does not blame anyone for a JSON that is nobody’s', () => {
+    expect(() => parseImport('{"hola":1}')).not.toThrow(/Decisions|API/);
+  });
+});
