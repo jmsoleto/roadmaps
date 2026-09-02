@@ -95,7 +95,7 @@ export function usesOf(contract: Contract, modelId: string): string[] {
 }
 
 /** The models one model points at, directly. */
-export function modelDependencies(contract: Contract, modelId: string): string[] {
+export function directDependencies(contract: Contract, modelId: string): string[] {
   const model = contract.models.find((m) => m.id === modelId);
   if (!model?.node) return [];
   const out = new Set<string>();
@@ -105,6 +105,33 @@ export function modelDependencies(contract: Contract, modelId: string): string[]
   });
   out.delete(modelId);
   return [...out];
+}
+
+/**
+ * Everything a model needs to mean anything, following the chain.
+ *
+ * `ItemProducto → Paginacion → Moneda` is three models, and saving only the
+ * first to the library would bring two broken references into whatever
+ * contract receives it — a contract describing something that is not there,
+ * which is worse than not being able to bring it at all.
+ *
+ * The visited set is what makes a recursive model resolve once instead of
+ * hanging; same guard the example generator uses to cut a cycle.
+ */
+export function modelDependencies(contract: Contract, modelId: string): string[] {
+  const seen = new Set<string>([modelId]);
+  const queue = [modelId];
+  const out: string[] = [];
+
+  while (queue.length > 0) {
+    for (const next of directDependencies(contract, queue.shift()!)) {
+      if (seen.has(next)) continue;
+      seen.add(next);
+      out.push(next);
+      queue.push(next);
+    }
+  }
+  return out;
 }
 
 /**

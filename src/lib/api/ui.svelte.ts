@@ -88,6 +88,17 @@ class ApiUiStore {
     this.exampleOpen = !this.exampleOpen;
   }
 
+  /** Whether the library is up. */
+  library = $state<boolean>(false);
+
+  openLibrary(): void {
+    this.library = true;
+  }
+
+  closeLibrary(): void {
+    this.library = false;
+  }
+
   /** Whether the export panel is up. */
   exporting = $state<boolean>(false);
 

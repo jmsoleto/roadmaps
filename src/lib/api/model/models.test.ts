@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { extractedName, modelDependencies, pascal, uniqueModelName, usesOf } from './models';
+import {
+  directDependencies,
+  extractedName,
+  modelDependencies,
+  pascal,
+  uniqueModelName,
+  usesOf,
+} from './models';
 import { newEndpoint, newNode, rootNode } from './factories';
 import type { ApiModel, Contract } from './types';
 
@@ -118,11 +125,41 @@ describe('what a model depends on', () => {
         model('mod-item', 'Item'),
       ],
     });
-    expect(modelDependencies(c, 'mod-a').sort()).toEqual(['mod-item', 'mod-pag']);
+    expect(directDependencies(c, 'mod-a').sort()).toEqual(['mod-item', 'mod-pag']);
   });
 
   it('does not list itself', () => {
     const c = contract({ models: [model('mod-cat', 'Categoria', [arrayOf('hijas', 'mod-cat')])] });
-    expect(modelDependencies(c, 'mod-cat')).toEqual([]);
+    expect(directDependencies(c, 'mod-cat')).toEqual([]);
+  });
+});
+
+describe('the whole chain a model needs', () => {
+  it('follows the references transitively', () => {
+    const c = contract({
+      models: [
+        model('a', 'A', [refTo('b', 'b')]),
+        model('b', 'B', [refTo('c', 'c')]),
+        model('c', 'C'),
+        model('z', 'Z'),
+      ],
+    });
+    expect(modelDependencies(c, 'a').sort()).toEqual(['b', 'c']);
+  });
+
+  it('resolves a cycle once instead of hanging', () => {
+    const c = contract({
+      models: [model('a', 'A', [refTo('b', 'b')]), model('b', 'B', [refTo('a', 'a')])],
+    });
+    expect(modelDependencies(c, 'a')).toEqual(['b']);
+  });
+
+  it('reports nothing for a model that depends on nothing', () => {
+    expect(modelDependencies(contract({ models: [model('a', 'A')] }), 'a')).toEqual([]);
+  });
+
+  it('follows an array of a model too', () => {
+    const c = contract({ models: [model('a', 'A', [arrayOf('items', 'b')]), model('b', 'B')] });
+    expect(modelDependencies(c, 'a')).toEqual(['b']);
   });
 });

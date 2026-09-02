@@ -10,13 +10,16 @@
  * `store/indexeddb.ts`. What belongs here is what belongs to this application:
  * its object store and its document.
  *
- * The library store exists from this change and nothing writes to it yet (D9).
- * Creating it later would mean a database upgrade over contracts the user had
- * already written; creating it now costs an empty object store.
+ * The library got its own object store here before there was anything to put in
+ * it — creating it later would have meant a database upgrade over contracts the
+ * user had already written. It now holds the saved models, and the reason it is
+ * separate is the one that made it worth doing early: the contracts document is
+ * rewritten whole on every save.
  */
 
 import { Connection, openDatabase, request, settled, type LoadOutcome } from '../store/indexeddb';
 import type { ApiData } from './model/types';
+import type { LibraryData } from './library/types';
 
 export type { LoadOutcome };
 
@@ -25,7 +28,13 @@ export interface ApiBackend {
   save(data: ApiData): Promise<void>;
 }
 
+export interface LibraryBackend {
+  load(): Promise<LoadOutcome<LibraryData>>;
+  save(data: LibraryData): Promise<void>;
+}
+
 const STORE = 'apiContracts';
+const LIBRARY_STORE = 'apiLibrary';
 /** Single record holding the whole document, as the other two stores do. */
 const DOC_KEY = 'doc:v1';
 
@@ -77,4 +86,45 @@ export class IndexedDbApiBackend implements ApiBackend {
 
 export function createApiBackend(): ApiBackend {
   return new IndexedDbApiBackend();
+}
+
+/**
+ * The model library, in the object store created for it back when there was
+ * nothing to put in it.
+ *
+ * Its own store, and not a corner of the contracts document, for the reason
+ * `local-persistence` gives: the document is rewritten whole on every save, so
+ * with the library inside it, typing a letter in a field would rewrite every
+ * saved model.
+ */
+export class IndexedDbLibraryBackend implements LibraryBackend {
+  private readonly conn: Connection;
+
+  constructor(open: () => Promise<IDBDatabase> = openDatabase) {
+    this.conn = new Connection(open);
+  }
+
+  async load(): Promise<LoadOutcome<LibraryData>> {
+    let raw: unknown;
+    try {
+      const db = await this.conn.get();
+      const tx = db.transaction(LIBRARY_STORE, 'readonly');
+      raw = await request(tx.objectStore(LIBRARY_STORE).get(DOC_KEY));
+    } catch (e) {
+      return { kind: 'unavailable', reason: e instanceof Error ? e.message : String(e) };
+    }
+    if (raw === undefined || raw === null) return { kind: 'empty' };
+    return { kind: 'loaded', data: raw as LibraryData };
+  }
+
+  async save(data: LibraryData): Promise<void> {
+    const db = await this.conn.get();
+    const tx = db.transaction(LIBRARY_STORE, 'readwrite');
+    tx.objectStore(LIBRARY_STORE).put(structuredClone(data), DOC_KEY);
+    await settled(tx, 'no se pudo guardar la biblioteca');
+  }
+}
+
+export function createLibraryBackend(): LibraryBackend {
+  return new IndexedDbLibraryBackend();
 }

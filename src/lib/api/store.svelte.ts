@@ -701,6 +701,23 @@ export class ApiContractsStore {
     });
   }
 
+  /**
+   * Take in the models the library worked out for this contract.
+   *
+   * The merge itself is the library's — pure, in `bring.ts` — and committing it
+   * is this store's, because the library is not the one that edits a contract.
+   * Opens what was brought, which is what somebody asking for it wants to see.
+   */
+  addBroughtModels(models: readonly ApiModel[], broughtId: string): void {
+    this.structural((contract) => {
+      contract.models.push(...(models as ApiModel[]));
+      if (models.some((m) => m.id === broughtId)) {
+        contract.view = { kind: 'model', id: broughtId };
+      }
+      return null;
+    });
+  }
+
   /** Point a field at a model. */
   setNodeRef(nodeId: string, modelId: string): void {
     this.structural(() => {

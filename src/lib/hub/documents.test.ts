@@ -48,3 +48,21 @@ describe('the sentence for somebody else’s document', () => {
     expect(foreignDocumentMessage({ hola: 1 }, 'api')).toBeNull();
   });
 });
+
+describe('the library, which is also API Hub’s', () => {
+  it('recognises a library as API Hub’s', () => {
+    expect(ownerOf({ kind: 'tech-lead-hub/api-library', entries: [] })).toBe('api');
+  });
+
+  /** Both documents are API Hub's, so neither is foreign to it. */
+  it('says nothing to API Hub about either of its own documents', () => {
+    expect(foreignDocumentMessage({ kind: 'tech-lead-hub/api-library' }, 'api')).toBeNull();
+    expect(foreignDocumentMessage({ kind: 'tech-lead-hub/api-contract' }, 'api')).toBeNull();
+  });
+
+  it('names API Hub when a library lands in another application', () => {
+    expect(foreignDocumentMessage({ kind: 'tech-lead-hub/api-library' }, 'decisions')).toContain(
+      'API Hub',
+    );
+  });
+});

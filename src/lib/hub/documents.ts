@@ -35,6 +35,7 @@ export function ownerOf(parsed: unknown): DocumentOwner {
   if (Array.isArray(doc.rows)) return ROADMAPS_ID;
   if (doc.kind === 'tech-lead-hub/decisions') return DECISIONS_ID;
   if (doc.kind === 'tech-lead-hub/api-contract') return API_ID;
+  if (doc.kind === 'tech-lead-hub/api-library') return API_ID;
   return null;
 }
 

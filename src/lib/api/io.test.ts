@@ -149,6 +149,17 @@ describe('rejecting', () => {
     expect(() => parseContractImport('{"hola":1}')).not.toThrow(/Roadmaps|Decisions/);
   });
 
+  /**
+   * The other half of the pair: the library's parser says «this is a contract»,
+   * and this one has to say the mirror. Both are API Hub's own documents, so
+   * naming the wrong application is not available as an explanation.
+   */
+  it('says a library is a library, not just that it is not a contract', () => {
+    expect(() => parseContractImport('{"kind":"tech-lead-hub/api-library","entries":[]}')).toThrow(
+      /biblioteca de modelos/,
+    );
+  });
+
   it('rejects our own document with no contract in it', () => {
     expect(() => parseContractImport('{"kind":"tech-lead-hub/api-contract"}')).toThrow(
       /no contiene/,

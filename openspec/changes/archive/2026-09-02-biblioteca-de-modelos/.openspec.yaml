@@ -1,0 +1,7 @@
+schema: spec-driven
+created: 2026-09-01
+goal: "Que un modelo escrito una vez sirva en la siguiente API: una biblioteca
+  transversal a los contratos que guarda un modelo con sus dependencias
+  transitivas, lo trae copiando y remapeando, decide con el usuario cuando un
+  nombre ya existe en vez de renombrarlo a la callada, y se exporta en JSON para
+  cruzar maquinas"

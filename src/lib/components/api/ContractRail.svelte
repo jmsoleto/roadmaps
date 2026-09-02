@@ -7,6 +7,7 @@
    * while you work but not the work itself.
    */
   import { apiContracts } from '../../api/store.svelte';
+  import { apiUi } from '../../api/ui.svelte';
   import type { Contract } from '../../api/model/types';
 
   interface Props {
@@ -73,6 +74,9 @@
     <h3>
       Modelos
       <span class="spacer"></span>
+      <button class="icon" title="traer de la biblioteca" onclick={() => apiUi.openLibrary()}
+        >↓</button
+      >
       <button class="icon" title="añadir modelo" onclick={() => apiContracts.addModel()}>+</button>
     </h3>
 

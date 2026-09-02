@@ -8,6 +8,8 @@
    * every contract that points at this.
    */
   import { apiContracts } from '../../api/store.svelte';
+  import { apiLibrary } from '../../api/library.svelte';
+  import { bundledModels } from '../../api/library/bundle';
   import TreeBlock from './TreeBlock.svelte';
   import type { ApiModel } from '../../api/model/types';
 
@@ -21,6 +23,32 @@
 
   const uses = $derived(apiContracts.usesOf(model.id));
 
+  /**
+   * What saving would take along, besides this model.
+   *
+   * Said out loud before saving: putting a model in the library and finding
+   * three there, with no warning, is an invisible effect — and invisible
+   * effects are what make people stop trusting a button.
+   */
+  const alsoSaved = $derived(
+    apiContracts.open
+      ? bundledModels(apiContracts.open, model.id)
+          .slice(1)
+          .map((m) => m.name)
+      : [],
+  );
+  const alreadySaved = $derived(apiLibrary.entryNamed(model.name) !== null);
+  let confirmSave = $state(false);
+  let saved = $state(false);
+
+  function saveToLibrary() {
+    if (!apiContracts.open) return;
+    apiLibrary.save(apiContracts.open, model.id);
+    confirmSave = false;
+    saved = true;
+    setTimeout(() => (saved = false), 1800);
+  }
+
   // Leaving the model must not leave a delete half-confirmed behind.
   $effect(() => {
     void model.id;
@@ -32,6 +60,23 @@
   <div class="bar" oninput={() => apiContracts.touch()}>
     <span class="kind">modelo</span>
     <input class="name" bind:value={model.name} spellcheck="false" aria-label="nombre del modelo" />
+    {#if saved}
+      <span class="saved">guardado en la biblioteca ✓</span>
+    {:else if confirmSave}
+      <button class="btn primary" onclick={saveToLibrary}
+        >¿reemplazar «{model.name}» en la biblioteca?</button
+      >
+      <button class="btn" onclick={() => (confirmSave = false)}>✕</button>
+    {:else}
+      <button
+        class="btn"
+        title={alsoSaved.length > 0
+          ? `se lleva también ${alsoSaved.join(', ')}`
+          : 'guardar en la biblioteca'}
+        onclick={() => (alreadySaved ? (confirmSave = true) : saveToLibrary())}
+        >guardar en la biblioteca</button
+      >
+    {/if}
     <button class="btn" onclick={() => apiContracts.duplicateModel(model.id)}>duplicar</button>
     {#if confirmDelete}
       <button
@@ -58,6 +103,13 @@
       <textarea bind:value={model.description} rows="2"></textarea>
     </label>
   </section>
+
+  {#if alsoSaved.length > 0}
+    <p class="hint">
+      Guardarlo en la biblioteca se lleva también {alsoSaved.join(', ')}: sin eso llegaría con
+      referencias rotas al contrato que lo traiga.
+    </p>
+  {/if}
 
   <section>
     <header>
@@ -198,5 +250,16 @@
   .btn.danger {
     color: var(--danger);
     border-color: var(--danger);
+  }
+  .btn.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--ink-on-accent);
+  }
+  .saved {
+    flex-shrink: 0;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11.5px;
+    color: var(--accent);
   }
 </style>

@@ -100,6 +100,12 @@ export function parseContractImport(text: string, fallbackSlot = 0): Contract {
     throw new ImportError('El archivo no contiene un contrato de API.');
   }
   const doc = parsed as Record<string, unknown>;
+  // Both documents are API Hub's, so «it is not mine» would not help: saying
+  // which of the two it is, is the whole point of the message. The library's
+  // side of this says the same thing the other way round.
+  if (doc.kind === 'tech-lead-hub/api-library') {
+    throw new ImportError('Esto es una biblioteca de modelos, no un contrato.');
+  }
   if (doc.kind !== KIND) {
     throw new ImportError('El archivo no es un documento de contratos de API.');
   }

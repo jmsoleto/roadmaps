@@ -8,6 +8,7 @@ import { location } from './lib/hub/location.svelte';
 import { usage } from './lib/hub/usage.svelte';
 import { decisions } from './lib/decisions/store.svelte';
 import { apiContracts } from './lib/api/store.svelte';
+import { apiLibrary } from './lib/api/library.svelte';
 
 // Load persisted state from the browser's local storage before the first
 // render, so the app opens directly in its last state.
@@ -25,6 +26,7 @@ async function bootstrap() {
   // reactive, so each card fills in its figures when its answer arrives.
   void decisions.init();
   void apiContracts.init();
+  void apiLibrary.init();
 
   // Register what each application does when it is entered, then adopt the
   // location in the URL. The order matters: a session restored straight into

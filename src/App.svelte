@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { store } from './lib/store/app.svelte';
   import { apiContracts } from './lib/api/store.svelte';
+  import { apiLibrary } from './lib/api/library.svelte';
   import { location } from './lib/hub/location.svelte';
   import { hubApp } from './lib/hub/registry';
   import Topbar from './lib/components/Topbar.svelte';
@@ -39,6 +40,7 @@
     const flush = () => {
       void store.flush();
       void apiContracts.flush();
+      void apiLibrary.flush();
     };
     window.addEventListener('beforeunload', flush);
 

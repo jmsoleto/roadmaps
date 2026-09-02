@@ -23,6 +23,7 @@
   import ExamplePanel from './ExamplePanel.svelte';
   import PasteJsonDialog from './PasteJsonDialog.svelte';
   import ExportDialog from './ExportDialog.svelte';
+  import LibraryDialog from './LibraryDialog.svelte';
 
   let newTitle = $state('');
   let newEl = $state<HTMLInputElement | null>(null);
@@ -89,6 +90,7 @@
 
   <PasteJsonDialog />
   <ExportDialog />
+  <LibraryDialog />
 {:else}
   <div class="home">
     <div class="head">

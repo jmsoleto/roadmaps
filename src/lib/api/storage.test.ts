@@ -1,10 +1,11 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import 'fake-indexeddb/auto';
 import { IDBFactory } from 'fake-indexeddb';
-import { IndexedDbApiBackend } from './storage';
+import { IndexedDbApiBackend, IndexedDbLibraryBackend } from './storage';
 import { IndexedDbBackend } from '../decisions/storage';
 import { openDatabase, request } from '../store/indexeddb';
 import { emptyDecisionsData } from '../decisions/model/types';
+import { rootNode } from './model/factories';
 import type { ApiData } from './model/types';
 
 const doc = (n: number): ApiData => ({
@@ -115,5 +116,56 @@ describe('the shared database', () => {
     const db = await openDatabase();
     const tx = db.transaction('apiLibrary', 'readonly');
     expect(await request(tx.objectStore('apiLibrary').count())).toBe(0);
+  });
+});
+
+describe('the library store', () => {
+  const entry = (name: string) => ({
+    id: `lib-${name}`,
+    name,
+    description: '',
+    updated: '2026-09-01T00:00:00Z',
+    models: [{ id: `mod-${name}`, name, description: '', node: rootNode() }],
+  });
+
+  it('reports an empty library on a first run', async () => {
+    expect(await new IndexedDbLibraryBackend().load()).toEqual({ kind: 'empty' });
+  });
+
+  it('round-trips the entries', async () => {
+    const backend = new IndexedDbLibraryBackend();
+    await backend.save({ entries: [entry('Paginacion'), entry('Moneda')] });
+
+    const out = await backend.load();
+    if (out.kind !== 'loaded') throw new Error('expected a library');
+    expect(out.data.entries.map((e) => e.name)).toEqual(['Paginacion', 'Moneda']);
+  });
+
+  /** The reason it got its own object store in the first place (D5). */
+  it('does not touch the contracts when it is written', async () => {
+    const contracts = new IndexedDbApiBackend();
+    await contracts.save(doc(2));
+
+    await new IndexedDbLibraryBackend().save({ entries: [entry('Paginacion')] });
+
+    const out = await contracts.load();
+    if (out.kind !== 'loaded') throw new Error('expected the contracts');
+    expect(out.data.contracts).toHaveLength(2);
+  });
+
+  it('does not lose the library when a contract is written', async () => {
+    const library = new IndexedDbLibraryBackend();
+    await library.save({ entries: [entry('Paginacion')] });
+
+    await new IndexedDbApiBackend().save(doc(1));
+
+    const out = await library.load();
+    if (out.kind !== 'loaded') throw new Error('expected a library');
+    expect(out.data.entries).toHaveLength(1);
+  });
+
+  it('reports a store that will not open as unavailable, not as empty', async () => {
+    const backend = new IndexedDbLibraryBackend(() => Promise.reject(new Error('cerrada')));
+    expect((await backend.load()).kind).toBe('unavailable');
   });
 });
