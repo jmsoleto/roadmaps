@@ -503,6 +503,128 @@ describe('fields', () => {
   });
 });
 
+describe('chaining a field from the one before it', () => {
+  async function withBody() {
+    const { store } = await opened();
+    const ep = store.addEndpoint()!;
+    return { store, root: ep.responses[0].body! };
+  }
+
+  it('puts the new field right after, not at the end', async () => {
+    const { store, root } = await withBody();
+    const a = store.addChild(root.id)!;
+    const b = store.addChild(root.id)!;
+    const c = store.addChild(root.id)!;
+
+    const chained = store.addSiblingAfter(b.id)!;
+    expect(root.children.map((n) => n.id)).toEqual([a.id, b.id, chained.id, c.id]);
+  });
+
+  it('refuses on the root of a body, which has no siblings', async () => {
+    const { store, root } = await withBody();
+    expect(store.addSiblingAfter(root.id)).toBeNull();
+  });
+
+  it('refuses on a field that does not exist', async () => {
+    const { store } = await withBody();
+    expect(store.addSiblingAfter('nod-inventado')).toBeNull();
+  });
+
+  it('carries the type over', async () => {
+    const { store, root } = await withBody();
+    const field = store.addChild(root.id)!;
+    store.setNodeType(field.id, 'integer');
+
+    expect(store.addSiblingAfter(field.id)!.type).toBe('integer');
+  });
+
+  it('carries what an array holds, which is the other half of its type', async () => {
+    const { store, root } = await withBody();
+    const field = store.addChild(root.id)!;
+    store.setNodeType(field.id, 'array');
+    store.setNodeItemType(field.id, 'integer');
+
+    const chained = store.addSiblingAfter(field.id)!;
+    expect([chained.type, chained.itemType]).toEqual(['array', 'integer']);
+  });
+
+  it('carries the reference type but not the model it points at', async () => {
+    const { store } = await opened();
+    const model = store.addModel('Paginacion')!;
+    const ep = store.addEndpoint()!;
+    const root = ep.responses[0].body!;
+    const field = store.addChild(root.id)!;
+    store.setNodeType(field.id, 'ref');
+    store.setNodeRef(field.id, model.id);
+
+    const chained = store.addSiblingAfter(field.id)!;
+    expect(chained.type).toBe('ref');
+    expect(chained.ref).toBe('');
+  });
+
+  /** The same rule `setNodeType` follows: a container is never born empty. */
+  it('gives a chained object its first child', async () => {
+    const { store, root } = await withBody();
+    const field = store.addChild(root.id)!;
+    store.setNodeType(field.id, 'object');
+
+    expect(store.addSiblingAfter(field.id)!.children).toHaveLength(1);
+  });
+
+  it('leaves behind everything that is not the shape', async () => {
+    const { store, root } = await withBody();
+    const field = store.addChild(root.id)!;
+    field.description = 'Total de elementos, no de páginas';
+    field.example = '128';
+    field.format = 'date-time';
+    field.enums = ['alta', 'baja'];
+
+    const chained = store.addSiblingAfter(field.id)!;
+    expect(chained.description).toBe('');
+    expect(chained.example).toBe('');
+    expect(chained.format).toBe('');
+    expect(chained.enums).toEqual([]);
+  });
+
+  /** Numbered like an added field, not suffixed like a copy. */
+  it('gives each chained field a key nobody else is using', async () => {
+    const { store, root } = await withBody();
+    const first = store.addChild(root.id)!;
+    const second = store.addSiblingAfter(first.id)!;
+    store.addSiblingAfter(second.id);
+
+    expect(root.children.map((n) => n.key)).toEqual(['campo', 'campo2', 'campo3']);
+  });
+
+  it('chains a parameter carrying where it travels and its type', async () => {
+    const { store } = await opened();
+    const ep = store.addEndpoint()!;
+    store.addParam(ep.id);
+    const first = store.open!.endpoints[0].params[0];
+    first.in = 'header';
+    first.type = 'integer';
+    first.name = 'X-Request-Id';
+    first.required = true;
+    first.example = 'abc';
+    first.description = 'el identificador de la petición';
+
+    const chained = store.addParamAfter(ep.id, first.id)!;
+    const params = store.open!.endpoints[0].params;
+
+    expect(params.map((p) => p.id)).toEqual([first.id, chained.id]);
+    expect([chained.in, chained.type]).toEqual(['header', 'integer']);
+    expect([chained.name, chained.example, chained.description]).toEqual(['', '', '']);
+    expect(chained.required).toBe(false);
+  });
+
+  it('refuses to chain a parameter that is not there', async () => {
+    const { store } = await opened();
+    const ep = store.addEndpoint()!;
+    expect(store.addParamAfter(ep.id, 'par-inventado')).toBeNull();
+    expect(store.addParamAfter('ep-inventado', 'par-1')).toBeNull();
+  });
+});
+
 describe('pasting a JSON into a field', () => {
   async function withBody() {
     const { store } = await opened();
@@ -555,6 +677,8 @@ describe('a store that will not open refuses the tree too', () => {
 
     expect(store.addEndpoint()).toBeNull();
     expect(store.addChild('nod-1')).toBeNull();
+    expect(store.addSiblingAfter('nod-1')).toBeNull();
+    expect(store.addParamAfter('ep-1', 'par-1')).toBeNull();
     expect(store.duplicateNode('nod-1')).toBeNull();
     expect(store.pasteInto('nod-1', '{}')).not.toBeNull();
     expect(store.contracts).toEqual([]);

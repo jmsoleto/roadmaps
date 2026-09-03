@@ -67,6 +67,47 @@
     const canonical = formatList(node.enums);
     if (parseList(enumText).join('\u0000') !== node.enums.join('\u0000')) enumText = canonical;
   });
+
+  // ---- chaining a field with Enter ----
+
+  let keyEl = $state<HTMLInputElement | null>(null);
+
+  /**
+   * Enter in the key box means "the next field", and nothing else does.
+   *
+   * The key is the only box where the gesture is unambiguous: halfway through a
+   * long comment, Enter reads more like a line break than like "next field".
+   * With a modifier it does nothing, which leaves Shift+Enter free in case the
+   * reading "a child, not a sibling" ever turns up.
+   *
+   * `preventDefault` guards nothing today — the row is not inside a `<form>`,
+   * so Enter is inert — and that is precisely why it is here, for the day
+   * somebody wraps it in one.
+   */
+  function onKeydown(e: KeyboardEvent): void {
+    if (e.key !== 'Enter' || e.isComposing) return;
+    if (e.shiftKey || e.metaKey || e.ctrlKey || e.altKey) return;
+    e.preventDefault();
+    const chained = apiContracts.addSiblingAfter(node.id);
+    if (chained) apiUi.wantFocus(chained.id);
+  }
+
+  // The row focuses itself when it turns out to be the one that was asked for:
+  // the same shape as the new-contract field in `ApiApp`, and the only way a
+  // component that has just mounted can be reached at all.
+  //
+  // `untrack` around the taking because it clears the very state this effect
+  // reads. It would settle either way — the second pass finds nothing to take —
+  // but saying so is cheaper than working it out again later.
+  $effect(() => {
+    if (!keyEl) return;
+    if (untrack(() => apiUi.takeFocus(node.id))) {
+      keyEl.focus();
+      // Selected, not merely focused: the key arrives called `campo2`, and the
+      // point is to overwrite it by typing rather than to erase it first.
+      keyEl.select();
+    }
+  });
 </script>
 
 <div class="node">
@@ -88,7 +129,9 @@
     <div class="fields" oninput={() => apiContracts.touch()}>
       <input
         class="key"
+        bind:this={keyEl}
         bind:value={node.key}
+        onkeydown={onKeydown}
         placeholder="clave"
         spellcheck="false"
         aria-label="clave del campo"

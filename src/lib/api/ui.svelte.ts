@@ -58,6 +58,42 @@ class ApiUiStore {
     this.advanced = next;
   }
 
+  /**
+   * What should take the focus next, named by its identifier.
+   *
+   * Set when a field or a parameter is chained with Enter, and consumed by
+   * whichever row turns out to be the one: the store creates and returns the
+   * new element, but it has no business knowing what focus is, so the id is
+   * handed over here instead.
+   *
+   * It lives with the transient rather than in the document for the reason this
+   * whole file exists: reloading into a pending focus would be a bug, not a
+   * feature. It is the same line `creating` and `pasteTargetId` are on.
+   *
+   * **One field covers both the tree and the parameters** because identifiers
+   * are already unique across the application — `uid('nod')` and `uid('par')`
+   * never collide — so there is nothing to disambiguate and no reason to keep
+   * two of these.
+   */
+  private focusing = $state<string | null>(null);
+
+  /** Ask for the name box of `id` to take the focus once it is on screen. */
+  wantFocus(id: string): void {
+    this.focusing = id;
+  }
+
+  /**
+   * True once, for whoever is `id`. Consuming it clears it.
+   *
+   * A question rather than a value to read, so that the caller cannot forget to
+   * clear it and leave a row stealing the focus on every repaint.
+   */
+  takeFocus(id: string): boolean {
+    if (this.focusing !== id) return false;
+    this.focusing = null;
+    return true;
+  }
+
   /** The field whose paste dialog is up, or `null`. */
   pasteTargetId = $state<string | null>(null);
   /** Why the last paste was refused, shown inside the dialog. */

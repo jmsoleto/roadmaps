@@ -24,6 +24,7 @@ import {
   type ApiData,
   type ApiEndpoint,
   type ApiNode,
+  type ApiParam,
   type ApiResponse,
   type Contract,
   type ApiModel,
@@ -325,6 +326,39 @@ export class ApiContractsStore {
     });
   }
 
+  /**
+   * The field right after this one, with its shape and nothing else (D1).
+   *
+   * The third verb of creating a field: the contents of `addChild` — a new,
+   * empty field — in the position of `duplicateNode`, immediately below. It is
+   * not a flag on either of them because the pair of them would then have two
+   * behaviours and a signature that does not say which is which.
+   *
+   * The shape travels and the contents do not. `applyType` is what settles it
+   * rather than a list of assignments here: it already knows that a container
+   * is born with a first child, and by building the node from scratch instead
+   * of copying the origin, the comment, the example, the format, the
+   * enumeration and the model a reference points at are all left behind — which
+   * is exactly right, because those are true of *that* field, not of its shape.
+   *
+   * `null` for the root of a body: it is not a field of anything, so it has no
+   * siblings to be inserted among. Unreachable from the screen — the root has
+   * no key box to press Enter in — but the store is driven straight from tests.
+   */
+  addSiblingAfter(nodeId: string): ApiNode | null {
+    return this.structural(() => {
+      const hit = this.locate(nodeId);
+      if (!hit?.parent) return null;
+      const sibling = newNode(uniqueKey(hit.parent.children), hit.node.type);
+      // Before `applyType`, because what an array holds is the second half of
+      // the same type declaration and the rules read it.
+      if (hit.node.type === 'array') sibling.itemType = hit.node.itemType;
+      applyType(sibling, hit.node.type);
+      hit.parent.children.splice(hit.parent.children.indexOf(hit.node) + 1, 0, sibling);
+      return sibling;
+    });
+  }
+
   deleteNode(nodeId: string): void {
     this.structural(() => {
       const hit = this.locate(nodeId);
@@ -494,6 +528,32 @@ export class ApiContractsStore {
     this.structural((contract) => {
       contract.endpoints.find((e) => e.id === endpointId)?.params.push(newParam());
       return null;
+    });
+  }
+
+  /**
+   * The parameter right after this one, with its shape and nothing else.
+   *
+   * The counterpart of `addSiblingAfter` for a list that is flat. There is no
+   * `applyType` here because there is nothing to settle: a parameter is five
+   * scalars, so the shape is copied by hand and it is two fields.
+   *
+   * Where it travels is part of that shape, alongside the type. Declaring three
+   * headers in a row is the case that hurts, and `in` is as much what a
+   * parameter *is* as its type — what stays behind is `required`, the example
+   * and the comment.
+   */
+  addParamAfter(endpointId: string, paramId: string): ApiParam | null {
+    return this.structural((contract) => {
+      const endpoint = contract.endpoints.find((e) => e.id === endpointId);
+      if (!endpoint) return null;
+      const i = endpoint.params.findIndex((p) => p.id === paramId);
+      if (i === -1) return null;
+      const next = newParam();
+      next.in = endpoint.params[i].in;
+      next.type = endpoint.params[i].type;
+      endpoint.params.splice(i + 1, 0, next);
+      return next;
     });
   }
 
