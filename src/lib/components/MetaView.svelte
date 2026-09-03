@@ -10,9 +10,19 @@
   import { getQuarterSegments } from '../time/segments';
   import { getMetaWindow, getRoadmapExtent, dropIndex, moveInArray } from '../model/derive';
   import { RowReorder } from '../interactions/reorder.svelte';
+  import { onDrag } from '../interactions/drag';
+  import { fitSidebarToWindow } from '../util/sidebar-width';
   import type { IsoDate } from '../model/types';
 
   let scrollEl = $state<HTMLDivElement | undefined>(undefined);
+
+  /* El ancho de la columna, con su propia preferencia: "Todos" lista nombres de
+     roadmap y un roadmap lista fases e items indentados, así que no tienen por
+     qué querer el mismo sitio (D2). El límite de pintado es el mismo que allí y
+     está explicado en el Gantt (D3). */
+  let portW = $state(0);
+  let resizing = $state(false);
+  const sidebarW = $derived(fitSidebarToWindow(store.metaSidebarW, portW));
 
   const roadmaps = $derived(store.data.roadmaps);
 
@@ -41,8 +51,25 @@
     return { left: dayToX(s, store.dayW), width: (e - s) * store.dayW };
   }
 
-  // Same 200px lead-in as the Gantt: both views put a 250px sticky sidebar over
-  // the left edge of the scroll port, so this lands today clear of it.
+  function startSidebarResize(e: PointerEvent) {
+    if (!scrollEl) return;
+    const left = scrollEl.getBoundingClientRect().left;
+    resizing = true;
+    onDrag(e, {
+      move: (ev) => store.setMetaSidebarW(ev.clientX - left, portW),
+      up: () => {
+        resizing = false;
+        store.saveMetaSidebarW();
+      },
+    });
+  }
+
+  // Same 200px lead-in as the Gantt, and it needs no term for the sidebar even
+  // though the sidebar now has no fixed width. The column is `sticky` but it is
+  // in flow, so the grid starts at `sidebarW` and the width cancels itself out:
+  // `sidebarW + today*dayW − (today*dayW − 200)` always lands today 200px clear
+  // of the column, whatever it measures. Adding the width would double that
+  // clearance, not preserve it (D6).
   export function scrollToToday() {
     if (scrollEl) scrollEl.scrollLeft = Math.max(0, today * store.dayW - 200);
   }
@@ -147,8 +174,21 @@
     >
   </div>
 {:else}
-  <div class="gantt-scroll" class:reordering={reorder.active} bind:this={scrollEl}>
+  <div
+    class="gantt-scroll"
+    class:reordering={reorder.active || resizing}
+    bind:this={scrollEl}
+    bind:clientWidth={portW}
+    style:--sidebar-w="{sidebarW}px"
+  >
     <div class="sidebar">
+      <button
+        type="button"
+        class="sidebar-resize"
+        onpointerdown={startSidebarResize}
+        title="ajustar ancho de la columna"
+        aria-label="ajustar ancho de la columna"
+      ></button>
       <div class="sidebar-head"></div>
       <div class="sidebar-head-spacer"></div>
       <div class="sidebar-rows" class:reordering={reorder.active}>
@@ -169,6 +209,7 @@
             <input
               class="rl-input"
               value={r.rm.name}
+              title={r.rm.name}
               oninput={(e) => store.renameRoadmap(r.rm.id, e.currentTarget.value)}
             />
             <!-- The bar in the grid opens the roadmap too, but a roadmap without
@@ -295,8 +336,18 @@
     color: var(--accent);
     border-color: var(--accent);
   }
+  /* El mismo `align-items: flex-start` que el Gantt, y por la misma razón, que
+     está explicada entera allí: sin él los dos hijos del flex reciben el alto
+     visible del contenedor en vez del del contenido, y la columna se queda sin
+     fondo, sin borde y sin cabecera en cuanto la lista pasa de una pantalla.
+
+     Que haya que arreglarlo dos veces es la segunda razón concreta para extraer
+     la columna a un componente compartido. No se hace aquí: son cuatro líneas
+     de CSS frente a una reestructuración de las dos vistas, y el momento de
+     partirla es cuando duela por sí sola (D1). */
   .gantt-scroll {
     display: flex;
+    align-items: flex-start;
     overflow: auto;
     height: 100%;
   }
@@ -304,16 +355,55 @@
     position: sticky;
     left: 0;
     z-index: 6;
-    width: 250px;
+    /* El respaldo es lo que pinta el primer fotograma, mientras `init()` resuelve
+       la preferencia (D5). */
+    width: var(--sidebar-w, 250px);
+    min-height: 100%;
     flex-shrink: 0;
     background: var(--surface);
     border-right: 1px solid var(--line);
   }
+  /* Mismo tirador que el del Gantt, con las mismas dos razones: la zona de
+     agarre es más ancha que la línea, y sin `touch-action: none` el contenedor
+     de scroll se come el gesto (D4). */
+  .sidebar-resize {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    right: -4px;
+    width: 9px;
+    z-index: 7;
+    padding: 0;
+    border: none;
+    background: transparent;
+    cursor: col-resize;
+    touch-action: none;
+  }
+  .sidebar-resize:hover,
+  .sidebar-resize:active {
+    background: var(--tint-accent);
+  }
+  /* Las dos bandas de la esquina son `sticky` por la misma razón, y con los
+     mismos offsets, que `.month-header` y `.sprint-header`: son la mitad
+     izquierda de una misma cabecera. Si solo se ancla la mitad de la rejilla, al
+     bajar las filas de nombres se meten bajo la barra de herramientas mientras
+     los meses siguen arriba, y la cabecera queda partida por la mitad.
+
+     Antes no se notaba porque no podía: la columna medía una pantalla, así que
+     nunca había scroll dentro de ella. Arreglado el estiramiento, esto es lo que
+     completa la tercera cara del fallo (D8). */
   .sidebar-head {
+    position: sticky;
+    top: 0;
+    z-index: 2;
     height: 38px;
+    background: var(--surface);
     border-bottom: 1px solid var(--line);
   }
   .sidebar-head-spacer {
+    position: sticky;
+    top: 38px;
+    z-index: 2;
     height: 20px;
     background: var(--surface);
     border-bottom: 1px solid var(--line);
@@ -444,6 +534,7 @@
   }
   .grid-area {
     position: relative;
+    min-height: 100%;
     flex-shrink: 0;
   }
   .month-header {

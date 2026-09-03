@@ -18,3 +18,9 @@ schema: spec-driven
 #       - Always include a "Non-goals" section
 #     tasks:
 #       - Break tasks into chunks of max 2 hours
+
+# Per-artifact rules, shown to the AI when it writes each artifact.
+rules:
+  proposal:
+    - "El Why no pasa de 1000 caracteres. Es un limite duro del validador y avisa al final, cuando la propuesta ya esta escrita."
+    - "El Why lleva el problema. El mecanismo, las medidas y el diagnostico van en design.md, que es su sitio canonico."

@@ -558,3 +558,117 @@ describe('slot de color del roadmap', () => {
     expect(store.activeRoadmap!.colorSlot).toBe(2);
   });
 });
+
+/** Backend que sí recuerda preferencias, para los anchos de columna. */
+class PrefStorage implements Storage {
+  prefs = new Map<string, string>();
+  writes = 0;
+  constructor(initial: Record<string, string> = {}) {
+    for (const [k, v] of Object.entries(initial)) this.prefs.set(k, v);
+  }
+  async load(): Promise<AppData | null> {
+    return dataWith(['r1'], 'r1');
+  }
+  async save(): Promise<void> {}
+  async getPref(key: string): Promise<string | null> {
+    return this.prefs.get(key) ?? null;
+  }
+  async setPref(key: string, value: string): Promise<void> {
+    this.prefs.set(key, value);
+    this.writes += 1;
+  }
+}
+
+async function storeWithPrefs(initial: Record<string, string> = {}) {
+  const backend = new PrefStorage(initial);
+  const store = new AppStore(backend);
+  await store.init();
+  return { store, backend };
+}
+
+describe('AppStore — ancho de la columna de nombres', () => {
+  it('un ancho intermedio pasa tal cual', async () => {
+    const { store } = await storeWithPrefs();
+    store.setSidebarW(400, 1200);
+    expect(store.sidebarW).toBe(400);
+  });
+
+  it('recorta por abajo al mínimo', async () => {
+    const { store } = await storeWithPrefs();
+    store.setSidebarW(80, 1200);
+    expect(store.sidebarW).toBe(250);
+  });
+
+  it('recorta por arriba a la mitad del ancho dado', async () => {
+    const { store } = await storeWithPrefs();
+    store.setSidebarW(1100, 1200);
+    expect(store.sidebarW).toBe(600);
+  });
+
+  it('en una ventana estrecha gana el mínimo, no la mitad', async () => {
+    const { store } = await storeWithPrefs();
+    store.setSidebarW(300, 400);
+    expect(store.sidebarW).toBe(250);
+  });
+
+  it('los dos anchos son independientes', async () => {
+    const { store } = await storeWithPrefs();
+    store.setSidebarW(400, 1200);
+    store.setMetaSidebarW(560, 1200);
+    expect(store.sidebarW).toBe(400);
+    expect(store.metaSidebarW).toBe(560);
+  });
+
+  it('fijar no escribe; guardar sí, una sola vez', async () => {
+    const { store, backend } = await storeWithPrefs();
+    store.setSidebarW(300, 1200);
+    store.setSidebarW(340, 1200);
+    store.setSidebarW(400, 1200);
+    expect(backend.writes).toBe(0);
+    store.saveSidebarW();
+    expect(backend.writes).toBe(1);
+    expect(backend.prefs.get('sidebar-w')).toBe('400');
+  });
+
+  it('cada vista escribe su propia preferencia', async () => {
+    const { store, backend } = await storeWithPrefs();
+    store.setMetaSidebarW(500, 1400);
+    store.saveMetaSidebarW();
+    expect(backend.prefs.get('meta-sidebar-w')).toBe('500');
+    expect(backend.prefs.get('sidebar-w')).toBeUndefined();
+  });
+
+  it('restaura los dos anchos guardados', async () => {
+    const { store } = await storeWithPrefs({ 'sidebar-w': '420', 'meta-sidebar-w': '560' });
+    expect(store.sidebarW).toBe(420);
+    expect(store.metaSidebarW).toBe(560);
+  });
+
+  it('sin preferencias guardadas arranca en el ancho por defecto', async () => {
+    const { store } = await storeWithPrefs();
+    expect(store.sidebarW).toBe(250);
+    expect(store.metaSidebarW).toBe(250);
+  });
+
+  it('un valor corrupto o fuera de rango no rompe el arranque', async () => {
+    const { store } = await storeWithPrefs({ 'sidebar-w': 'ancho', 'meta-sidebar-w': '-40' });
+    expect(store.ready).toBe(true);
+    expect(store.sidebarW).toBe(250);
+    expect(store.metaSidebarW).toBe(250);
+  });
+
+  it('un ancho guardado mayor que la ventana actual sobrevive a la carga', async () => {
+    // No se recorta al hidratar: el recorte es de pintado y no toca lo guardado,
+    // así que volver a la pantalla ancha devuelve el ancho intacto (D3).
+    const { store } = await storeWithPrefs({ 'sidebar-w': '1280' });
+    expect(store.sidebarW).toBe(1280);
+  });
+
+  it('los anchos no entran en los datos exportados', async () => {
+    const { store } = await storeWithPrefs();
+    store.setSidebarW(400, 1200);
+    store.saveSidebarW();
+    const doc = store.exportActive();
+    expect(doc).not.toContain('sidebar');
+  });
+});

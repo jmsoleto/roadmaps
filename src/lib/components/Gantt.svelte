@@ -38,10 +38,25 @@
   import { getInitials, findAssignee } from '../util/assignees';
   import { theme } from '../theme/theme.svelte';
   import { onDrag, clientToDayOffset } from '../interactions/drag';
+  import { fitSidebarToWindow } from '../util/sidebar-width';
   import { RowReorder } from '../interactions/reorder.svelte';
   import type { IsoDate, Item, Phase } from '../model/types';
 
   let scrollEl: HTMLDivElement | undefined;
+
+  /* Ancho útil del contenedor, medido por el propio navegador. Se usa para las
+     dos mitades del redimensionado: el tope del gesto (la mitad) y el límite de
+     pintado (que el tirador no se salga). Es `clientWidth`, así que ya descuenta
+     la barra de scroll vertical. */
+  let portW = $state(0);
+  let resizing = $state(false);
+
+  /* El ancho con el que se pinta, que no es sin más el guardado: se limita al
+     de la ventana para que el tirador nunca quede fuera de alcance. Es un
+     límite **físico** y no la regla de media pantalla —recorta al borde, no a
+     la mitad— y no toca el valor guardado, así que volver a una pantalla ancha
+     devuelve el ancho intacto (D3). */
+  const sidebarW = $derived(fitSidebarToWindow(store.sidebarW, portW));
 
   const rm = $derived(store.activeRoadmap!);
   const dayW = $derived(store.dayW);
@@ -80,6 +95,29 @@
   }
   const milestoneLeft = (i: IsoDate) => off(i) * dayW - 15;
 
+  /* La columna arranca en el borde izquierdo del contenedor y es `sticky` ahí,
+     así que la distancia del puntero a ese borde *es* el ancho pedido. El tope
+     lo pone el store, que es donde se prueba. Se guarda al soltar y no en cada
+     movimiento: un arrastre son decenas de posiciones y ninguna es una
+     decisión (D3, D4). */
+  function startSidebarResize(e: PointerEvent) {
+    if (!scrollEl) return;
+    const left = scrollEl.getBoundingClientRect().left;
+    resizing = true;
+    onDrag(e, {
+      move: (ev) => store.setSidebarW(ev.clientX - left, portW),
+      up: () => {
+        resizing = false;
+        store.saveSidebarW();
+      },
+    });
+  }
+
+  /* La fórmula no lleva el ancho de la columna, y es correcta: `.sidebar` es
+     `sticky` pero está EN FLUJO, así que la rejilla empieza en `sidebarW` y
+     este se cancela solo —`sidebarW + today*dayW − (today*dayW − 200)` son
+     siempre 200px despejados de la columna, mida esta lo que mida—. Sumárselo
+     dejaría hoy al doble de distancia (D6). */
   export function scrollToToday() {
     if (scrollEl) scrollEl.scrollLeft = Math.max(0, today * dayW - 200);
   }
@@ -483,8 +521,25 @@
   {/if}
 {/snippet}
 
-<div class="gantt-scroll" class:reordering={reorder.active} bind:this={scrollEl}>
+<div
+  class="gantt-scroll"
+  class:reordering={reorder.active || resizing}
+  bind:this={scrollEl}
+  bind:clientWidth={portW}
+  style:--sidebar-w="{sidebarW}px"
+>
   <div class="sidebar">
+    <!-- Recorre la columna entera, y por eso se puede agarrar esté donde esté
+         el scroll. Es lo que el arreglo del estiramiento hace posible: con la
+         columna midiendo una pantalla, este tirador solo existiría en el
+         primer tramo. -->
+    <button
+      type="button"
+      class="sidebar-resize"
+      onpointerdown={startSidebarResize}
+      title="ajustar ancho de la columna"
+      aria-label="ajustar ancho de la columna"
+    ></button>
     <div class="sidebar-head"></div>
     <div class="sidebar-head-spacer"></div>
     <div class="sidebar-rows" class:reordering={reorder.active}>
@@ -512,9 +567,14 @@
               aria-label={v.phase.expanded ? 'plegar fase' : 'desplegar fase'}>▸</button
             >
             <span class="dot" style:background={theme.slotColor(v.phase.colorSlot)}></span>
+            <!-- El nombre completo al pasar por encima. Es el complemento del ancho
+                 ajustable, no su sustituto: el tirador responde a «esta lista
+                 necesita más sitio siempre», y esto al nombre suelto que se pasa
+                 de largo, donde ensanchar para siempre es pagar de más (D7). -->
             <input
               class="rl-input"
               value={v.phase.name}
+              title={v.phase.name}
               oninput={(e) => store.renamePhase(v.phase.id, e.currentTarget.value)}
             />
             <!-- Beside the name, not on the rollup bar, which already carries the
@@ -560,6 +620,7 @@
             <input
               class="rl-input"
               value={v.item.label}
+              title={v.item.label}
               oninput={(e) => store.renameItem(v.phase.id, v.item.id, e.currentTarget.value)}
             />
             <button
@@ -906,8 +967,27 @@
 </div>
 
 <style>
+  /* `align-items: flex-start` parece cosmético y es load-bearing.
+     Sin él, los dos hijos de este flex reciben el alto **visible** del
+     contenedor y no el del contenido: una línea flex con altura definida toma
+     como tamaño transversal el alto interior de la caja, y `min-height: auto`
+     no lo impide porque el mínimo automático solo actúa en el eje principal,
+     que aquí es el horizontal.
+
+     Con el estiramiento, ambas cajas medían una pantalla mientras `.rows`
+     desbordaba fuera de ellas. De ahí salían las tres caras del mismo fallo: la
+     columna perdía fondo y borde a partir del primer scroll, las cabeceras
+     `sticky` se iban con su bloque contenedor, y la banda maciza de arriba se
+     quedaba en el primer tramo.
+
+     `min-height: 100%` cubre el caso contrario —pocas filas, o ninguna—, que es
+     el que el estiramiento resolvía por accidente. Va en los dos hijos y no
+     solo en la columna porque `totalHeight` tiene un mínimo de 200px, así que
+     con menos de cuatro filas la rejilla ya es más alta que la columna por su
+     cuenta (D1). */
   .gantt-scroll {
     display: flex;
+    align-items: flex-start;
     overflow: auto;
     height: 100%;
   }
@@ -915,16 +995,57 @@
     position: sticky;
     left: 0;
     z-index: 6;
-    width: 250px;
+    /* El respaldo no es defensivo: es lo que pinta el primer fotograma. `init()`
+       es asíncrono, y hasta que resuelve la preferencia la columna ya tiene que
+       estar en pantalla con su ancho de siempre (D5). */
+    width: var(--sidebar-w, 250px);
+    min-height: 100%;
     flex-shrink: 0;
     background: var(--surface);
     border-right: 1px solid var(--line);
   }
+  /* La zona de agarre es más ancha que la línea que se ve y monta sobre ella:
+     apuntar a un borde de 1px es un ejercicio de puntería. `touch-action: none`
+     por la misma razón que en `.row-grip` — sin él, el contenedor de scroll se
+     come el gesto antes de que llegue aquí (D4). */
+  .sidebar-resize {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    right: -4px;
+    width: 9px;
+    z-index: 7;
+    padding: 0;
+    border: none;
+    background: transparent;
+    cursor: col-resize;
+    touch-action: none;
+  }
+  .sidebar-resize:hover,
+  .sidebar-resize:active {
+    background: var(--tint-accent);
+  }
+  /* Las dos bandas de la esquina son `sticky` por la misma razón, y con los
+     mismos offsets, que `.month-header` y `.sprint-header`: son la mitad
+     izquierda de una misma cabecera. Si solo se ancla la mitad de la rejilla, al
+     bajar las filas de nombres se meten bajo la barra de herramientas mientras
+     los meses siguen arriba, y la cabecera queda partida por la mitad.
+
+     Antes no se notaba porque no podía: la columna medía una pantalla, así que
+     nunca había scroll dentro de ella. Arreglado el estiramiento, esto es lo que
+     completa la tercera cara del fallo (D8). */
   .sidebar-head {
+    position: sticky;
+    top: 0;
+    z-index: 2;
     height: 38px;
+    background: var(--surface);
     border-bottom: 1px solid var(--line);
   }
   .sidebar-head-spacer {
+    position: sticky;
+    top: 38px;
+    z-index: 2;
     height: 20px;
     background: var(--surface);
     border-bottom: 1px solid var(--line);
@@ -1115,6 +1236,7 @@
 
   .grid-area {
     position: relative;
+    min-height: 100%;
     flex-shrink: 0;
   }
   .month-header {

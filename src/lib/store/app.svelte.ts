@@ -8,7 +8,8 @@
  */
 
 import type { AppData, Assignee, Blocker, Item, Phase, Roadmap, IsoDate } from '../model/types';
-import { DEFAULT_DAY_W, ZOOM_LEVELS } from '../config';
+import { DEFAULT_DAY_W, DEFAULT_SIDEBAR_W, ZOOM_LEVELS } from '../config';
+import { clampSidebarDrag, readSidebarPref } from '../util/sidebar-width';
 import { createStorage, type Storage } from './storage';
 import { seedAppData, newRoadmap } from '../seed';
 import { uid } from '../util/id';
@@ -39,6 +40,22 @@ export class AppStore {
 
   data = $state<AppData>({ roadmaps: [], assignees: [], blockers: [], activeId: null });
   dayW = $state<number>(DEFAULT_DAY_W);
+  /**
+   * Ancho de la columna de nombres en cada vista, en píxeles.
+   *
+   * Dos y no uno porque son dos listas distintas: nombres de roadmap en
+   * "Todos", nombres de fase e item —indentados y con su progreso al lado— en
+   * un roadmap. Que quisieran el mismo ancho sería casualidad. El de la vista
+   * de roadmap sí es el mismo para todos los roadmaps: es una preferencia de
+   * cómo mira el usuario, no un atributo del plan.
+   *
+   * Viven aquí y no en `ui.svelte.ts` porque se persisten, y aquella se declara
+   * a sí misma «Transient UI state». Son hermanos de `dayW` en todo: se
+   * hidratan en `init()`, se escriben con `setPref` y no entran en `AppData`,
+   * así que no viajan en la exportación (D2).
+   */
+  sidebarW = $state<number>(DEFAULT_SIDEBAR_W);
+  metaSidebarW = $state<number>(DEFAULT_SIDEBAR_W);
   /**
    * True while the "Todos" view (portfolio of every roadmap) is showing.
    *
@@ -80,6 +97,8 @@ export class AppStore {
     }
     const zoom = Number(await this.storage.getPref('zoom'));
     if (ZOOM_LEVELS.includes(zoom as (typeof ZOOM_LEVELS)[number])) this.dayW = zoom;
+    this.sidebarW = readSidebarPref(await this.storage.getPref('sidebar-w'));
+    this.metaSidebarW = readSidebarPref(await this.storage.getPref('meta-sidebar-w'));
     this.ready = true;
   }
 
@@ -119,6 +138,32 @@ export class AppStore {
     if (i > 0) this.dayW = ZOOM_LEVELS[i - 1];
     else if (i === -1) this.dayW = DEFAULT_DAY_W;
     void this.storage.setPref('zoom', String(this.dayW));
+  }
+
+  /*
+   * Fijar y guardar están separados a propósito. Un arrastre genera decenas de
+   * posiciones intermedias y ninguna de ellas es una decisión: la vista llama a
+   * `set…` en cada movimiento y a `save…` una sola vez al soltar. `setPref`
+   * escribe en el almacén sin agrupar, a diferencia del autosave de los datos.
+   *
+   * El ancho disponible llega como parámetro en lugar de mirarse la ventana
+   * aquí, para que estas cuatro operaciones se prueben sin navegador.
+   */
+
+  setSidebarW(px: number, portW: number): void {
+    this.sidebarW = clampSidebarDrag(px, portW);
+  }
+
+  saveSidebarW(): void {
+    void this.storage.setPref('sidebar-w', String(this.sidebarW));
+  }
+
+  setMetaSidebarW(px: number, portW: number): void {
+    this.metaSidebarW = clampSidebarDrag(px, portW);
+  }
+
+  saveMetaSidebarW(): void {
+    void this.storage.setPref('meta-sidebar-w', String(this.metaSidebarW));
   }
 
   // ---- import / export (data-portability) ----
