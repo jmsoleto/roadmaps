@@ -115,6 +115,25 @@ export function mix(from: string, to: string, amount: number): string {
 }
 
 /**
+ * El color resultante de tender `over` con alfa `alpha` encima de `under`.
+ *
+ * Canal a canal en sRGB, que es lo que hace el navegador al componer una capa
+ * translúcida —y no en Oklab como `mix`, que es para elegir colores, no para
+ * predecir un pintado—. Existe para poder **medir** un velo: sin esto, el
+ * contraste de lo que queda debajo de él solo se podría mirar.
+ */
+export function composite(over: string, under: string, alpha: number): string {
+  const a = Math.max(0, Math.min(1, alpha));
+  const o = parseHex(over);
+  const u = parseHex(under);
+  return toHex({
+    r: u.r + (o.r - u.r) * a,
+    g: u.g + (o.g - u.g) * a,
+    b: u.b + (o.b - u.b) * a,
+  });
+}
+
+/**
  * Perceptual distance between two colors in Oklab.
  *
  * Used to snap a legacy hex color to the nearest palette slot during the lazy

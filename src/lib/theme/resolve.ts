@@ -81,6 +81,26 @@ export const DERIVATIONS: Record<DerivedToken, (base: ThemeBase) => string> = {
   scrim: (b) => shadow(b, 0.4),
   overlayBg: (b) => withAlpha(b.bg, 0.65),
 
+  /*
+   * El velo del foco de sprint. Del `bg` del tema, como `overlayBg`, así que se
+   * inclina hacia el fondo en un tema oscuro y hacia el papel en uno claro sin
+   * necesidad de dos fórmulas.
+   *
+   * El alfa no está elegido a ojo, y sale más bajo de lo que la intuición pide:
+   * el contraste se desploma deprisa bajo un velo. En el tema claro, la peor
+   * pareja tinta/barra (`#a16207`) parte de 4.92:1, y a 0.26 ya está en 3.07 —
+   * el límite que `auditVeiled` fija—. 0.25 es el último valor redondo por
+   * debajo de ese techo, y deja algo de margen para que retocar una paleta no
+   * rompa el listón de golpe.
+   *
+   * Subirlo borra el contexto, que es lo que hace útil el foco: el resto del
+   * roadmap tiene que seguir leyéndose más bajo, no desaparecer (D9). Y el velo
+   * no está solo diciéndolo: la banda del sprint queda sin velar, las demás
+   * etiquetas de la cabecera bajan de tono y las filas que no participan se
+   * apagan en la columna de nombres.
+   */
+  sprintVeil: (b) => withAlpha(b.bg, 0.25),
+
   inkOnAccent: (b) => inkOn(b.accent, b),
   inkOnDanger: (b) => inkOn(b.danger, b),
 };

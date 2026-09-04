@@ -1,5 +1,8 @@
 /** Transient UI state: which drawer is open and the floating drag tooltip. */
 
+import { sprintIntersectsWindow } from '../time/segments';
+import type { IsoDate } from '../model/types';
+
 export type DrawerState =
   | { kind: 'none' }
   | { kind: 'detail'; phaseId: string; itemId: string | null }
@@ -19,6 +22,25 @@ class UiStore {
    * and the "Todos" empty-state call to action).
    */
   newRoadmap = $state<boolean>(false);
+  /**
+   * El sprint con el foco puesto, por su **número absoluto**, o `null`.
+   *
+   * Campo propio y no una variante más de `DrawerState`, por la misma razón que
+   * ya justificó a `newRoadmap`: son dos cosas que pueden estar a la vez, y aquí
+   * tienen que poder. El caso de uso es exactamente ese —ves que alguien va al
+   * 120%, abres su item para mirarlo, y el foco tiene que seguir ahí cuando
+   * vuelvas—, así que meterlo en la unión apagaría el foco justo cuando más
+   * falta hace (D7).
+   *
+   * El número y no un par de offsets contra la ventana activa: así S12 es el
+   * mismo S12 en todos los roadmaps, y la elección sobrevive a cambiar de uno a
+   * otro sin recalcular nada.
+   *
+   * Transitorio, como todo lo de este fichero: nada de `setPref`, nada en
+   * `AppData`, y por tanto nada que viaje en la exportación ni sobreviva a
+   * recargar.
+   */
+  selectedSprint = $state<number | null>(null);
   tooltip = $state<{ show: boolean; x: number; y: number; text: string }>({
     show: false,
     x: 0,
@@ -52,6 +74,33 @@ class UiStore {
 
   closeNewRoadmap(): void {
     this.newRoadmap = false;
+  }
+
+  /**
+   * Elegir un sprint, o soltarlo si ya era el elegido.
+   *
+   * Elegir otro traslada el foco sin pasar por ningún estado intermedio: una
+   * sola asignación, así que no hay un fotograma sin foco entre los dos.
+   */
+  selectSprint(num: number): void {
+    this.selectedSprint = this.selectedSprint === num ? null : num;
+  }
+
+  clearSprint(): void {
+    this.selectedSprint = null;
+  }
+
+  /**
+   * Soltar el foco si el sprint elegido no se ve en la ventana que se le pasa.
+   *
+   * Un velo que cubre la rejilla entera y una etiqueta que no está en ninguna
+   * parte no son un foco, son una pantalla rota: sin etiqueta a la que volver a
+   * pinchar, tampoco habría forma de soltarlo. Soltar es la única lectura
+   * honesta de «ese sprint no sale en este roadmap» (D7).
+   */
+  dropSprintOutOfWindow(startDate: IsoDate, windowDays: number): void {
+    if (this.selectedSprint === null) return;
+    if (!sprintIntersectsWindow(this.selectedSprint, startDate, windowDays)) this.clearSprint();
   }
 
   showTooltip(x: number, y: number, text: string): void {

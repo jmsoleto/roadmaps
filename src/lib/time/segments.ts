@@ -8,7 +8,7 @@
  */
 
 import type { IsoDate } from '../model/types';
-import { dayIndex, MONTHS_ES } from './timeline';
+import { addDays, dayIndex, MONTHS_ES } from './timeline';
 import { SPRINT_LEN, SPRINT_ANCHOR_DATE, SPRINT_ANCHOR_NUM } from '../config';
 
 export interface MonthSegment {
@@ -78,6 +78,47 @@ export function getSprintSegments(startDate: IsoDate, windowDays: number): Sprin
     num += 1;
   }
   return segments;
+}
+
+/** El rango verdadero de un sprint: sus dos fechas y su número. */
+export interface SprintRange {
+  start: IsoDate;
+  /** Inclusivo, como todo fin de fecha en la aplicación. */
+  end: IsoDate;
+  num: number;
+}
+
+/**
+ * El rango de un sprint a partir de su número, sin ventana de por medio (D5).
+ *
+ * Esto es lo que separa **contar** de **pintar**. `getSprintSegments` recorta
+ * contra `[0, windowDays)`, y ese recorte sirve para dibujar la cabecera: un
+ * roadmap que empieza a mitad de S12 tiene que enseñar media etiqueta. Pero
+ * contar sobre el recorte daría al mismo S12 dos capacidades distintas según el
+ * roadmap desde el que se mire, y un sprint del calendario vale lo que vale.
+ *
+ * Como el ancla es un lunes y los sprints miden 14 días sin renumerar, todo
+ * rango empieza en lunes y contiene exactamente diez días laborables. La
+ * capacidad no hay que calcularla por sprint: hay que no recortarla.
+ */
+export function sprintRange(num: number): SprintRange {
+  const start = addDays(SPRINT_ANCHOR_DATE, (num - SPRINT_ANCHOR_NUM) * SPRINT_LEN);
+  return { start, end: addDays(start, SPRINT_LEN - 1), num };
+}
+
+/**
+ * Whether sprint `num` shows at all in a roadmap's timeline window.
+ *
+ * Un sprint elegido que no interseca la ventana no se puede enseñar ni soltar
+ * pinchándolo, así que el foco se suelta en lugar de quedarse invisible (D7).
+ */
+export function sprintIntersectsWindow(
+  num: number,
+  startDate: IsoDate,
+  windowDays: number,
+): boolean {
+  const { start, end } = sprintRange(num);
+  return dayIndex(startDate, end) >= 0 && dayIndex(startDate, start) < windowDays;
 }
 
 /**

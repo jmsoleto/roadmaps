@@ -59,6 +59,16 @@ export const DERIVED_TOKENS = [
   'shadowStrong',
   /** Full-surface scrim behind the drawer. */
   'scrim',
+  /**
+   * Velo del foco de sprint: el fondo del tema con alfa, tendido sobre lo que
+   * queda fuera del sprint elegido.
+   *
+   * Atenúa sin borrar, y el listón es ese: el resto del roadmap es el contexto
+   * que hace útil el foco, así que baja de tono y se sigue leyendo. Sale de los
+   * tokens y no de un `opacity` puesto a ojo precisamente para poder medirlo —
+   * ver `presets.test.ts`, que comprueba lo velado en los cuatro temas (D9).
+   */
+  'sprintVeil',
   /** Translucent background for elements floating over the grid. */
   'overlayBg',
   /**
@@ -162,6 +172,7 @@ export const CSS_VAR: Record<ColorToken, string> = {
   shadowMedium: '--shadow-medium',
   shadowStrong: '--shadow-strong',
   scrim: '--scrim',
+  sprintVeil: '--sprint-veil',
   overlayBg: '--overlay-bg',
   inkOnAccent: '--ink-on-accent',
   inkOnDanger: '--ink-on-danger',

@@ -10,6 +10,10 @@ import {
   isWeekend,
   snapToWorkday,
   snapForward,
+  spanDays,
+  endEdgeX,
+  dayToX,
+  workdaysBetween,
 } from './timeline';
 
 describe('isIsoDate', () => {
@@ -91,6 +95,97 @@ describe('weekends and snapping', () => {
     expect(snapForward('2026-01-03')).toBe('2026-01-05'); // Sat -> Mon
     expect(snapForward('2026-01-04')).toBe('2026-01-05'); // Sun -> Mon
     expect(snapForward('2026-01-02')).toBe('2026-01-02'); // Fri unchanged
+  });
+});
+
+describe('spanDays — el fin es inclusivo', () => {
+  it('un item de un día ocupa un día', () => {
+    expect(spanDays('2026-06-29', '2026-06-29')).toBe(1);
+  });
+
+  it('de lunes a viernes son cinco días', () => {
+    // 2026-06-29 es lunes; 2026-07-03, viernes.
+    expect(spanDays('2026-06-29', '2026-07-03')).toBe(5);
+  });
+
+  it('un rango invertido vale cero, que no es un error sino ausencia', () => {
+    expect(spanDays('2026-07-03', '2026-06-29')).toBe(0);
+  });
+
+  it('dos semanas naturales son catorce días', () => {
+    expect(spanDays('2026-06-29', '2026-07-12')).toBe(14);
+  });
+});
+
+describe('endEdgeX — el borde derecho del día de fin', () => {
+  const origin = '2026-01-01';
+
+  it('el borde de un día coincide con el inicio del siguiente', () => {
+    // El item termina el día 9 (2026-01-10); su borde es el inicio del día 10.
+    expect(endEdgeX('2026-01-10', origin, 8)).toBe(dayToX(10, 8));
+  });
+
+  it('un item de un día en el origen mide una columna', () => {
+    expect(endEdgeX(origin, origin, 26)).toBe(26);
+  });
+
+  it('escala con el zoom', () => {
+    expect(endEdgeX('2026-01-10', origin, 4)).toBe(40);
+    expect(endEdgeX('2026-01-10', origin, 26)).toBe(260);
+  });
+});
+
+describe('workdaysBetween — cerrada por los dos extremos', () => {
+  // 2026-06-29 es lunes. Sáb 2026-07-04, dom 2026-07-05.
+  it('un solo día laborable cuenta uno', () => {
+    expect(workdaysBetween('2026-06-29', '2026-06-29')).toBe(1);
+  });
+
+  it('un solo día en fin de semana cuenta cero', () => {
+    expect(workdaysBetween('2026-07-04', '2026-07-04')).toBe(0); // sábado
+    expect(workdaysBetween('2026-07-05', '2026-07-05')).toBe(0); // domingo
+  });
+
+  it('un fin de semana entero cuenta cero', () => {
+    expect(workdaysBetween('2026-07-04', '2026-07-05')).toBe(0);
+  });
+
+  it('empezar en sábado no regala días', () => {
+    // Sáb 4 → vie 10: los cinco laborables de esa semana.
+    expect(workdaysBetween('2026-07-04', '2026-07-10')).toBe(5);
+  });
+
+  it('terminar en domingo no regala días', () => {
+    // Lun 29 jun → dom 5 jul: los cinco de la semana.
+    expect(workdaysBetween('2026-06-29', '2026-07-05')).toBe(5);
+  });
+
+  it('dos semanas naturales son diez laborables', () => {
+    expect(workdaysBetween('2026-06-29', '2026-07-12')).toBe(10);
+  });
+
+  it('el último día cuenta: de lunes a viernes son cinco', () => {
+    expect(workdaysBetween('2026-06-29', '2026-07-03')).toBe(5);
+  });
+
+  it('un rango invertido vale cero, no un negativo', () => {
+    expect(workdaysBetween('2026-07-12', '2026-06-29')).toBe(0);
+  });
+
+  it('coincide con contar día a día en un año entero', () => {
+    // La forma cerrada se prueba contra la ingenua, que es evidente pero lenta.
+    const naive = (a: string, b: string) => {
+      let n = 0;
+      for (let d = a; d <= b; d = addDays(d, 1)) if (!isWeekend(d)) n++;
+      return n;
+    };
+    for (let i = 0; i < 40; i++) {
+      const a = addDays('2026-01-01', i);
+      for (const len of [0, 1, 2, 3, 6, 7, 8, 13, 14, 30, 100]) {
+        const b = addDays(a, len);
+        expect(workdaysBetween(a, b), `${a}..${b}`).toBe(naive(a, b));
+      }
+    }
   });
 });
 

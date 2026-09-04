@@ -11,8 +11,11 @@
     dateFromDay,
     snapToWorkday,
     snapForward,
+    spanDays,
+    endEdgeX,
   } from '../time/timeline';
-  import { getMonthSegments, getSprintSegments } from '../time/segments';
+  import { getMonthSegments, getSprintSegments, sprintRange } from '../time/segments';
+  import { sprintLoad } from '../model/sprint-load';
   import {
     getVisibleRows,
     effectiveStart,
@@ -35,6 +38,7 @@
   } from '../model/blockers';
   import { isCompleted, phaseProgress } from '../model/completion';
   import PhaseProgress from './PhaseProgress.svelte';
+  import SprintPanel from './SprintPanel.svelte';
   import { getInitials, findAssignee } from '../util/assignees';
   import { theme } from '../theme/theme.svelte';
   import { onDrag, clientToDayOffset } from '../interactions/drag';
@@ -70,6 +74,45 @@
   const today = $derived(dayIndex(rm.startDate, todayIso()));
   const currentSprint = $derived(sprints.find((s) => today >= s.start && today < s.end));
 
+  // ---- foco de sprint ----
+
+  /* Dos rangos del mismo sprint, y cada uno para lo suyo (D5):
+     - `focusBand` sale de `getSprintSegments`, recortado por la ventana, y es lo
+       que se pinta —un roadmap que empieza a mitad de S12 enseña media banda—.
+     - `load` mide sobre `sprintRange`, el sprint entero del calendario, así que
+       la capacidad que declara el panel no depende de cuánto deje ver la
+       ventana de este roadmap. */
+  const focusBand = $derived(
+    ui.selectedSprint === null ? null : (sprints.find((s) => s.num === ui.selectedSprint) ?? null),
+  );
+  const load = $derived(
+    ui.selectedSprint === null ? null : sprintLoad(rm, store.data.assignees, ui.selectedSprint),
+  );
+
+  /* Un sprint elegido que no asoma por esta ventana se suelta (D7). Pasa al
+     cambiar de roadmap y al reconfigurar la ventana temporal, y en los dos casos
+     mantenerlo dejaría un velo sobre la rejilla entera y ninguna etiqueta que
+     volver a pinchar para quitarlo: un foco invisible y sin salida. */
+  $effect(() => {
+    ui.dropSprintOutOfWindow(rm.startDate, windowDays);
+  });
+
+  /* La marca de HOY vive en z-index 5, por encima del velo, y es deliberado: si
+     bajara al 3 no podría destacar cuando el sprint elegido **sí** es el actual.
+     El precio es que no se atenúa sola, y por eso lleva su clase propia (D8). */
+  const dimToday = $derived(focusBand !== null && currentSprint?.num !== ui.selectedSprint);
+
+  /** Si una fila participa en el sprint elegido. Sin foco, participan todas. */
+  const inSprint = (v: VisibleRow) =>
+    load === null ||
+    (v.kind === 'item' ? load.memberItemIds.has(v.item.id) : load.memberPhaseIds.has(v.phase.id));
+
+  /** El nombre con el que un lector de pantalla anuncia una etiqueta de sprint. */
+  function sprintLabel(num: number): string {
+    const r = sprintRange(num);
+    return `Sprint ${num}, ${fmtDate(r.start)} a ${fmtDate(r.end)}`;
+  }
+
   const w0 = $derived(dayOfWeek(rm.startDate));
   const weekends = $derived.by(() => {
     const out: number[] = [];
@@ -88,12 +131,20 @@
   const snapOff = (o: number) => off(snapToWorkday(iso(Math.max(0, o))));
   const snapFwdOff = (o: number) => off(snapForward(iso(Math.max(0, o))));
 
+  /* El ancho sale de `spanDays` y no de una resta hecha aquí: la convención de
+     que el fin es inclusivo vive en `time/timeline.ts` y este es uno de sus
+     consumidores, no uno de sus dueños (D1). */
   function barGeom(startIso: IsoDate, endIso: IsoDate) {
-    const s = off(startIso);
-    const e = off(endIso);
-    return { left: dayToX(s, dayW), width: (e - s) * dayW };
+    return { left: dayToX(off(startIso), dayW), width: spanDays(startIso, endIso) * dayW };
   }
-  const milestoneLeft = (i: IsoDate) => off(i) * dayW - 15;
+
+  /* Medio día a la derecha de donde estaba. Mientras las barras vivían entre
+     fronteras, el rombo en la frontera estaba en su sitio; en cuanto una barra
+     posee la columna de su último día, la única posición coherente para un
+     marcador de un solo día es el centro de esa columna (D4). El −15 sigue
+     siendo la mitad del rombo, que mide 30 px a cualquier zoom. */
+  const milestoneCenter = (i: IsoDate) => off(i) * dayW + dayW / 2;
+  const milestoneLeft = (i: IsoDate) => milestoneCenter(i) - 15;
 
   /* La columna arranca en el borde izquierdo del contenedor y es `sticky` ahí,
      así que la distancia del puntero a ese borde *es* el ancho pedido. El tope
@@ -158,11 +209,20 @@
     const rect = trackEl.getBoundingClientRect();
     const startDay = snapOff(clientToDayOffset(e.clientX, rect.left, dayW));
     let curDay = startDay;
+    /* Sin el `Math.max(..., dayW)` que había aquí, que era el parche para que un
+       arrastre corto no pintara una previsualización de cero píxeles. Con el fin
+       inclusivo el caso desaparece solo: un arrastre sobre un único día es un
+       rango de un día y `spanDays` lo mide como tal. La ayuda emergente anuncia
+       exactamente el rango que se está pintando, ni un día más. */
     const paint = (ev: PointerEvent) => {
       const lo = Math.min(startDay, curDay);
       const hi = Math.max(startDay, curDay);
-      createPreview = { rowIndex, left: dayToX(lo, dayW), width: Math.max((hi - lo) * dayW, dayW) };
-      tip(ev, lo, Math.max(hi, lo + 1));
+      createPreview = {
+        rowIndex,
+        left: dayToX(lo, dayW),
+        width: spanDays(iso(lo), iso(hi)) * dayW,
+      };
+      tip(ev, lo, hi);
     };
     paint(e);
     onDrag(e, {
@@ -245,12 +305,16 @@
     const rect = (barEl.parentElement as HTMLElement).getBoundingClientRect();
     const startOff = off(t.start);
     const duration = off(t.end) - startOff;
+    const span = spanDays(t.start, t.end);
     const grab = clientToDayOffset(e.clientX, rect.left, dayW) - startOff;
     tip(e, startOff, startOff + duration);
     onDrag(e, {
       move: (ev) => {
         let ns = clientToDayOffset(ev.clientX, rect.left, dayW) - grab;
-        ns = Math.max(t.minStartOff, Math.min(ns, windowDays - duration));
+        /* El tope es `windowDays − spanDays`, y la barra ocupa un día más que su
+           `duration`: el último inicio legal deja su último día dentro de la
+           ventana, no medio píxel fuera. */
+        ns = Math.max(t.minStartOff, Math.min(ns, windowDays - span));
         ns = snapOff(ns);
         if (ns < t.minStartOff) ns = snapFwdOff(t.minStartOff);
         t.start = iso(ns);
@@ -277,18 +341,33 @@
     tip(e, off(t.start), off(t.end));
     onDrag(e, {
       move: (ev) => {
-        let day = clientToDayOffset(ev.clientX, rect.left, dayW);
+        /* El extremo derecho pide `floor` y los demás gestos siguen con `round`
+           (D2): un inicio se elige señalando una frontera, y un fin inclusivo se
+           elige señalando un día —el que está bajo el dedo *es* el último día—.
+           Con `round`, soltar en la mitad derecha de una columna dejaría el fin
+           en la siguiente. */
+        let day = clientToDayOffset(
+          ev.clientX,
+          rect.left,
+          dayW,
+          side === 'right' ? 'floor' : 'round',
+        );
         if (side === 'left') {
-          day = Math.max(t.minStartOff, Math.min(day, off(t.end) - 1));
+          /* `fin ≥ inicio`, no `fin > inicio` (D3). Inicio y fin en el mismo día
+             es el item más corto legal, no una barra de cero píxeles: lo que lo
+             distingue de un hito es `isMilestone`, y siempre lo fue. */
+          day = Math.max(t.minStartOff, Math.min(day, off(t.end)));
           day = snapOff(day);
           if (day < t.minStartOff) day = snapFwdOff(t.minStartOff);
-          if (day >= off(t.end)) day = off(t.end) - 1;
+          if (day > off(t.end)) day = off(t.end);
           t.start = iso(day);
           tip(ev, day, off(t.end));
         } else {
-          day = Math.max(off(t.start) + 1, Math.min(day, windowDays));
+          // `windowDays − 1` es el último día que la ventana contiene: con el fin
+          // inclusivo, `windowDays` ya sería el primero de fuera.
+          day = Math.max(off(t.start), Math.min(day, windowDays - 1));
           day = snapOff(day);
-          if (day <= off(t.start)) day = off(t.start) + 1;
+          if (day < off(t.start)) day = off(t.start);
           t.end = iso(day);
           tip(ev, off(t.start), day);
         }
@@ -457,9 +536,15 @@
         const from = v.phase.children.find((c) => c.id === depId);
         const fromIdx = from ? itemRowIndex.get(from.id) : undefined;
         if (!from || fromIdx === undefined) continue;
-        const x1 = from.isMilestone ? off(from.startDate) * dayW + 15 : off(from.endDate) * dayW;
+        /* El origen es el borde derecho *real* de la barra, que con el fin
+           inclusivo está un día más a la derecha (D1): antes la flecha arrancaba
+           por dentro de la barra de la que salía. Los anclajes ±15 del rombo
+           cuelgan de su centro nuevo, el de la columna de su día (D4). */
+        const x1 = from.isMilestone
+          ? milestoneCenter(from.startDate) + 15
+          : endEdgeX(from.endDate, rm.startDate, dayW);
         const y1 = fromIdx * ROW_H + ROW_H / 2;
-        const x2 = to.isMilestone ? off(to.startDate) * dayW - 15 : off(to.startDate) * dayW;
+        const x2 = to.isMilestone ? milestoneCenter(to.startDate) - 15 : off(to.startDate) * dayW;
         const y2 = toIdx * ROW_H + ROW_H / 2;
         const dx = Math.max(16, Math.abs(x2 - x1) / 2);
         out.push({
@@ -546,9 +631,16 @@
       {#each visible as v, i (i)}
         {#if v.kind === 'phase'}
           {@const pct = phaseProgress(v.phase)}
+          <!-- Las filas que no tienen nada dentro del sprint elegido bajan de
+               tono. El velo dice *cuándo* está el foco; estas filas dicen *quién
+               y qué* participa, y la pertenencia sale del mismo cálculo que
+               alimenta el panel, nunca de un segundo cómputo: dos respuestas
+               posibles a «¿participa esta fila?» darían una fila apagada junto a
+               su item listado en el panel (D11). -->
           <div
             class="row-label"
             class:held={isHeld(v)}
+            class:off-sprint={!inSprint(v)}
             style:transform="translateY({rowY(v, i) - i * ROW_H}px)"
           >
             <button
@@ -607,6 +699,7 @@
           <div
             class="row-label item"
             class:held={isHeld(v)}
+            class:off-sprint={!inSprint(v)}
             style:transform="translateY({rowY(v, i) - i * ROW_H}px)"
           >
             <button
@@ -634,6 +727,7 @@
         {:else}
           <div
             class="row-label add-actions"
+            class:off-sprint={!inSprint(v)}
             style:transform="translateY({rowY(v, i) - i * ROW_H}px)"
           >
             <button type="button" class="add-btn" onclick={() => store.addItem(v.phase.id)}
@@ -662,16 +756,28 @@
       {/each}
     </div>
 
+    <!-- La cabecera de sprints dejó de ser un rótulo para ser el sitio desde el
+         que se elige un sprint, así que cada etiqueta es un botón de verdad:
+         alcanzable con el tabulador, operable con la barra o el intro, con su
+         estado en `aria-pressed` y un nombre que dice el número y las fechas
+         —«Sprint 12, 13 jul a 26 jul»— porque «S12» a solas no le dice nada a
+         quien no ve la rejilla que hay debajo. -->
     <div class="sprint-header" style:width="{totalWidth}px">
       {#each sprints as s, i (s.start)}
-        <div
+        <button
+          type="button"
           class="sprint-label {i % 2 === 0 ? 'a' : 'b'}"
           class:current={s === currentSprint}
+          class:selected={s.num === ui.selectedSprint}
+          class:dimmed={ui.selectedSprint !== null && s.num !== ui.selectedSprint}
+          aria-pressed={s.num === ui.selectedSprint}
+          aria-label={sprintLabel(s.num)}
           style:left="{dayToX(s.start, dayW)}px"
           style:width="{(s.end - s.start) * dayW}px"
+          onclick={() => ui.selectSprint(s.num)}
         >
           S{String(s.num).padStart(2, '0')}
-        </div>
+        </button>
       {/each}
     </div>
 
@@ -705,7 +811,12 @@
         ></div>
       {/each}
       {#if today >= 0 && today <= windowDays}
-        <div class="today-line" style:left="{dayToX(today, dayW)}px" style:height="{totalHeight}px">
+        <div
+          class="today-line"
+          class:dimmed={dimToday}
+          style:left="{dayToX(today, dayW)}px"
+          style:height="{totalHeight}px"
+        >
           <div class="today-flag">HOY</div>
         </div>
       {/if}
@@ -962,9 +1073,43 @@
           {/if}
         </div>
       {/each}
+
+      <!-- Los dos velos del foco, uno a cada lado de la banda del sprint. Van
+           después de las barras porque van encima de ellas, y `pointer-events:
+           none` no es una precaución sino el requisito: atenuado no es
+           desactivado, y arrastrar, estirar o crear una barra de fuera del
+           sprint tiene que seguir funcionando exactamente igual (D8). -->
+      {#if focusBand}
+        <div
+          class="veil"
+          style:left="0px"
+          style:width="{dayToX(focusBand.start, dayW)}px"
+          style:height="{totalHeight}px"
+        ></div>
+        <div
+          class="veil"
+          style:left="{dayToX(focusBand.end, dayW)}px"
+          style:width="{totalWidth - dayToX(focusBand.end, dayW)}px"
+          style:height="{totalHeight}px"
+        ></div>
+      {/if}
     </div>
   </div>
 </div>
+
+<!-- La regla de convivencia con el drawer (D10): hay un sitio para un panel a la
+     derecha y ahora hay dos candidatos, así que el detalle de una fase o de un
+     item tapa el panel del sprint mientras dura, y cerrarlo lo devuelve. El velo
+     no se entera de nada de esto —el foco es del sprint, no del panel—, que es
+     justo el caso de uso: ves que alguien va al 120%, abres su item para
+     mirarlo, y el foco sigue ahí cuando vuelves.
+
+     Se monta aquí, y no en `App.svelte` junto al drawer, porque recibe la carga
+     ya calculada: el mismo objeto que apaga las filas de la columna de nombres
+     (D11). -->
+{#if load && ui.drawer.kind === 'none'}
+  <SprintPanel {load} />
+{/if}
 
 <style>
   /* `align-items: flex-start` parece cosmético y es load-bearing.
@@ -1074,6 +1219,17 @@
   .row-label.add-actions {
     padding-left: 46px;
     gap: 6px;
+  }
+  /* Una fila sin nada dentro del sprint elegido. Baja de tono y nada más: se
+     sigue pudiendo renombrar, plegar, reordenar y borrar, porque el foco es
+     visual y no un modo. Al pasar por encima recupera el tono, que es lo que
+     permite leer una lista larga sin soltar el foco para hacerlo. */
+  .row-label.off-sprint {
+    opacity: 0.4;
+  }
+  .row-label.off-sprint:hover,
+  .row-label.off-sprint:focus-within {
+    opacity: 1;
   }
   /* Same reveal as .row-del: the space is always reserved and only the ink
      fades in, so nothing shifts when the pointer arrives. `touch-action` is the
@@ -1276,13 +1432,20 @@
     background: var(--surface);
     border-bottom: 1px solid var(--line);
   }
+  /* Un botón que se sigue viendo como la etiqueta que era: sin borde propio, sin
+     relleno de botón y con la tipografía de la cabecera. Lo que sí gana es
+     `cursor: pointer`, que es lo que anuncia que aquí se puede pinchar. */
   .sprint-label {
     position: absolute;
     top: 0;
     height: 20px;
     display: flex;
     align-items: center;
-    padding-left: 6px;
+    padding: 0 0 0 6px;
+    margin: 0;
+    border: none;
+    text-align: left;
+    cursor: pointer;
     font-family: 'IBM Plex Mono', monospace;
     font-size: 10px;
     color: var(--text-dim);
@@ -1291,6 +1454,14 @@
     overflow: hidden;
     box-sizing: border-box;
     border-right: 1px solid var(--line-weak);
+  }
+  .sprint-label:hover {
+    color: var(--text);
+  }
+  /* Hacia dentro: las etiquetas son contiguas, así que un anillo por fuera lo
+     taparía la vecina. */
+  .sprint-label:focus-visible {
+    outline-offset: -2px;
   }
   .sprint-label.a {
     background: var(--tint-accent);
@@ -1302,6 +1473,29 @@
     color: var(--accent);
     font-weight: 700;
     box-shadow: inset 0 0 0 1px var(--accent);
+  }
+  /* Elegido y actual son dos estados distintos y pueden coincidir, así que no se
+     distinguen por intensidad sino por forma: actual es un **anillo** —dónde cae
+     hoy, un hecho del calendario— y elegido es una **placa maciza** —lo que has
+     pedido mirar, una decisión tuya— (D8). */
+  .sprint-label.selected {
+    background: var(--accent);
+    color: var(--ink-on-accent);
+    font-weight: 700;
+  }
+  /* Los dos a la vez: el anillo se redibuja en la tinta de la placa, porque un
+     anillo de acento sobre una placa de acento no se ve. */
+  .sprint-label.selected.current {
+    box-shadow: inset 0 0 0 2px var(--ink-on-accent);
+  }
+  /* Mientras hay foco, la cabecera deja de competir con la banda: las demás
+     etiquetas bajan de tono sin dejar de poder pincharse. */
+  .sprint-label.dimmed {
+    opacity: 0.4;
+  }
+  .sprint-label.dimmed:hover,
+  .sprint-label.dimmed:focus-visible {
+    opacity: 1;
   }
 
   .rows {
@@ -1344,6 +1538,14 @@
     box-shadow: 0 0 8px var(--accent);
     pointer-events: none;
   }
+  /* Se atenúa a mano porque el velo no la alcanza: está en z-index 5 y el velo
+     en el 3. Bajarla al 3 sería más simple y estaría mal — la bandera de HOY
+     tiene que poder quedar por encima del velo cuando el sprint elegido **sí**
+     es el actual, que es cuando las dos cosas se refuerzan (D8). */
+  .today-line.dimmed {
+    opacity: 0.3;
+    box-shadow: none;
+  }
   .today-flag {
     position: absolute;
     top: -34px;
@@ -1354,6 +1556,19 @@
     white-space: nowrap;
     font-weight: 700;
     letter-spacing: 0.05em;
+  }
+  /* El velo del foco de sprint, en el hueco que `.rows` tenía libre: por encima
+     de las barras (2) para atenuarlas, por debajo de la fila que se está
+     arrastrando (50) y de la previsualización de creación (5), que son
+     justamente lo que el usuario está haciendo ahora. Sordo al puntero, porque
+     atenuar no es desactivar (D8). Su tono sale del tema y está medido: ver
+     `sprintVeil` en `theme/resolve.ts` (D9). */
+  .veil {
+    position: absolute;
+    top: 0;
+    background: var(--sprint-veil);
+    z-index: 3;
+    pointer-events: none;
   }
   .deps-svg {
     position: absolute;

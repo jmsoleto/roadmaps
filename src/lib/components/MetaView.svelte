@@ -6,7 +6,7 @@
   import { ROADMAPS_ID } from '../hub/apps';
   import { ROW_H } from '../config';
   import { theme } from '../theme/theme.svelte';
-  import { dayIndex, dayToX, fmtDate, todayIso } from '../time/timeline';
+  import { dayIndex, dayToX, fmtDate, todayIso, spanDays } from '../time/timeline';
   import { getQuarterSegments } from '../time/segments';
   import { getMetaWindow, getRoadmapExtent, dropIndex, moveInArray } from '../model/derive';
   import { RowReorder } from '../interactions/reorder.svelte';
@@ -45,10 +45,18 @@
   const totalHeight = $derived(Math.max(roadmaps.length * ROW_H, 200));
   const quarters = $derived(getQuarterSegments(metaOrigin, windowDays));
 
+  /* La copia de `barGeom` del Gantt, y sigue siendo una copia a propósito: son
+     dos rejillas con orígenes distintos —aquí el de la ventana común de "Todos",
+     allí el del roadmap propio— y unificarlas es otro cambio.
+
+     Lo que ya no se duplica es la **convención**: el ancho sale de `spanDays`,
+     que vive en `time/timeline.ts`, así que las dos vistas no pueden discrepar
+     sobre qué días ocupa un item aunque sigan teniendo dos funciones (D1). Esta
+     es la tercera razón concreta para extraer la geometría a un sitio común;
+     queda anotada, y no se hace aquí. */
   function geom(startIso: IsoDate, endIso: IsoDate) {
     const s = dayIndex(metaOrigin, startIso);
-    const e = dayIndex(metaOrigin, endIso);
-    return { left: dayToX(s, store.dayW), width: (e - s) * store.dayW };
+    return { left: dayToX(s, store.dayW), width: spanDays(startIso, endIso) * store.dayW };
   }
 
   function startSidebarResize(e: PointerEvent) {

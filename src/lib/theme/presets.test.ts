@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { PRESETS, PALETTE_V1, PALETTE_PRESETS } from './presets';
 import { resolveColors } from './resolve';
 import { ratio } from './contrast';
-import { auditFailures, floorFor } from './audit';
+import { auditFailures, auditVeiled, floorFor, VEILED_FLOOR } from './audit';
 import { PALETTE_SLOTS, BASE_TOKENS } from './tokens';
 import { isHex } from './color';
 
@@ -46,6 +46,19 @@ describe('preset contrast', () => {
       // can never pass here while the editor calls it unreadable.
       const failures = auditFailures(theme).map((c) => `${c.label} (${c.ratio.toFixed(2)}:1)`);
       expect(failures, `${id} needs ${floorFor(theme)}:1`).toEqual([]);
+    },
+  );
+
+  it.each(PRESETS.map((t) => [t.id, t] as const))(
+    '%s deja legible lo que queda bajo el velo del foco de sprint',
+    (id, theme) => {
+      // El velo atenúa, no borra: por eso su tono se mide y no se elige mirando
+      // (D9). Mismo camino que el resto del audit, para que no pueda pasar aquí
+      // lo que el editor llamaría ilegible.
+      const failures = auditVeiled(theme)
+        .filter((c) => !c.passes)
+        .map((c) => `${c.label} (${c.ratio.toFixed(2)}:1)`);
+      expect(failures, `${id} necesita ${VEILED_FLOOR}:1 bajo el velo`).toEqual([]);
     },
   );
 

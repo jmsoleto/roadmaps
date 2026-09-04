@@ -76,7 +76,10 @@ export function enforceConstraints(rm: Roadmap): boolean {
           item.startDate = newStart;
           let newEnd = addDays(newStart, dur);
           if (isWeekend(newEnd)) newEnd = snapToWorkday(newEnd);
-          if (newEnd <= newStart) newEnd = addDays(newStart, 1);
+          // `<` y no `<=`: con el fin inclusivo, un item de un día es legal (D3),
+          // y empujarlo a dos sería alargar el trabajo por cascadearlo. El guarda
+          // sigue estando porque `snapToWorkday` puede tirar del fin hacia atrás.
+          if (newEnd < newStart) newEnd = newStart;
           item.endDate = newEnd;
         }
         changed = true;
