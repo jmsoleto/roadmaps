@@ -11,11 +11,12 @@ pedir en qué aplicación entrar: cifras y avisos agregados de cada una.
 
 ## Aplicaciones
 
-|                   | Estado | Qué hace                                                                                        |
-| ----------------- | ------ | ----------------------------------------------------------------------------------------------- |
-| **Roadmaps Hub**  | viva   | Planificación tipo Gantt por proyecto: fases, dependencias externas, plan fijado y desviación.  |
-| **Decisions Hub** | viva   | Las decisiones de proyecto que hay que hablar con negocio, y dónde queda escrita su resolución. |
-| **API Hub**       | viva   | El contrato de una API acordado mientras se habla, y exportado como OpenAPI sin escribir YAML.  |
+|                   | Estado | Qué hace                                                                                            |
+| ----------------- | ------ | --------------------------------------------------------------------------------------------------- |
+| **Roadmaps Hub**  | viva   | Planificación tipo Gantt por proyecto: fases, dependencias externas, plan fijado y desviación.      |
+| **Decisions Hub** | viva   | Las decisiones de proyecto que hay que hablar con negocio, y dónde queda escrita su resolución.     |
+| **API Hub**       | viva   | El contrato de una API acordado mientras se habla, y exportado como OpenAPI sin escribir YAML.      |
+| **Links Hub**     | viva   | Los paneles a los que hay que llegar en una guardia, en botones grandes y a un número de distancia. |
 
 La rejilla de la landing termina siempre en un hueco: cada frente recurrente puede
 entrar como una aplicación más. Añadir una es registrar una definición en
@@ -30,9 +31,9 @@ Roadmaps es la evolución de la miniaplicación original de un solo HTML
 ## Stack
 
 - **Frontend:** Svelte 5 + Vite + TypeScript
-- **Persistencia:** `localStorage` (Roadmaps) e IndexedDB (Decisions, API Hub), con export/import JSON como backup
+- **Persistencia:** `localStorage` (Roadmaps, Links) e IndexedDB (Decisions, API Hub), con export/import JSON como backup
 - **Distribución:** PWA en GitHub Pages
-- **Navegación:** rutas por hash a nivel de aplicación (`#/` el hub, `#/roadmaps`, `#/decisions`, `#/api`)
+- **Navegación:** rutas por hash a nivel de aplicación (`#/` el hub, `#/roadmaps`, `#/decisions`, `#/api`, `#/links`)
 - **Fechas:** ISO absolutas (`YYYY-MM-DD`); la ventana temporal es configurable por roadmap
 
 ## Requisitos

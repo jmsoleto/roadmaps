@@ -78,6 +78,27 @@
         opacity="0.72"
       />
       <circle cx="12" cy="12" r="1.9" fill={GLYPH_INK} />
+    {:else if identity.glyph === 'links'}
+      <!-- A chain link: two hooked ends around a bar. Thick strokes and a solid
+           crossbar, because the two arcs are what goes first at 18px. -->
+      <path d="M9.5 14.5 L14.5 9.5" stroke={GLYPH_INK} stroke-width="3" stroke-linecap="round" />
+      <path
+        d="M13 7 L16 4 A4.2 4.2 0 0 1 20 8 L17 11"
+        fill="none"
+        stroke={GLYPH_INK}
+        stroke-width="3"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      />
+      <path
+        d="M11 17 L8 20 A4.2 4.2 0 0 1 4 16 L7 13"
+        fill="none"
+        stroke={GLYPH_INK}
+        stroke-width="3"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        opacity="0.72"
+      />
     {:else}
       <path d="M12 4 V20 M4 12 H20" stroke={GLYPH_INK} stroke-width="2.6" stroke-linecap="round" />
     {/if}

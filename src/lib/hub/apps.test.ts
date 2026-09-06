@@ -24,6 +24,13 @@ describe('the app registry', () => {
     expect(IDENTITY_CATALOG).toContain(api?.identity);
   });
 
+  it('registers Links Hub as the fourth live application', () => {
+    const links = findApp('links');
+    expect(links?.state).toBe('live');
+    expect(links?.route).toBe('#/links');
+    expect(IDENTITY_CATALOG).toContain(links?.identity);
+  });
+
   it('gives each live application its own route', () => {
     const routes = APPS.filter((a) => a.state === 'live').map((a) => a.route);
     expect(new Set(routes).size).toBe(routes.length);
@@ -38,6 +45,7 @@ describe('the app registry', () => {
     expect(shortName(findApp(ROADMAPS_ID)!)).toBe('Roadmaps');
     expect(shortName(findApp('decisions')!)).toBe('Decisions');
     expect(shortName(findApp('api')!)).toBe('API');
+    expect(shortName(findApp('links')!)).toBe('Links');
   });
 
   it('gives a route to every live app and none to the rest', () => {

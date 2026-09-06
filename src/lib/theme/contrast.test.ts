@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { luminance, ratio, grade, inkOn, AA, AAA } from './contrast';
+import { luminance, ratio, grade, inkOn, inkOnGradient, AA, AAA } from './contrast';
 import { mix, parseHex, toHex, distance, nearestIndex, withAlpha } from './color';
+import { PALETTE_V1 } from './presets';
 
 const INKS = { inkLight: '#ffffff', inkDark: '#0b0d10' };
 
@@ -112,5 +113,44 @@ describe('color primitives', () => {
 
   it('keeps channels when adding alpha', () => {
     expect(withAlpha('#22d3ee', 0.25)).toBe('rgba(34, 211, 238, 0.25)');
+  });
+});
+
+describe('inkOnGradient', () => {
+  const inks = { inkLight: '#ffffff', inkDark: '#0b0d10' };
+
+  it('nunca elige peor que cualquiera de las dos tintas fijas', () => {
+    // La propiedad, y no un par escogido a mano: sobre cada degradado posible
+    // de la paleta, la tinta elegida aguanta el peor de los dos extremos al
+    // menos tan bien como la que se hubiera fijado de antemano.
+    for (const from of PALETTE_V1) {
+      for (const to of PALETTE_V1) {
+        const chosen = inkOnGradient(from, to, inks);
+        const worst = (ink: string) => Math.min(ratio(from, ink), ratio(to, ink));
+        expect(worst(chosen)).toBeGreaterThanOrEqual(worst(inks.inkDark));
+        expect(worst(chosen)).toBeGreaterThanOrEqual(worst(inks.inkLight));
+      }
+    }
+  });
+
+  it('atiende al extremo malo y no solo al primero', () => {
+    // Un naranja claro, que por su cuenta pediría tinta oscura, degradado hacia
+    // un granate del alto contraste claro, que la hunde. Gana el extremo peor:
+    // es exactamente el caso que `inkOn` no puede ver, porque solo mira uno.
+    const from = '#FB923C';
+    const to = '#7c2d12';
+    expect(inkOn(from, inks)).toBe(inks.inkDark);
+    expect(inkOnGradient(from, to, inks)).toBe(inks.inkLight);
+  });
+
+  it('coincide con inkOn cuando el degradado no lo es', () => {
+    for (const c of ['#4ADE80', '#0b4a5e', '#FACC15', '#7f1d1d']) {
+      expect(inkOnGradient(c, c, inks)).toBe(inkOn(c, inks));
+    }
+  });
+
+  it('deja el monograma legible sobre el par por defecto de un enlace', () => {
+    const ink = inkOnGradient('#4ADE80', '#FACC15', inks);
+    expect(Math.min(ratio('#4ADE80', ink), ratio('#FACC15', ink))).toBeGreaterThanOrEqual(AA);
   });
 });

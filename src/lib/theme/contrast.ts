@@ -56,3 +56,17 @@ export interface Inks {
 export function inkOn(bg: string, inks: Inks): string {
   return ratio(bg, inks.inkDark) >= ratio(bg, inks.inkLight) ? inks.inkDark : inks.inkLight;
 }
+
+/**
+ * Pick the theme ink that reads best across a **gradient** between two colors.
+ *
+ * `inkOn` answers for one background, and a link's badge in Links Hub has two:
+ * the mark sits over the whole sweep, so an ink chosen for the start can fail
+ * at the end. This picks by worst case rather than by either end, which is the
+ * only reading that guarantees the mark stays legible over all of it.
+ */
+export function inkOnGradient(from: string, to: string, inks: Inks): string {
+  const dark = Math.min(ratio(from, inks.inkDark), ratio(to, inks.inkDark));
+  const light = Math.min(ratio(from, inks.inkLight), ratio(to, inks.inkLight));
+  return dark >= light ? inks.inkDark : inks.inkLight;
+}

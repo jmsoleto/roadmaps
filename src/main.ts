@@ -9,6 +9,7 @@ import { usage } from './lib/hub/usage.svelte';
 import { decisions } from './lib/decisions/store.svelte';
 import { apiContracts } from './lib/api/store.svelte';
 import { apiLibrary } from './lib/api/library.svelte';
+import { links } from './lib/links/store.svelte';
 
 // Load persisted state from the browser's local storage before the first
 // render, so the app opens directly in its last state.
@@ -17,6 +18,11 @@ import { apiLibrary } from './lib/api/library.svelte';
 // already painted the mirrored copy, so this only reconciles the two.
 async function bootstrap() {
   await Promise.all([store.init(), theme.init(), usage.init()]);
+
+  // Links Hub loads inside the boot and not beside it, unlike the two IndexedDB
+  // stores below: `localStorage` is synchronous, so this cannot hang, and its
+  // screen is the one that must never show "still opening" (D7).
+  links.init();
 
   // The IndexedDB stores load **beside** the boot, not inside it.
   //

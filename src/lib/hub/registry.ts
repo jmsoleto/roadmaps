@@ -13,7 +13,7 @@ import { store } from '../store/app.svelte';
 import { ui } from '../store/ui.svelte';
 import { theme } from '../theme/theme.svelte';
 import { todayIso } from '../time/timeline';
-import { API_ID, APPS, DECISIONS_ID, ROADMAPS_ID, type AppDefinition } from './apps';
+import { API_ID, APPS, DECISIONS_ID, LINKS_ID, ROADMAPS_ID, type AppDefinition } from './apps';
 import { decisions } from '../decisions/store.svelte';
 import { decisionsUi } from '../decisions/ui.svelte';
 import { decisionsSummary } from '../decisions/summary';
@@ -21,6 +21,9 @@ import { exportDecisions, parseDecisionsImport } from '../decisions/io';
 import { apiContracts } from '../api/store.svelte';
 import { apiUi } from '../api/ui.svelte';
 import { apiSummary } from '../api/summary';
+import { links } from '../links/store.svelte';
+import { linksUi } from '../links/ui.svelte';
+import { linksSummary } from '../links/summary';
 import { location } from './location.svelte';
 import { roadmapsSummary } from './roadmaps-summary';
 import { usage } from './usage.svelte';
@@ -31,6 +34,7 @@ import RoadmapSwitcher from '../components/RoadmapSwitcher.svelte';
 import DecisionsApp from '../components/decisions/DecisionsApp.svelte';
 import ApiApp from '../components/api/ApiApp.svelte';
 import ContractSwitcher from '../components/api/ContractSwitcher.svelte';
+import LinksApp from '../components/links/LinksApp.svelte';
 
 /** Roadmaps' own home, run whenever the app is entered by any route. */
 function roadmapsHome(): void {
@@ -58,6 +62,19 @@ function apiHome(): void {
   apiUi.cancelDelete();
 }
 
+/**
+ * Links Hub's own home: the first area, and nothing half-typed.
+ *
+ * Back to the default like Roadmaps and Decisions, not to where you were like
+ * API Hub. The difference is what the application is for: API Hub is used while
+ * conducting a meeting, so it resumes; this one is opened at the start of a
+ * shift, and the start of a shift is the usual place.
+ */
+function linksHome(): void {
+  links.home();
+  linksUi.reset();
+}
+
 function decisionsHome(): void {
   decisionsUi.setFilter('abiertas');
   decisionsUi.setProject('');
@@ -74,6 +91,7 @@ export function initHub(): void {
   location.onEnter(ROADMAPS_ID, roadmapsHome);
   location.onEnter(DECISIONS_ID, decisionsHome);
   location.onEnter(API_ID, apiHome);
+  location.onEnter(LINKS_ID, linksHome);
 }
 
 function roadmapsSummaryNow(): AppSummary {
@@ -103,6 +121,53 @@ function apiSummaryNow(): AppSummary {
     ),
     (slot) => theme.slotColor(slot),
   );
+}
+
+function linksSummaryNow(): AppSummary {
+  const data = links.data;
+  return linksSummary(
+    data,
+    usage.live(
+      LINKS_ID,
+      data.links.map((l) => l.id),
+    ),
+    Date.now(),
+    (slot) => theme.slotColor(slot),
+  );
+}
+
+/**
+ * Reveal one link from the landing — activate its area and focus it.
+ *
+ * Deliberately does **not** open it. From the card, the row leads to the place;
+ * opening is a decision taken once you are already inside and can see what else
+ * is around it. It is also why this is the one `openRow` that records no usage:
+ * nothing was opened.
+ */
+function revealLink(id: string): void {
+  // Same ordering as the other three: entering runs the entry hook and lands on
+  // the app's home, so naming one has to come after it to win.
+  location.goApp(LINKS_ID);
+  links.reveal(id);
+}
+
+/** Start the creation the user can actually finish: an area first, if there is none. */
+function startLinkCreation(): void {
+  if (links.areas.length === 0) linksUi.openCreateArea();
+  else linksUi.openCreate();
+}
+
+function linksActions(): AppAction[] {
+  return [
+    {
+      kind: 'button',
+      label: '+ nuevo enlace',
+      title: 'añadir un enlace al área abierta',
+      // Nothing to hang a link from until there is an area; the action then
+      // opens the area field instead of a form that could not be saved.
+      run: startLinkCreation,
+    },
+  ];
 }
 
 function openContract(id: string): void {
@@ -270,6 +335,20 @@ const BEHAVIOUR: Record<string, Partial<Behaviour>> = {
     root: ApiApp,
     context: ContractSwitcher,
     actions: apiActions,
+  },
+  [LINKS_ID]: {
+    summary: linksSummaryNow,
+    open: () => location.goApp(LINKS_ID),
+    create: () => {
+      location.goApp(LINKS_ID);
+      startLinkCreation();
+    },
+    openRow: revealLink,
+    root: LinksApp,
+    // No second breadcrumb level: the areas are a column of the screen, not a
+    // switcher in the bar. The topbar fills the gap itself.
+    context: null,
+    actions: linksActions,
   },
 };
 

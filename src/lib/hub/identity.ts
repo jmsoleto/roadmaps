@@ -18,7 +18,7 @@
  */
 
 /** Which mark is carved into the tile. The shapes live in `AppIcon.svelte`. */
-export type AppGlyph = 'roadmaps' | 'decisions' | 'api' | 'future';
+export type AppGlyph = 'roadmaps' | 'decisions' | 'api' | 'links' | 'future';
 
 export interface AppIdentity {
   glyph: AppGlyph;
@@ -46,13 +46,22 @@ export const GLYPH_INK = '#0b0d10';
  * The closed catalog of identities.
  *
  * `future` is the anonymous placeholder for "more apps fit here". It carries a
- * pair so the marker is drawn from the same system, but it names no app.
+ * pair so the marker is drawn from the same system, but it names no app — and
+ * since Links Hub, it carries a *neutral* one.
+ *
+ * That move was not a matter of taste. The marker must not adopt the identity
+ * of a real application, and green→yellow became one the day Links Hub took it;
+ * the placeholder had to go somewhere else or the rule would be broken. The
+ * grey it went to is the better marker anyway: `AppIcon` draws the placeholder
+ * at 45% opacity, so its hue was mostly wasted, and having no hue to be
+ * recognised by is exactly what "no identity of its own" means.
  */
 export const APP_IDENTITIES = {
   roadmaps: { glyph: 'roadmaps', from: '#22D3EE', to: '#60A5FA' },
   decisions: { glyph: 'decisions', from: '#A78BFA', to: '#E879F9' },
   api: { glyph: 'api', from: '#FBBF24', to: '#FB7185' },
-  future: { glyph: 'future', from: '#4ADE80', to: '#FACC15' },
+  links: { glyph: 'links', from: '#4ADE80', to: '#FACC15' },
+  future: { glyph: 'future', from: '#94A3B8', to: '#CBD5E1' },
 } as const satisfies Record<string, AppIdentity>;
 
 /** Every registered pair, for the one-off contrast check. */

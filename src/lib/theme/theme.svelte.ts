@@ -9,7 +9,7 @@
 import { createStorage, type Storage } from '../store/storage';
 import { uid } from '../util/id';
 import { applyTheme, previewTheme } from './apply';
-import { inkOn } from './contrast';
+import { inkOn, inkOnGradient } from './contrast';
 import { DEFAULT_PRESET_ID, PRESETS, findPreset } from './presets';
 import { resolveTheme } from './resolve';
 import { PALETTE_SLOTS, type Theme, type ResolvedTheme } from './tokens';
@@ -75,6 +75,16 @@ class ThemeStore {
    */
   inkFor(slot: number): string {
     return inkOn(this.slotColor(slot), this.active.base);
+  }
+
+  /**
+   * The readable ink for a mark carved over a two-slot gradient.
+   *
+   * Links Hub's badges. Same argument as `inkFor`, one background further: the
+   * mark spans the whole sweep, so the ink has to clear both ends.
+   */
+  inkForPair(from: number, to: number): string {
+    return inkOnGradient(this.slotColor(from), this.slotColor(to), this.active.base);
   }
 
   // ---- lifecycle ----

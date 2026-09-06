@@ -30,11 +30,12 @@ export interface AppDefinition {
 export const ROADMAPS_ID = 'roadmaps';
 export const DECISIONS_ID = 'decisions';
 export const API_ID = 'api';
+export const LINKS_ID = 'links';
 
 /**
  * The registry.
  *
- * The three applications are live. The grid still shows a further state — the
+ * The four applications are live. The grid still shows a further state — the
  * anonymous marker the landing appends — so "more fit here" stays visible
  * without an app having to pretend to be a placeholder.
  */
@@ -68,6 +69,20 @@ export const APPS: readonly AppDefinition[] = [
     state: 'live',
     createLabel: '+ nuevo contrato',
     route: '#/api',
+  },
+  {
+    id: LINKS_ID,
+    // "Links Hub" and not the mock's "LinkHub": `shortName` trims a trailing
+    // " Hub", so the switcher and the breadcrumb would show the whole word
+    // where the other three show one. The family costs nothing to keep and the
+    // id ends up in the address, where it stops being cheap to change.
+    name: 'Links Hub',
+    tagline:
+      'Los paneles a los que hay que llegar en una guardia, en botones grandes y a un número de distancia.',
+    identity: APP_IDENTITIES.links,
+    state: 'live',
+    createLabel: '+ nuevo enlace',
+    route: '#/links',
   },
 ];
 
