@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { AppStore } from './app.svelte';
 import type { Storage } from './storage';
-import type { AppData } from '../model/types';
+import type { AppData, Item, Phase } from '../model/types';
 import { exportRoadmap } from '../io/portability';
 
 /** In-memory backend so the store can be exercised without a real localStorage. */
@@ -670,5 +670,74 @@ describe('AppStore — ancho de la columna de nombres', () => {
     store.saveSidebarW();
     const doc = store.exportActive();
     expect(doc).not.toContain('sidebar');
+  });
+});
+
+/**
+ * Un roadmap guardado con un dependiente encima del último día de su
+ * predecesor: lo que dejó por ahí la convención de fin exclusiva.
+ */
+function overlappingItem(id: string, start: string, end: string, deps: string[] = []): Item {
+  return {
+    id,
+    label: id,
+    colorSlot: 0,
+    startDate: start,
+    endDate: end,
+    assigneeId: null,
+    notes: '',
+    dependsOn: deps,
+    blockers: [],
+    isMilestone: false,
+    completedDate: null,
+    endAtCompletion: null,
+    baselineEnd: null,
+  };
+}
+
+function overlappingData(): AppData {
+  const ph: Phase = {
+    id: 'ph',
+    name: 'ph',
+    colorSlot: 0,
+    expanded: true,
+    assigneeId: null,
+    notes: '',
+    startDate: null,
+    endDate: null,
+    children: [
+      overlappingItem('a', '2026-01-05', '2026-01-26'),
+      overlappingItem('b', '2026-01-26', '2026-02-04', ['a']),
+    ],
+  };
+  return {
+    roadmaps: [{ ...roadmap('r'), rows: [ph] }],
+    assignees: [],
+    blockers: [],
+    activeId: 'r',
+  };
+}
+
+describe('un solape guardado de antes', () => {
+  const find = (store: AppStore, id: string) =>
+    store.data.roadmaps[0].rows[0].children.find((c) => c.id === id)!;
+
+  it('abrir el roadmap no mueve ninguna fecha', async () => {
+    // La carga no pasa por `commit()`, y eso es el requisito: mover un plan
+    // guardado sin que nadie lo haya tocado sería reescribir trabajo ajeno.
+    const store = new AppStore(new FakeStorage(overlappingData()));
+    await store.init();
+    expect(find(store, 'b').startDate).toBe('2026-01-26');
+    expect(find(store, 'b').endDate).toBe('2026-02-04');
+  });
+
+  it('la primera edición de fechas de esa fase sí lo desplaza', async () => {
+    const store = new AppStore(new FakeStorage(overlappingData()));
+    await store.init();
+    // Se toca el predecesor sin cambiarle nada; basta con que pase por la
+    // cascada, que es el contrato que ya tenía.
+    store.setItemDates('ph', 'a', '2026-01-05', '2026-01-26');
+    expect(find(store, 'b').startDate).toBe('2026-01-27');
+    expect(find(store, 'b').endDate).toBe('2026-02-05');
   });
 });

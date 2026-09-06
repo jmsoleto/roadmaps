@@ -13,16 +13,35 @@ function itemById(phase: Phase, id: string): Item | undefined {
   return phase.children.find((c) => c.id === id);
 }
 
-/** Earliest ISO start allowed for `item` given its predecessors, or null if none. */
+/**
+ * Earliest ISO start allowed for `item` given its predecessors, or null if none.
+ *
+ * **Depends on the end date being inclusive**, and that is the whole subtlety:
+ * `endDate` is the last day the predecessor *occupies*, so the earliest a
+ * dependent may start is the day after it, never that same date. Returning the
+ * end itself — which is what this did until the convention changed — reads as
+ * "right after" only while the end is exclusive, and as a day of overlap once
+ * it is not.
+ *
+ * A milestone goes through the same rule, on purpose. Since the end became
+ * inclusive its diamond owns its column exactly as a bar owns its own, and a
+ * day-granularity calendar cannot hold both "the milestone occupies Friday" and
+ * "Friday is free for whatever follows it". If the other semantics is ever
+ * needed, what is needed is a configurable lag, not an exception hidden here.
+ *
+ * The weekend is **not** this function's business: `enforceConstraints` runs
+ * `snapForward` over what comes out of here, so the working-calendar rule stays
+ * in one place instead of two.
+ */
 export function getMinStart(phase: Phase, item: Item): IsoDate | null {
-  let min: IsoDate | null = null;
+  let last: IsoDate | null = null;
   for (const depId of item.dependsOn) {
     const dep = itemById(phase, depId);
     if (!dep) continue;
     const depEnd = dep.isMilestone ? dep.startDate : dep.endDate;
-    if (min === null || depEnd > min) min = depEnd;
+    if (last === null || depEnd > last) last = depEnd;
   }
-  return min;
+  return last === null ? null : addDays(last, 1);
 }
 
 /** Would adding `candidate` as a dependency of `target` create a cycle? */

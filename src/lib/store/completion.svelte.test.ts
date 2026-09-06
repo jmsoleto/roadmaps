@@ -200,11 +200,11 @@ describe('las cuatro puertas del congelamiento', () => {
     store.uncompleteItem('ph', 'a');
 
     // Both are open again, so moving `a` past `b` pushes `b` as it always did.
-    // A dependent may start the day its predecessor ends, and 13 Mar is a
-    // Friday, so `snapForward` leaves it there.
+    // El 13 de marzo es viernes y es día ocupado, así que `b` no puede arrancar
+    // hasta el sábado 14, y `snapForward` lo lleva al lunes 16.
     store.setItemDates('ph', 'a', '2026-03-02', '2026-03-13');
     expect(find('a').startDate).toBe('2026-03-02');
-    expect(find('b').startDate).toBe('2026-03-13');
+    expect(find('b').startDate).toBe('2026-03-16');
   });
 
   it('addDependency rechaza un predecesor pendiente en un item completado', async () => {
