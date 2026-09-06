@@ -4,7 +4,7 @@
 
 Cómo sobreviven los datos entre sesiones, sabiendo que no hay servidor y que perderlos no tiene vuelta atrás.
 
-**Un almacén por aplicación**, y ninguna lee el de otra. El de Roadmaps es el almacenamiento de clave-valor del navegador, bajo una clave versionada, y no se mueve de ahí. El de Decisions vive fuera de él, en un almacén cuya cuota no compite con aquella: agotar la del primero haría fallar el guardado de Roadmaps, y ese fallo no es visible para el usuario. Dentro de ese almacén, el contenido binario de los adjuntos va aparte del documento, que se reescribe entero en cada guardado.
+**Un almacén por aplicación**, y ninguna lee el de otra. El de Roadmaps es el almacenamiento de clave-valor del navegador, bajo una clave versionada, y no se mueve de ahí. El de Links Hub es también de clave-valor, bajo una clave propia al lado de aquella y nunca dentro: es la excepción declarada frente a los dos siguientes, porque un almacén capaz de hacer esperar no puede quedarse entre el usuario y el panel que necesita en mitad de una caída. El de Decisions vive fuera de él, en un almacén cuya cuota no compite con aquella: agotar la del primero haría fallar el guardado de Roadmaps, y ese fallo no es visible para el usuario. Dentro de ese almacén, el contenido binario de los adjuntos va aparte del documento, que se reescribe entero en cada guardado.
 
 Cubre además las fechas absolutas como formato canónico, el autosave con agrupación de escrituras, la persistencia del estado de sesión y de las preferencias de tema, el volcado de los cambios pendientes al cerrar, y la distinción entre un almacén vacío y uno que no se ha podido abrir.
 
@@ -364,3 +364,26 @@ Guardar en la biblioteca MUST NOT reescribir el documento de contratos, y guarda
 
 - **WHEN** el usuario guarda modelos en la biblioteca y cierra el navegador por completo
 - **THEN** al volver a abrir siguen ahí, disponibles desde cualquier contrato
+
+### Requirement: El almacén de Links Hub vive fuera del de las demás aplicaciones
+
+Las áreas y los enlaces de Links Hub MUST guardarse bajo una clave propia del almacenamiento local, separada de la de Roadmaps y del almacén de documentos de Decisions y API Hub, de modo que ninguna aplicación pueda corromper ni desalojar los datos de otra.
+
+El almacenamiento MUST ser síncrono y estar disponible antes del primer fotograma. Es la excepción declarada frente a Decisions y API Hub, y la razón es el día en que se usa: en una guardia no puede haber un desenlace «el almacén no responde» entre el usuario y el enlace que necesita, y el volumen —unas decenas de enlaces— no justifica pagar ese riesgo.
+
+El sistema MUST tolerar un contenido ilegible o escrito por una versión anterior arrancando con lo que sí pueda interpretar, en lugar de no arrancar.
+
+#### Scenario: Los enlaces sobreviven a cerrar el navegador
+
+- **WHEN** el usuario crea áreas y enlaces, cierra el navegador y vuelve a abrir la aplicación
+- **THEN** el sistema muestra las mismas áreas y los mismos enlaces, con su orden, su tamaño y sus colores
+
+#### Scenario: Un contenido ilegible no impide arrancar
+
+- **WHEN** la clave de Links Hub contiene algo que el sistema no puede interpretar
+- **THEN** la aplicación arranca igualmente, con lo que haya podido recuperar o vacía, y el resto del contenedor no se ve afectado
+
+#### Scenario: Los datos de una aplicación no tocan los de otra
+
+- **WHEN** el usuario elimina todos los enlaces de Links Hub
+- **THEN** los roadmaps, las decisiones y los contratos siguen intactos
