@@ -24,6 +24,7 @@ import { apiSummary } from '../api/summary';
 import { links } from '../links/store.svelte';
 import { linksUi } from '../links/ui.svelte';
 import { linksSummary } from '../links/summary';
+import { areaFilename, exportArea, exportNotice, importNotice, parseAreaImport } from '../links/io';
 import { location } from './location.svelte';
 import { roadmapsSummary } from './roadmaps-summary';
 import { usage } from './usage.svelte';
@@ -157,6 +158,36 @@ function startLinkCreation(): void {
   else linksUi.openCreate();
 }
 
+/**
+ * Hand over the open area, and say what the file carries.
+ *
+ * The sentence comes *after* the download and not as a confirmation before it
+ * (D4). An area of on-call links is a map of the internal infrastructure —
+ * dashboard URLs, service names, and in how they are grouped, some of the
+ * topology — and that cannot stay implicit in a button that downloads in
+ * silence. What it must not become is a modal in the way: what needs avoiding
+ * is not downloading the file, it is attaching it without thinking, and that
+ * happens after the sentence rather than before it.
+ *
+ * The `$state` proxy is fine here, as it is for the decisions export:
+ * `JSON.stringify` reads straight through one. It is `structuredClone` that
+ * cannot, and that one lives in the storage seam.
+ */
+function exportActiveArea(): string | void {
+  const area = links.activeArea;
+  if (!area) return;
+  const filename = areaFilename(area.name);
+  downloadText(filename, exportArea(area, links.visibleLinks));
+  return exportNotice(filename);
+}
+
+/** Bring an area in, and report what did and did not enter with it. */
+function importAreaFile(text: string): string {
+  const { area, links: imported, discarded } = parseAreaImport(text);
+  links.importArea(area, imported);
+  return importNotice(imported.length, discarded);
+}
+
 function linksActions(): AppAction[] {
   return [
     {
@@ -166,6 +197,22 @@ function linksActions(): AppAction[] {
       // Nothing to hang a link from until there is an area; the action then
       // opens the area field instead of a form that could not be saved.
       run: startLinkCreation,
+    },
+    {
+      kind: 'file',
+      label: '↓ importar',
+      title: 'traer un área de enlaces desde un JSON',
+      accept: JSON_FILES,
+      run: importAreaFile,
+    },
+    {
+      kind: 'button',
+      label: '↑ exportar',
+      title: 'exportar el área abierta',
+      // Nothing to export without an area open, and the export reads the open
+      // one. Same treatment as the roadmap export without an active roadmap.
+      disabled: links.activeArea === null,
+      run: exportActiveArea,
     },
   ];
 }

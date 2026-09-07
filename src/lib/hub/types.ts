@@ -150,8 +150,24 @@ export type AppComponent = Component<Record<string, never>>;
  * the shell keeps a single hidden input and points it at whichever action was
  * activated, instead of one input per application.
  */
+/**
+ * What an action may hand back: a sentence the bar shows, or nothing.
+ *
+ * The neutral half of the pair the topbar can paint. Throwing says *something
+ * did not happen* and comes out in `--danger`; returning a string says *what
+ * happened* and comes out dimmed. Presenting the two alike would turn the red
+ * one into a colour that sometimes means nothing, and a red that sometimes
+ * means nothing stops being read.
+ *
+ * Optional on purpose. Every action that existed before this returned nothing
+ * and still does, so the channel costs the applications that do not want it
+ * exactly zero — an application says something because it has something to say,
+ * not because the bar has a slot to fill.
+ */
+export type ActionNotice = string | void;
+
 export type AppAction =
-  | { kind: 'button'; label: string; title?: string; disabled?: boolean; run: () => void }
+  | { kind: 'button'; label: string; title?: string; disabled?: boolean; run: () => ActionNotice }
   | {
       kind: 'file';
       label: string;
@@ -159,8 +175,11 @@ export type AppAction =
       disabled?: boolean;
       /** The picker's filter, e.g. `application/json,.json`. */
       accept: string;
-      /** Called with the file's text. Throwing shows the topbar's error. */
-      run: (text: string) => void;
+      /**
+       * Called with the file's text. Throwing shows the topbar's error;
+       * returning a sentence shows its notice.
+       */
+      run: (text: string) => ActionNotice;
     };
 
 /** Severity order for sorting alerts: loudest first. */

@@ -21,6 +21,16 @@
   let fileInput: HTMLInputElement;
   let importError = $state<string | null>(null);
   /**
+   * The neutral half of what the bar can say.
+   *
+   * Separate from `importError` and not a tone on top of it: the red one means
+   * something did not happen, and sharing a slot between that and "7 enlaces
+   * importados" would make red a colour that sometimes means nothing.
+   */
+  let notice = $state<string | null>(null);
+  let noticeTimer: ReturnType<typeof setTimeout> | null = null;
+  let errorTimer: ReturnType<typeof setTimeout> | null = null;
+  /**
    * The file action whose picker is open.
    *
    * One hidden input for the whole bar, pointed at whichever action asked for
@@ -29,15 +39,62 @@
    */
   let pending: Extract<AppAction, { kind: 'file' }> | null = null;
 
+  /** A notice outlasts an error: it is longer, and nothing went wrong. */
+  const NOTICE_MS = 6000;
+  const ERROR_MS = 4000;
+
   const app = $derived(location.appId !== null ? (hubApp(location.appId) ?? null) : null);
   /** The application's own breadcrumb control, when it has one. */
   const Context = $derived(app?.context ?? null);
   const actions = $derived(app?.actions?.() ?? []);
 
+  /**
+   * Say what an action handed back, if it handed back anything.
+   *
+   * An action that returns nothing leaves the bar silent rather than showing an
+   * empty notice — the check is on the value being a non-empty string, so the
+   * silence is the truth about the action and not an artefact of the markup.
+   */
+  function show(message: string | void): void {
+    if (noticeTimer) clearTimeout(noticeTimer);
+    notice = typeof message === 'string' && message.trim() !== '' ? message : null;
+    if (notice !== null) noticeTimer = setTimeout(() => (notice = null), NOTICE_MS);
+  }
+
+  function fail(message: string): void {
+    if (errorTimer) clearTimeout(errorTimer);
+    importError = message;
+    errorTimer = setTimeout(() => (importError = null), ERROR_MS);
+  }
+
+  /** Wipe both, so a new action never speaks over the last one's leftovers. */
+  function silence(): void {
+    if (noticeTimer) clearTimeout(noticeTimer);
+    if (errorTimer) clearTimeout(errorTimer);
+    notice = null;
+    importError = null;
+  }
+
+  /**
+   * A message belongs to the bar that produced it.
+   *
+   * Changing application changes the actions, so anything they said stops being
+   * about what is on screen — and a notice about an import left hanging over
+   * another application's bar reads as that application's.
+   */
+  let spokenFor: string | null = null;
+  $effect(() => {
+    const here = location.appId;
+    if (here === spokenFor) return;
+    spokenFor = here;
+    silence();
+  });
+
   function run(action: AppAction) {
     if (action.disabled) return;
     if (action.kind === 'button') {
-      action.run();
+      silence();
+      show(action.run());
       return;
     }
     pending = action;
@@ -52,12 +109,11 @@
     const action = pending;
     pending = null;
     if (!file || !action) return;
+    silence();
     try {
-      importError = null;
-      action.run(await file.text());
+      show(action.run(await file.text()));
     } catch (err) {
-      importError = err instanceof Error ? err.message : 'No se pudo importar el archivo.';
-      setTimeout(() => (importError = null), 4000);
+      fail(err instanceof Error ? err.message : 'No se pudo importar el archivo.');
     }
   }
 </script>
@@ -82,6 +138,7 @@
   <button class="add-tab" onclick={() => ui.openTheme()} title="tema de colores">◐ tema</button>
   <input bind:this={fileInput} type="file" class="hidden-file" onchange={onFile} />
   {#if importError}<span class="import-error">{importError}</span>{/if}
+  {#if notice}<span class="notice">{notice}</span>{/if}
   <!-- Not a user name (D10): there are no accounts, and suggesting a session in
        an app whose data dies with the site's storage is the expensive
        misunderstanding. It says where the data is. -->
@@ -153,6 +210,18 @@
     font-size: 11px;
     color: var(--danger);
     max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .notice {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    /* The tint of `guardado ✓`, not of the error: this one informs. */
+    color: var(--text-dim);
+    /* Wide enough for the longest sentence an action has: the export warning.
+       A truncated warning is not a warning. */
+    max-width: 440px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

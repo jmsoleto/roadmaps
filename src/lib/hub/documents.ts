@@ -11,14 +11,21 @@
  *
  * What it buys is a sentence: putting the wrong file in the wrong application
  * is the likeliest mistake in the whole exchange, and it grows with every app —
- * with three there are six wrong combinations. «No es un documento válido»
+ * with four there are twelve wrong combinations. «No es un documento válido»
  * leaves you guessing; «esto es un documento de roadmaps» is fixed in a second.
+ *
+ * An application that ships a document of its own is taught to the others in
+ * the *same* change that gives it one. A format some applications recognise and
+ * others do not is worse than one nobody recognises, because then the sentence
+ * you get depends on which door you came in through, and that is undebuggable
+ * for the person on the receiving end.
  */
 
-import { DECISIONS_ID, ROADMAPS_ID, API_ID, findApp } from './apps';
+import { DECISIONS_ID, ROADMAPS_ID, API_ID, LINKS_ID, findApp } from './apps';
 
 /** What a document declares itself to be, or `null` when nothing recognises it. */
-export type DocumentOwner = typeof ROADMAPS_ID | typeof DECISIONS_ID | typeof API_ID | null;
+export type DocumentOwner =
+  typeof ROADMAPS_ID | typeof DECISIONS_ID | typeof API_ID | typeof LINKS_ID | null;
 
 /**
  * Recognise a parsed JSON.
@@ -36,6 +43,7 @@ export function ownerOf(parsed: unknown): DocumentOwner {
   if (doc.kind === 'tech-lead-hub/decisions') return DECISIONS_ID;
   if (doc.kind === 'tech-lead-hub/api-contract') return API_ID;
   if (doc.kind === 'tech-lead-hub/api-library') return API_ID;
+  if (doc.kind === 'tech-lead-hub/links') return LINKS_ID;
   return null;
 }
 

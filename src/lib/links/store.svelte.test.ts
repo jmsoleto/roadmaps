@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { LinksStore } from './store.svelte';
 import type { LinksBackend } from './storage';
 import { normalize, type LinksData } from './model';
+import { parseAreaImport } from './io';
 
 function backend(seed: unknown): LinksBackend & { saved: LinksData | null } {
   return {
@@ -176,5 +177,73 @@ describe('guardar', () => {
     expect(be.saved).not.toBe(null);
     expect(JSON.parse(JSON.stringify(be.saved))).toEqual(be.saved);
     expect(be.saved!.areas.map((a) => a.name)).toContain('Nueva');
+  });
+});
+
+describe('al importar un área', () => {
+  const DOC = JSON.stringify({
+    kind: 'tech-lead-hub/links',
+    area: { name: 'Pagos' },
+    links: [
+      { name: 'PSP', url: 'https://psp.interno' },
+      { name: 'Conciliación', url: 'https://conc.interno' },
+    ],
+  });
+
+  function bring() {
+    const { area, links } = parseAreaImport(DOC);
+    store.importArea(area, links);
+    return area;
+  }
+
+  it('la añade al final y la deja abierta, sin foco', () => {
+    const area = bring();
+    expect(store.areas.map((a) => a.name)).toEqual(['Favoritos', 'Pagos', 'CSC', 'Pagos']);
+    expect(store.activeAreaId).toBe(area.id);
+    expect(store.focusedLinkId).toBe(null);
+    expect(store.visibleLinks.map((l) => l.name)).toEqual(['PSP', 'Conciliación']);
+  });
+
+  /** Escenario «Importar dos veces»: conviven, y editar una no toca a la otra. */
+  it('importar dos veces deja dos áreas independientes', () => {
+    const first = bring();
+    const second = bring();
+
+    expect(first.id).not.toBe(second.id);
+    expect(store.areas).toHaveLength(5);
+    expect(store.countIn(first.id)).toBe(2);
+    expect(store.countIn(second.id)).toBe(2);
+
+    store.renameArea(second.id, 'Pagos (de Ana)');
+    expect(store.areas.find((a) => a.id === first.id)?.name).toBe('Pagos');
+
+    store.deleteArea(second.id);
+    expect(store.countIn(first.id)).toBe(2);
+  });
+
+  /** Escenario «Un nombre que ya existe»: la que estaba no se toca. */
+  it('no funde con el área que ya tenía ese nombre', () => {
+    const before = store.data.links.filter((l) => l.areaId === 'a2').map((l) => l.id);
+    const area = bring();
+
+    expect(area.id).not.toBe('a2');
+    expect(store.countIn('a2')).toBe(before.length);
+    expect(store.data.links.filter((l) => l.areaId === 'a2').map((l) => l.id)).toEqual(before);
+  });
+
+  it('deja los enlaces importados colgando de su propia área', () => {
+    const area = bring();
+    expect(store.data.links.filter((l) => l.areaId === area.id)).toHaveLength(2);
+  });
+
+  it('guarda lo importado', () => {
+    const back = backend(SEED);
+    const s = new LinksStore(back);
+    s.init();
+    const { area, links } = parseAreaImport(DOC);
+    s.importArea(area, links);
+    s.flush();
+    expect(back.saved?.areas.map((a) => a.name)).toContain('Pagos');
+    expect(back.saved?.links.filter((l) => l.areaId === area.id)).toHaveLength(2);
   });
 });

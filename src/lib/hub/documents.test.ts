@@ -49,6 +49,44 @@ describe('the sentence for somebody else’s document', () => {
   });
 });
 
+describe('an area of links, the fourth application’s document', () => {
+  it('recognises an area of links as Links Hub’s', () => {
+    expect(ownerOf({ kind: 'tech-lead-hub/links', area: { name: 'Pagos' }, links: [] })).toBe(
+      'links',
+    );
+  });
+
+  /**
+   * The point of teaching the other three in the same change: whichever door
+   * the file is pushed through, the sentence names the same application.
+   */
+  it('names Links Hub in every application the file is not from', () => {
+    const doc = { kind: 'tech-lead-hub/links' };
+    for (const mine of ['roadmaps', 'decisions', 'api']) {
+      expect(foreignDocumentMessage(doc, mine)).toContain('Links Hub');
+    }
+  });
+
+  /** And in the other direction, for the three formats that existed before it. */
+  it('names the owner of every other document that lands in Links Hub', () => {
+    expect(foreignDocumentMessage({ format: 'roadmaps.v1' }, 'links')).toContain('Roadmaps');
+    expect(foreignDocumentMessage({ rows: [] }, 'links')).toContain('Roadmaps');
+    expect(foreignDocumentMessage({ kind: 'tech-lead-hub/decisions' }, 'links')).toContain(
+      'Decisions',
+    );
+    expect(foreignDocumentMessage({ kind: 'tech-lead-hub/api-contract' }, 'links')).toContain(
+      'API Hub',
+    );
+    expect(foreignDocumentMessage({ kind: 'tech-lead-hub/api-library' }, 'links')).toContain(
+      'API Hub',
+    );
+  });
+
+  it('says nothing to Links Hub about its own document', () => {
+    expect(foreignDocumentMessage({ kind: 'tech-lead-hub/links' }, 'links')).toBeNull();
+  });
+});
+
 describe('the library, which is also API Hub’s', () => {
   it('recognises a library as API Hub’s', () => {
     expect(ownerOf({ kind: 'tech-lead-hub/api-library', entries: [] })).toBe('api');

@@ -89,6 +89,29 @@ export class LinksStore {
     return area;
   }
 
+  /**
+   * Bring in an area with its links, as a new area at the end.
+   *
+   * **Adds, never merges**, even when the name is one that is already there.
+   * Merging would drop links into an area the user has not opened, and undoing
+   * that costs as many gestures as links came in; undoing an area too many
+   * costs one. Two people with a "Pagos" area have two different "Pagos".
+   *
+   * Leaves it open, the way creating one does. It is the visible proof the
+   * import happened — an import that changes nothing on screen and only leaves
+   * a line of text in the bar is indistinguishable from one that did nothing.
+   *
+   * Identity arrives already assigned by the importer, which is what makes
+   * importing the same file twice give two independent areas.
+   */
+  importArea(area: Area, links: Link[]): void {
+    this.data.areas.push(area);
+    this.data.links.push(...links);
+    this.activeAreaId = area.id;
+    this.focusedLinkId = null;
+    this.schedule();
+  }
+
   renameArea(id: string, name: string): void {
     const area = this.data.areas.find((a) => a.id === id);
     if (!area || name.trim() === '') return;

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { hubApp, hubApps } from './registry';
-import { API_ID, DECISIONS_ID, ROADMAPS_ID } from './apps';
+import { API_ID, DECISIONS_ID, LINKS_ID, ROADMAPS_ID } from './apps';
+import { links } from '../links/store.svelte';
 import type { AppAction } from './types';
 
 /**
@@ -74,5 +75,49 @@ describe('what the shell reads out of the registry', () => {
 
   it('registers no behaviour for an application that is not there', () => {
     expect(hubApp('incidents')).toBeUndefined();
+  });
+});
+
+/**
+ * Links Hub's three, and the one that has to be able to say "not now".
+ *
+ * The state is set directly rather than through `addArea`, which would schedule
+ * a save into a `localStorage` this environment does not have. What is under
+ * test is the actions the bar reads, not the store's writing.
+ */
+describe('the actions Links Hub declares', () => {
+  function linkActions() {
+    return hubApp(LINKS_ID)?.actions?.() ?? [];
+  }
+
+  function exportAction() {
+    return linkActions().find((a) => a.label.includes('exportar'));
+  }
+
+  it('offers creating, importing and exporting', () => {
+    const labels = linkActions().map((a) => a.label);
+    expect(labels.some((l) => l.includes('nuevo enlace'))).toBe(true);
+    expect(labels.some((l) => l.includes('importar'))).toBe(true);
+    expect(labels.some((l) => l.includes('exportar'))).toBe(true);
+  });
+
+  it('cannot export with no area open', () => {
+    links.data = { areas: [], links: [] };
+    links.setActiveArea(null);
+    expect(exportAction()?.disabled).toBe(true);
+  });
+
+  it('can export once an area is open', () => {
+    links.data = { areas: [{ id: 'a1', name: 'Pagos' }], links: [] };
+    links.setActiveArea('a1');
+    expect(exportAction()?.disabled).toBe(false);
+  });
+
+  /** Importing never depends on there being an area: it brings its own. */
+  it('offers importing even with nothing in the catalogue', () => {
+    links.data = { areas: [], links: [] };
+    links.setActiveArea(null);
+    const importAction = linkActions().find((a) => a.label.includes('importar'));
+    expect(importAction?.disabled).toBeFalsy();
   });
 });
