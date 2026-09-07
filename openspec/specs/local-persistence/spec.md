@@ -68,7 +68,7 @@ El sistema MUST persistir todos los datos de Roadmaps (roadmaps, fases, items, m
 
 Cada aplicación del hub MUST tener su propio almacén, y una aplicación MUST NOT leer ni escribir el almacén de otra. El almacén de Roadmaps es el descrito aquí y MUST NOT cambiar de sitio ni de clave.
 
-El almacén es propio de cada navegador y de cada perfil: los datos no se sincronizan entre máquinas ni entre navegadores, y desaparecen si el usuario borra los datos del sitio. El mecanismo de copia de seguridad y de trasvase es el export/import JSON descrito en `data-portability`.
+El almacén es propio de cada navegador y de cada perfil: los datos no se sincronizan entre máquinas ni entre navegadores, y desaparecen si el usuario borra los datos del sitio. El mecanismo de copia de seguridad y de trasvase es el export/import JSON descrito en `data-portability`, y **su alcance es el que cada aplicación declare allí**: en Roadmaps y en API Hub el documento es una unidad de trabajo —un roadmap, un contrato—, en Decisions es el conjunto entero, y en Links Hub es un área. Una aplicación cuyo documento sea una unidad y no el conjunto MUST NOT presentarse como respaldada por completo: mientras no declare un documento de conjunto, guardar todo su contenido son tantos ficheros como unidades tenga, y esta capability no promete lo contrario.
 
 #### Scenario: Primer arranque sin datos previos
 
@@ -99,6 +99,11 @@ El almacén es propio de cada navegador y de cada perfil: los datos no se sincro
 
 - **WHEN** otra aplicación del hub escribe o borra sus propios datos
 - **THEN** el almacén de Roadmaps no cambia
+
+#### Scenario: El respaldo de Links Hub es por áreas
+
+- **WHEN** el usuario quiere guardar fuera del navegador todo el contenido de Links Hub
+- **THEN** el sistema le permite hacerlo exportando cada área, y no ofrece un único documento que las contenga todas
 
 ### Requirement: Autosave con agrupación de escrituras
 
