@@ -25,8 +25,17 @@
 
   interface Props {
     link: Link;
-    /** Position within its area, so the tile can show its number key. */
+    /** Position within its area. What a nudge moves it from. */
     index: number;
+    /**
+     * The position it would hold if the gesture in flight ended now, which is
+     * the one it shows. The two are the same except while something is being
+     * dragged, and there they must differ: a tile that has already slid into
+     * the second slot but still shows the number it is leaving behind puts two
+     * of the same number on screen at once — its own and the one the waiting
+     * slot is promising.
+     */
+    slot: number;
     /** How many links the area holds, so the last one cannot be nudged further. */
     count: number;
     focused: boolean;
@@ -46,6 +55,7 @@
   let {
     link,
     index,
+    slot,
     count,
     focused,
     held,
@@ -65,7 +75,7 @@
   );
   // Over the whole sweep, not over one end: the mark sits across both.
   const ink = $derived(theme.inkForPair(link.from, link.to));
-  const numbered = $derived(index < NUMBERED);
+  const numbered = $derived(slot < NUMBERED);
 
   // The store owns the focus, so the DOM follows it rather than the other way
   // round. Guarded, or every unrelated re-render would yank the focus back.
@@ -121,7 +131,7 @@
     tabindex={-1}
     title="mover el enlace"
     aria-label="mover {link.name}"
-    onpointerdown={ongrab}>{numbered ? index + 1 : '⠿'}</button
+    onpointerdown={ongrab}>{numbered ? slot + 1 : '⠿'}</button
   >
 
   {#if focused}
@@ -164,6 +174,11 @@
   .cell.held .tile {
     box-shadow: 0 8px 24px rgb(0 0 0 / 26%);
     border-color: var(--accent);
+    /* Translucent while it is in hand, and not for effect: the tile rides under
+       the pointer and the slot it is heading for is drawn at the pointer too,
+       so at full opacity the tile covers the very thing it is being aimed at.
+       Letting the slot read through is what makes the destination visible. */
+    opacity: 0.72;
   }
   .tile {
     box-sizing: border-box;
@@ -257,6 +272,13 @@
   .cell:hover .grip.plain,
   .cell.held .grip.plain {
     opacity: 1;
+  }
+  /* While a tile is in hand its own number is the one it is leaving behind, and
+     it lands a few pixels from the number the slot underneath is promising —
+     close enough for a `1` over a `7` to read as seventeen. The only number
+     worth showing during the gesture is the one in the slot. */
+  .cell.held .grip {
+    opacity: 0;
   }
   .grip:hover {
     color: var(--text);

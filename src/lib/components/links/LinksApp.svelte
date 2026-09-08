@@ -17,7 +17,7 @@
   import { linksUi } from '../../links/ui.svelte';
   import { usage } from '../../hub/usage.svelte';
   import { LINKS_ID } from '../../hub/apps';
-  import { actionFor, ownsKey } from '../../links/keyboard';
+  import { actionFor, ownsKey, NUMBERED } from '../../links/keyboard';
   import { DragReorder } from '../../interactions/reorder.svelte';
   import { moveInArray } from '../../model/derive';
   import {
@@ -25,6 +25,7 @@
     dropIndexInGrid,
     measureGrid,
     placeCells,
+    spanWidth,
     type GridMetrics,
   } from '../../links/grid';
   import AreaRail from './AreaRail.svelte';
@@ -59,8 +60,17 @@
 
   let gridEl = $state<HTMLDivElement | null>(null);
   const reorder = new DragReorder<null>();
-  /** Columns and track width, measured once when the gesture starts (D2). */
-  let frame: { cols: number; metrics: GridMetrics } | null = null;
+  /**
+   * Columns and track width, measured once when the gesture starts (D2).
+   *
+   * `$state` and not a plain field, and that is not decoration: the derived
+   * below has to depend on it. Written as a plain variable it was read first in
+   * a `||` that short-circuited while it was still `null`, so the derived never
+   * got as far as reading the gesture, captured no dependency at all, and stayed
+   * frozen at `null` for the life of the component — the reorder still worked
+   * and the preview never moved a pixel.
+   */
+  let frame = $state<{ cols: number; metrics: GridMetrics } | null>(null);
 
   const widths = $derived(visible.map((l) => (l.wide ? 2 : 1)));
 
@@ -71,8 +81,10 @@
   );
 
   const layout = $derived.by(() => {
+    // Both read before anything can short-circuit, so both are dependencies.
+    const g = reorder.gesture;
     const f = frame;
-    if (f === null || reorder.gesture === null) return null;
+    if (g === null || f === null) return null;
     const at = new Map<string, number>();
     previewOrder.forEach((l, i) => at.set(l.id, i));
     return {
@@ -83,6 +95,41 @@
         f.cols,
       ),
       at,
+    };
+  });
+
+  /**
+   * The dashed slot waiting for the tile in hand.
+   *
+   * Not new arithmetic: `layout.preview[to]` is the very cell the other tiles
+   * are already being moved around, and until now it was the one position in
+   * that map that nothing drew. The tile in hand rides over the others and
+   * covers precisely where it is going to land, so in a grid the destination
+   * has to be shown; in a column it does not, because a lifted row leaves a
+   * real hole (D4).
+   *
+   * It carries the number the link **would** get and not the one it has: what
+   * is being decided here is which key opens it, so "this becomes the 2"
+   * answers the question and "this is the 6" repeats what the tile in hand
+   * already says (D2).
+   */
+  const ghost = $derived.by(() => {
+    const l = layout;
+    const g = reorder.gesture;
+    if (l === null || g === null) return null;
+    const link = previewOrder[g.to];
+    if (link === undefined) return null;
+
+    const at = cellRect(l.preview[g.to], l.f.cols, l.f.metrics);
+    const span = link.wide && l.f.cols > 1 ? 2 : 1;
+    return {
+      x: at.x,
+      y: at.y,
+      width: spanWidth(span, l.f.metrics),
+      height: l.f.metrics.cellH,
+      // Past the ninth there is no key, and promising a `10` that does not
+      // exist is worse than promising nothing — same rule as the badge.
+      key: g.to < NUMBERED ? g.to + 1 : null,
     };
   });
 
@@ -110,6 +157,18 @@
 
     const cell = cellRect(l.preview[l.at.get(link.id) ?? i], f.cols, f.metrics);
     return { x: cell.x - nat.x, y: cell.y - nat.y };
+  }
+
+  /**
+   * The position a tile shows: the one it would hold if the drag ended now.
+   *
+   * Position and number are the same thing in this application, so a grid that
+   * previews where everything lands has to preview the keys too — otherwise the
+   * slot promises a `2` while the tile that has already slid into second place
+   * still says something else.
+   */
+  function slotOf(link: Link, i: number): number {
+    return layout?.at.get(link.id) ?? i;
   }
 
   function startDrag(e: PointerEvent, link: Link, from: number) {
@@ -240,10 +299,26 @@
       </header>
 
       <div class="grid" bind:this={gridEl}>
+        {#if ghost !== null}
+          <!-- Written before the tiles and with no `z-index`: two positioned
+               elements without an explicit layer paint in document order, so
+               the slot stays underneath without a stacking rule that would then
+               have to be maintained against the lifted tile (D3). -->
+          <div
+            class="ghost"
+            aria-hidden="true"
+            style:width="{ghost.width}px"
+            style:height="{ghost.height}px"
+            style:transform="translate({ghost.x}px, {ghost.y}px)"
+          >
+            {#if ghost.key !== null}<span class="ghost-key">{ghost.key}</span>{/if}
+          </div>
+        {/if}
         {#each visible as link, i (link.id)}
           <LinkTile
             {link}
             index={i}
+            slot={slotOf(link, i)}
             count={visible.length}
             focused={link.id === links.focusedLinkId}
             held={reorder.held(link.id)}
@@ -307,6 +382,9 @@
     color: var(--text-dim);
   }
   .grid {
+    /* The slot below is positioned against this box, and starts at its padding,
+       which is where cell zero starts. */
+    position: relative;
     padding: 20px 24px 28px;
     display: grid;
     /* Four columns at the mock's width, fewer as it narrows. `auto-fill` with a
@@ -315,6 +393,33 @@
     grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
     gap: 14px;
     align-content: start;
+  }
+  .ghost {
+    position: absolute;
+    top: 20px;
+    left: 24px;
+    box-sizing: border-box;
+    display: flex;
+    align-items: flex-start;
+    justify-content: flex-end;
+    padding: 12px;
+    border-radius: 10px;
+    border: var(--line-width) dashed var(--accent);
+    background: none;
+    /* The same 120ms the tiles slide with, so the destination and the things
+       moving towards it read as one movement and not as two. */
+    transition: transform 120ms ease;
+    pointer-events: none;
+  }
+  .ghost-key {
+    font-family: var(--mono, ui-monospace, monospace);
+    font-size: 11px;
+    line-height: 1;
+    color: var(--accent);
+    border: var(--line-width) dashed var(--accent);
+    border-radius: 4px;
+    padding: 2px 6px;
+    opacity: 0.85;
   }
   .add {
     box-sizing: border-box;

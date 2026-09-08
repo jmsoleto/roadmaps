@@ -42,6 +42,18 @@ export function placeCells(widths: readonly number[], cols: number): number[] {
   return cells;
 }
 
+/**
+ * How wide a run of `span` cells is, gutter included.
+ *
+ * One cell is one track; two are two tracks and the gutter between them, which
+ * is not the same as twice a track and is exactly the kind of arithmetic that
+ * goes wrong by 14px if it is done at the call site.
+ */
+export function spanWidth(span: number, m: GridMetrics): number {
+  const cells = Math.max(1, span);
+  return cells * m.cellW + (cells - 1) * m.gap;
+}
+
 /** The top-left corner of a cell, relative to the grid's own origin. */
 export function cellRect(cell: number, cols: number, m: GridMetrics): { x: number; y: number } {
   const columns = Math.max(1, cols);

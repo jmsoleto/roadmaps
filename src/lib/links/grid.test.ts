@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { placeCells, cellRect, dropIndexInGrid, type GridMetrics } from './grid';
+import { placeCells, cellRect, dropIndexInGrid, spanWidth, type GridMetrics } from './grid';
 
 /** A grid of 240px tracks, 104px tiles and a 14px gutter, as the screen has it. */
 const M: GridMetrics = { cellW: 240, cellH: 104, gap: 14 };
@@ -75,5 +75,20 @@ describe('dónde cae la baldosa en mano', () => {
   it('un área vacía o un índice imposible no inventan destino', () => {
     expect(dropIndexInGrid(0, 100, 100, [], 4, M)).toBe(0);
     expect(dropIndexInGrid(9, 100, 100, widths, 4, M)).toBe(9);
+  });
+});
+
+describe('el ancho de un tramo', () => {
+  it('una casilla es una pista', () => {
+    expect(spanWidth(1, M)).toBe(240);
+  });
+
+  it('dos casillas son dos pistas y la separación de en medio', () => {
+    // No es el doble: entre las dos hay una canaleta que también se ocupa.
+    expect(spanWidth(2, M)).toBe(240 * 2 + 14);
+  });
+
+  it('nada baja de una casilla', () => {
+    expect(spanWidth(0, M)).toBe(240);
   });
 });
