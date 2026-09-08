@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { actionFor, NUMBERED } from './keyboard';
+import { actionFor, ownsKey, NUMBERED } from './keyboard';
 
 const press = (
   key: string,
@@ -46,5 +46,41 @@ describe('el teclado de Links Hub', () => {
     for (const key of ['1', '9', 'e', 'E', 'Enter', 'ArrowRight', 'ArrowDown']) {
       expect(actionFor({ key }, true)).toBe(null);
     }
+  });
+});
+
+describe('quién es el dueño de la tecla', () => {
+  const input = { tagName: 'INPUT' };
+  const button = { tagName: 'BUTTON' };
+  const anchor = { tagName: 'A' };
+  const box = { tagName: 'DIV' };
+
+  it('un campo se queda con todas', () => {
+    for (const key of ['1', 'e', 'Enter', 'ArrowDown']) {
+      expect(ownsKey(input, key)).toBe(true);
+    }
+    expect(ownsKey({ tagName: 'DIV', isContentEditable: true }, '4')).toBe(true);
+  });
+
+  it('un botón y un enlace se quedan solo con las que los activan', () => {
+    expect(ownsKey(button, 'Enter')).toBe(true);
+    expect(ownsKey(button, ' ')).toBe(true);
+    expect(ownsKey(anchor, 'Enter')).toBe(true);
+  });
+
+  it('y no con los números ni con la E, que son de la rejilla', () => {
+    // Abrir un enlace deja el foco en él, así que si un ancla reclamase los
+    // números la aplicación se quedaría sin su atajo principal en cuanto se
+    // usara una vez.
+    for (const key of ['1', '9', 'e', 'E', 'ArrowRight']) {
+      expect(ownsKey(anchor, key)).toBe(false);
+      expect(ownsKey(button, key)).toBe(false);
+    }
+  });
+
+  it('lo que no es un control no reclama nada', () => {
+    expect(ownsKey(box, 'Enter')).toBe(false);
+    expect(ownsKey(null, 'Enter')).toBe(false);
+    expect(ownsKey(undefined, 'Enter')).toBe(false);
   });
 });

@@ -5,13 +5,63 @@
    * The legend stays on screen rather than hiding behind a `?` (D6). A shortcut
    * you have to remember in order to discover does not exist on the night it
    * would have helped, and the space under the list was empty anyway.
+   *
+   * Two ways to reorder, and both are meant. The grip is the fast one; the ↑↓
+   * of the active row are the one that works without a mouse, which is a
+   * requirement here and not a courtesy.
    */
   import { links } from '../../links/store.svelte';
   import { linksUi } from '../../links/ui.svelte';
+  import { RowReorder } from '../../interactions/reorder.svelte';
+  import { dropIndex, moveInArray } from '../../model/derive';
+
+  /** Row height plus the rail's own gap: how far apart two areas sit. */
+  const PITCH = 45;
 
   let newName = $state('');
   let newEl = $state<HTMLInputElement | null>(null);
   let renamevalue = $state('');
+
+  const reorder = new RowReorder<null>(PITCH);
+
+  const preview = $derived(
+    reorder.gesture === null
+      ? links.areas
+      : moveInArray(links.areas, reorder.gesture.from, reorder.gesture.to),
+  );
+
+  const previewIndex = $derived.by(() => {
+    const at = new Map<string, number>();
+    preview.forEach((a, i) => at.set(a.id, i));
+    return at;
+  });
+
+  const rowY = (id: string, i: number) => reorder.y(id, previewIndex.get(id) ?? i);
+
+  /**
+   * Start the gesture, having first put the rail back into even rows.
+   *
+   * Both modes that break the pitch are closed here rather than guarded
+   * against (D9). A pending delete is a confirmation nobody confirmed and its
+   * warning sits under its row; an open rename replaces a row with a field.
+   * Neither can be left to close itself, because `onDrag` calls
+   * `preventDefault()` on the pointerdown and that is exactly what stops the
+   * field from ever losing the focus.
+   */
+  function startReorder(e: PointerEvent, id: string, from: number) {
+    linksUi.cancelDeleteArea();
+    if (linksUi.renamingArea !== null) commitRename(linksUi.renamingArea);
+    reorder.start(e, {
+      key: id,
+      payload: null,
+      from,
+      originY: from * PITCH,
+      minY: 0,
+      maxY: (links.areas.length - 1) * PITCH,
+      target: (dy) => dropIndex(from, dy, links.areas.length, PITCH),
+      drop: (to) => links.moveArea(id, to),
+    });
+  }
 
   function create() {
     if (links.addArea(newName)) {
@@ -39,10 +89,10 @@
   });
 </script>
 
-<nav class="rail" aria-label="Áreas">
+<nav class="rail" class:reordering={reorder.active} aria-label="Áreas">
   <div class="label">ÁREAS</div>
 
-  {#each links.areas as area (area.id)}
+  {#each links.areas as area, i (area.id)}
     {@const active = area.id === links.activeAreaId}
     {#if linksUi.renamingArea === area.id}
       <input
@@ -56,7 +106,22 @@
         }}
       />
     {:else}
-      <div class="row" class:active>
+      <div
+        class="row"
+        class:active
+        class:held={reorder.held(area.id)}
+        style:transform="translateY({rowY(area.id, i) - i * PITCH}px)"
+      >
+        <!-- Not a tab stop: the ↑↓ below are the way in without a mouse, and a
+             grip in the tab order would only be a stop where nothing happens. -->
+        <button
+          type="button"
+          class="grip"
+          tabindex={-1}
+          title="mover el área"
+          aria-label="mover el área {area.name}"
+          onpointerdown={(e) => startReorder(e, area.id, i)}>⠿</button
+        >
         <button type="button" class="area" onclick={() => links.setActiveArea(area.id)}>
           <span class="name">{area.name}</span>
           <span class="count">{links.countIn(area.id)}</span>
@@ -164,6 +229,7 @@
     padding: 0 14px 8px;
   }
   .row {
+    position: relative;
     display: flex;
     align-items: center;
     border-radius: 8px;
@@ -173,6 +239,45 @@
     background: var(--tint-accent);
     border-color: var(--accent);
   }
+  /* The held row leaves the column; the rest slide under it. */
+  .rail.reordering .row {
+    transition: transform 120ms ease;
+  }
+  .rail.reordering .row.held {
+    transition: none;
+    z-index: 2;
+    background: var(--surface);
+    box-shadow: 0 6px 18px rgb(0 0 0 / 22%);
+  }
+  .grip {
+    position: absolute;
+    left: 2px;
+    top: 0;
+    bottom: 0;
+    width: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: none;
+    background: none;
+    color: var(--text-dim);
+    font-size: 11px;
+    line-height: 1;
+    opacity: 0;
+    cursor: grab;
+    touch-action: none;
+  }
+  .row:hover .grip,
+  .row.held .grip {
+    opacity: 1;
+  }
+  .grip:hover {
+    color: var(--text);
+  }
+  .grip:active {
+    cursor: grabbing;
+  }
   .area {
     flex: 1;
     min-width: 0;
@@ -180,7 +285,7 @@
     align-items: center;
     gap: 10px;
     height: 40px;
-    padding: 0 14px;
+    padding: 0 14px 0 20px;
     background: none;
     border: none;
     color: var(--text-mid);

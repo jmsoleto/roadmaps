@@ -68,9 +68,13 @@ export function getPhaseBlocks(rm: Roadmap): PhaseBlock[] {
  * name a position outside its phase, so nothing downstream has to detect an
  * invalid drop, refuse it, or animate a rejected row back. The pointer keeps
  * going and the row stops, which is how the limit gets taught.
+ *
+ * `pitch` is how far apart two rows sit. It defaults to the Gantt's row height,
+ * which is what the two views here have; the area rail of Links Hub is spaced
+ * differently and says so at the call.
  */
-export function dropIndex(from: number, dy: number, len: number): number {
-  return Math.max(0, Math.min(len - 1, from + Math.round(dy / ROW_H)));
+export function dropIndex(from: number, dy: number, len: number, pitch: number = ROW_H): number {
+  return Math.max(0, Math.min(len - 1, from + Math.round(dy / pitch)));
 }
 
 /**

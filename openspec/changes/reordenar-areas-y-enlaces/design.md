@@ -125,7 +125,9 @@ La rejilla no admite cromo nuevo: su valor es estar limpia. Pero no hace falta i
                                   └── la manija ES el dato que el gesto cambia
 ```
 
-Un cabo suelto: `numbered = index < NUMBERED` (`:38`), así que del décimo en adelante no hay insignia — y el décimo es precisamente el que más ganas hay de subir. La insignia pasa a existir siempre: el número hasta el noveno, un glifo de manija a partir de ahí. Es cromo nuevo donde antes no había nada, y se acepta porque enseña dónde acaba el alcance de las teclas, que hoy solo se descubre pulsando el `9` y viendo que el siguiente no responde.
+Un cabo suelto: `numbered = index < NUMBERED` (`:38`), así que del décimo en adelante no hay insignia — y el décimo es precisamente el que más ganas hay de subir. La insignia pasa a existir siempre: el número hasta el noveno, y un glifo de manija a partir de ahí que **solo aparece al pasar por encima**.
+
+Se consideró dejar ese glifo visible en reposo, con el argumento de que así enseñaría dónde acaba el alcance de las teclas. Se descarta: sería cromo permanente en la superficie que menos lo admite, a cambio de enseñar algo que se aprende igual pulsando el `9` y viendo que el siguiente no contesta. Agarrar es lo raro, y para lo raro basta una manija que se revela al acercarse.
 
 La insignia **no** se desvanece como la manija del carril: la leyenda promete los números y esconderlos rompería esa promesa. Lo que aparece al pasar por encima es la afordancia de agarre, no el número.
 
@@ -180,10 +182,12 @@ Y dos cosas que el gesto **no** hace: reordenar un área no la activa —hoy sol
 - **Una manija de veinte píxeles en una aplicación de dianas grandes.** Aceptado con los ojos abiertos: la diana grande es para abrir, que es lo frecuente, y la manija es para ordenar, que es lo raro. Si se invirtiera la frecuencia, la decisión de D4 sería otra.
 - **Un arrastre accidental reasigna teclas memorizadas y no hay deshacer.** La manija lo vuelve deliberado, y los números se repintan al soltar, que es toda la confirmación que esta aplicación da. Es el riesgo que queda vivo.
 - **La cuenta de columnas se congela al empezar el gesto.** Redimensionar la ventana en mitad de un arrastre desalinea la previsualización hasta soltar. Se acepta: el gesto dura un segundo.
-- **Del décimo enlace en adelante aparece un glifo que antes no estaba.** Es cromo en la superficie que menos lo quiere, y solo se justifica si de verdad se lee como «aquí se acaban las teclas». Es lo primero que hay que mirar en vivo.
+- **Del décimo enlace en adelante la manija solo se descubre al pasar por encima.** En reposo esas baldosas no dicen que se puedan mover, y quien no use el ratón no llegará nunca a rozarlas. Para eso están las flechas del enlace enfocado, que sí se alcanzan con el tabulador; la manija es el atajo del ratón y no la única puerta.
 
 ## Open Questions
 
 Ninguna abierta. Las tres decisiones de peso —el corte del núcleo (D1), la manija frente al umbral (D4) y quién es el elemento de la rejilla (D6)— quedan fijadas, y el alcance lo cerró la proposal.
 
-Lo que solo dirá el navegador: si el número se lee como agarradero sin explicárselo a nadie, si la previsualización con dobles y huecos se siente exacta, y si el efecto de foco de `LinkTile.svelte:43` sigue portándose ahora que el ancla tiene hermanos.
+Verificado en vivo al implementarlo: la previsualización con dobles y huecos cae donde dice, el recorte contra el carril deja el enlace en su área sin anunciar nada, el efecto de foco sigue portándose con el ancla ya rodeada de hermanos, y las tres superficies de Roadmaps —fases, items y roadmaps— reordenan igual que antes sobre el núcleo generalizado.
+
+Queda una sola cosa que no contesta el navegador sino el uso: si el número se lee como agarradero sin que nadie lo explique.

@@ -35,16 +35,36 @@ export interface KeyEventLike {
 }
 
 /**
- * Whether the event came from somewhere the user is writing.
+ * Whether whatever has the focus already answers this key itself.
  *
- * Typing a `4` into the name of a link must write a `4`, not open the fourth
- * dashboard. This is the check that makes the shortcuts safe to leave always
- * armed, which is what lets the legend stay on screen instead of behind a key.
+ * This is the check that makes the shortcuts safe to leave always armed, which
+ * is what lets the legend stay on screen instead of behind a key nobody
+ * presses. It used to ask a narrower question — "is the user writing?" — and
+ * that turned out to be the wrong one (D7). A focused button answers `Enter`,
+ * and a grid shortcut that swallows it does not merely shadow the button: the
+ * window handler calls `preventDefault()`, so the click the browser was about
+ * to synthesise never happens and the button becomes dead. That is how the
+ * ↑↓ of the area rail — the way this application is ordered without a mouse —
+ * stopped working the moment any link had the focus.
+ *
+ * The question is per key and not per element, and the difference is the whole
+ * feature. A field takes everything, because typing a `4` into the name of a
+ * link must write a `4`. A button or a link takes only the keys that activate
+ * it, so `1`–`9` and `E` keep working wherever the focus happens to be — which
+ * matters because opening a link leaves the focus on it, so "wherever the focus
+ * happens to be" is, most of the time, on a link.
  */
-export function isTyping(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  const tag = target.tagName;
-  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
+export function ownsKey(target: unknown, key: string): boolean {
+  if (target === null || typeof target !== 'object') return false;
+  const el = target as { tagName?: unknown; isContentEditable?: unknown };
+  const tag = typeof el.tagName === 'string' ? el.tagName.toUpperCase() : '';
+
+  // A field takes every key.
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable === true) {
+    return true;
+  }
+  // A control takes the keys that activate it, and nothing else.
+  return (key === 'Enter' || key === ' ') && (tag === 'BUTTON' || tag === 'A');
 }
 
 /**
@@ -54,8 +74,8 @@ export function isTyping(target: EventTarget | null): boolean {
  * stealing ⌘L or ctrl+1 to open a dashboard would be a worse trade than the
  * shortcut is worth.
  */
-export function actionFor(event: KeyEventLike, typing: boolean): KeyAction | null {
-  if (typing) return null;
+export function actionFor(event: KeyEventLike, owned: boolean): KeyAction | null {
+  if (owned) return null;
   if (event.ctrlKey || event.metaKey || event.altKey) return null;
 
   switch (event.key) {
