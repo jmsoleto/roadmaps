@@ -7,6 +7,11 @@
    * bar, so it follows the theme. Ten pairs rather than two free colour pickers,
    * because what is being chosen here is a look, not two coordinates — and the
    * ten come out of the theme's own palette, so they are right in every theme.
+   *
+   * Deleting lives here and not on the tile (D5). The grid is where you point
+   * and open; a destroying action a few pixels from the opening one is an
+   * accident waiting for the night someone is in a hurry. It costs a click to
+   * whoever meant to delete, and saves a disaster for whoever meant to open.
    */
   import { theme } from '../../theme/theme.svelte';
   import { links } from '../../links/store.svelte';
@@ -61,6 +66,26 @@
   );
   const preview = $derived(monogram.trim() === '' ? deriveMonogram(name) : monogram.trim());
   const pairs = $derived(Array.from({ length: 10 }, (_, i) => defaultPair(i)));
+
+  /**
+   * How many links sit behind this one — which is what deleting it costs (D6).
+   *
+   * Not its name: the header above already shows that, with its monogram and
+   * its colour, so confirming it would confirm what is being looked at. What
+   * cannot be seen is that removing the third one re-keys every link after it,
+   * and that is the very cost the spec guards when reordering — arriving here
+   * through a door no requirement was watching.
+   *
+   * Read from the stored order and not from the `position` field, which the
+   * user may have edited without saving: what is being described is what
+   * deleting does now.
+   */
+  const behind = $derived.by(() => {
+    if (existing === null) return 0;
+    const at = links.visibleLinks.findIndex((l) => l.id === existing.id);
+    return at < 0 ? 0 : links.visibleLinks.length - 1 - at;
+  });
+  const confirming = $derived(existing !== null && linksUi.deletingLink === existing.id);
 
   function save() {
     touched = true;
@@ -168,9 +193,33 @@
       <span>Doble de ancho — de los que miro primero</span>
     </label>
 
+    {#if confirming}
+      <!-- The count is the whole point of the warning, the same way it is in
+           the rail — except that there what is lost is links, and here it is
+           the keys of the links that stay. -->
+      <p class="warn">
+        {#if behind === 0}
+          Se eliminará el enlace. No hay ninguno detrás, así que no cambia ninguna tecla.
+        {:else if behind === 1}
+          Se eliminará el enlace, y el que va detrás cambia de tecla.
+        {:else}
+          Se eliminará el enlace, y los {behind} que van detrás cambian de tecla.
+        {/if}
+        <button type="button" class="link" onclick={() => linksUi.cancelDeleteLink()}
+          >no eliminar</button
+        >
+      </p>
+    {/if}
+
     <footer>
       {#if existing}
-        <button type="button" class="danger" onclick={remove}>eliminar</button>
+        {#if confirming}
+          <button type="button" class="danger" onclick={remove}>confirmar</button>
+        {:else}
+          <button type="button" class="danger" onclick={() => linksUi.askDeleteLink(existing.id)}
+            >eliminar</button
+          >
+        {/if}
       {/if}
       <span class="spacer"></span>
       <button type="button" onclick={() => linksUi.closeForm()}>cancelar</button>
@@ -289,6 +338,21 @@
     margin: 0;
     font-size: 12px;
     color: var(--danger);
+  }
+  .warn {
+    margin: 2px 0 0;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--text-mid);
+  }
+  .link {
+    background: none;
+    border: none;
+    padding: 0 0 0 6px;
+    color: var(--accent);
+    cursor: pointer;
+    font: inherit;
+    text-decoration: underline;
   }
   footer {
     display: flex;

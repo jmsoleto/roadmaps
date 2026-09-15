@@ -16,8 +16,16 @@
    * contain interactive descendants, and — worse than validity — a grip inside
    * it would have to keep every gesture from ending in a navigation, which
    * `preventDefault()` on a pointerdown does not reliably do. The `.cell`
-   * wrapper removes the problem instead of managing it: the grip and the two
-   * nudge buttons are the anchor's siblings, so no click on it is ever made.
+   * wrapper removes the problem instead of managing it: the grip, the pencil
+   * and the two nudge buttons are the anchor's siblings, so no click on it is
+   * ever made.
+   *
+   * What a tile can do sits in a bar along its bottom edge, and that edge is
+   * the one place it fits: the badge is 46px centred in 104, and the text
+   * block is centred too, so below ~75px the whole width is empty. The pencil
+   * goes at one end and the nudges at the other because they answer different
+   * questions — what this link is, and what number it holds — and three 12px
+   * glyphs in a row would have to be read one by one (D1).
    */
   import { theme } from '../../theme/theme.svelte';
   import { NUMBERED } from '../../links/keyboard';
@@ -134,11 +142,32 @@
     onpointerdown={ongrab}>{numbered ? slot + 1 : '⠿'}</button
   >
 
-  {#if focused}
-    <div class="nudge">
+  <!-- Shown on hover *or* focus, and the pair is the point (D2). With a mouse a
+       link's focus arrives by clicking it, and clicking it opens a tab — so
+       actions that appear only on focus are actions you can only discover
+       after opening the panel. That is how editing ended up reachable solely
+       through the `E` key, and how the nudges ended up costing a navigation.
+
+       Always in the DOM and hidden with CSS, with a roving `tabindex` instead
+       of an `{#if}` (D3). The `{#if focused}` this replaces did two jobs at
+       once: it hid them, and it kept them out of every other tile's tab order.
+       Mounting them all unconditionally would turn a nine-link area into
+       thirty-six tab stops, so only the focused tile's actions are stops —
+       which leaves the tab order exactly as it was. -->
+  <div class="actions" class:shown={focused}>
+    <button
+      type="button"
+      class="act"
+      tabindex={focused ? 0 : -1}
+      title="editar el enlace"
+      aria-label="editar {link.name}"
+      onclick={oncustomize}>✎ editar</button
+    >
+    <span class="nudge">
       <button
         type="button"
-        class="step"
+        class="act step"
+        tabindex={focused ? 0 : -1}
         title="mover a la izquierda"
         aria-label="mover {link.name} una posición antes"
         disabled={index === 0}
@@ -146,14 +175,15 @@
       >
       <button
         type="button"
-        class="step"
+        class="act step"
+        tabindex={focused ? 0 : -1}
         title="mover a la derecha"
         aria-label="mover {link.name} una posición después"
         disabled={index === count - 1}
         onclick={() => onmove(index + 1)}>▸</button
       >
-    </div>
-  {/if}
+    </span>
+  </div>
 </div>
 
 <style>
@@ -287,21 +317,65 @@
   .grip:active {
     cursor: grabbing;
   }
-  .nudge {
+  /* The bar spans the tile so the pencil and the nudges can sit at opposite
+     ends, and that span is exactly why it must not take the pointer itself
+     (D4): an invisible strip across the bottom would turn the edge of the tile
+     into a place where clicking opens nothing — a fault the middle of the tile
+     hides, because the middle keeps working. `visibility` and not opacity
+     alone, so the buttons are unclickable while the bar is away. */
+  .actions {
     position: absolute;
+    left: 12px;
     right: 10px;
     bottom: 8px;
     display: flex;
+    align-items: center;
+    justify-content: space-between;
+    pointer-events: none;
+    visibility: hidden;
+    opacity: 0;
+    transition:
+      opacity 90ms ease,
+      visibility 90ms;
+  }
+  .cell:hover .actions,
+  .actions.shown {
+    visibility: visible;
+    opacity: 1;
+  }
+  /* Nothing to offer while something is in flight: the tiles under the pointer
+     are sliding, and a button that slides away as it is aimed at is worse than
+     no button. Same reason the grip hides on the held tile. */
+  .cell.held .actions,
+  .cell.sliding .actions {
+    visibility: hidden;
+    opacity: 0;
+  }
+  .nudge {
+    display: flex;
     gap: 2px;
   }
-  .step {
+  .act {
+    pointer-events: auto;
     background: none;
     border: none;
     color: var(--text-dim);
     cursor: pointer;
     padding: 2px 5px;
-    font-size: 12px;
+    font-family: var(--mono, ui-monospace, monospace);
+    font-size: 11px;
     line-height: 1;
+  }
+  .act:hover:not(:disabled) {
+    color: var(--accent);
+  }
+  .act:focus-visible {
+    outline: var(--focus-ring, 2px) solid var(--accent);
+    outline-offset: 1px;
+    border-radius: 3px;
+  }
+  .step {
+    font-size: 12px;
   }
   .step:hover:not(:disabled) {
     color: var(--text);

@@ -152,6 +152,15 @@ describe('enlaces', () => {
     expect(store.visibleLinks.map((l) => l.id)).toEqual(['l3']);
   });
 
+  it('eliminar uno corre a los de detrás, y solo dentro de su área', () => {
+    // Lo que cuesta borrar no es el enlace: es que los de detrás cambian de
+    // tecla. `l1` era el 1, así que al irse `l2` pasa a ser el 1 y `l4` el 2.
+    store.deleteLink('l1');
+    expect(store.visibleLinks.map((l) => l.id)).toEqual(['l2', 'l4']);
+    store.setActiveArea('a2');
+    expect(store.visibleLinks.map((l) => l.id)).toEqual(['l3']);
+  });
+
   it('eliminar el enfocado suelta el foco', () => {
     store.setFocus('l2');
     store.deleteLink('l2');

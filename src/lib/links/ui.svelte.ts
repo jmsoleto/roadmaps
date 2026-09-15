@@ -22,6 +22,14 @@ class LinksUiStore {
    * focus, cannot be styled, and cannot be driven from a test.
    */
   deletingArea = $state<string | null>(null);
+  /**
+   * The link whose deletion is awaiting confirmation, inside its own form.
+   *
+   * Held by id rather than as a flag, so a form that ends up pointing at a
+   * different link cannot inherit a confirmation that was asked about another
+   * one.
+   */
+  deletingLink = $state<string | null>(null);
 
   get creatingLink(): boolean {
     return this.editing === 'new';
@@ -35,8 +43,25 @@ class LinksUiStore {
     this.editing = id;
   }
 
+  /**
+   * Close the form, and with it any pending deletion.
+   *
+   * The panel closes three ways — cancel, the scrim, and saving — and a
+   * confirmation that outlives the screen that asked for it is a confirmation
+   * nobody gave. The rail learnt the same lesson when `startReorder` had to
+   * cancel a pending area deletion before dragging.
+   */
   closeForm(): void {
     this.editing = null;
+    this.deletingLink = null;
+  }
+
+  askDeleteLink(id: string): void {
+    this.deletingLink = id;
+  }
+
+  cancelDeleteLink(): void {
+    this.deletingLink = null;
   }
 
   openCreateArea(): void {
@@ -65,6 +90,7 @@ class LinksUiStore {
     this.creatingArea = false;
     this.renamingArea = null;
     this.deletingArea = null;
+    this.deletingLink = null;
   }
 }
 
