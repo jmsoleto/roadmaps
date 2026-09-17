@@ -193,22 +193,33 @@
       />
     </div>
 
-    <button
-      class="req"
-      class:on={node.required}
-      title={node.required ? 'obligatorio' : 'opcional'}
-      aria-pressed={node.required}
-      onclick={() => {
-        node.required = !node.required;
-        apiContracts.touch();
-      }}>*</button
-    >
+    <!-- La abreviatura es lo que cabe en una fila que se repite por campo; la
+         palabra entera va en el nombre accesible, que es donde hace falta
+         cuando no se ve la pantalla. -->
+    <label class="req" title="obligatorio">
+      <input
+        type="checkbox"
+        checked={node.required}
+        aria-label="obligatorio"
+        onchange={(e) => {
+          node.required = e.currentTarget.checked;
+          apiContracts.touch();
+        }}
+      />
+      obl.
+    </label>
 
     <div class="tools">
       {#if container}
         <button class="icon" title="añadir campo" onclick={() => apiContracts.addChild(node.id)}
           >+</button
         >
+      {:else}
+        <!-- Solo un contenedor puede recibir un hijo, pero si la fila de una hoja
+             fuera un boton mas estrecha, la casilla de obligatorio se correria y
+             la columna dejaria de leerse como columna. El hueco lo reserva el
+             mismo boton apagado, que asi mide siempre lo que mide de verdad. -->
+        <span class="icon ghost" aria-hidden="true">+</span>
       {/if}
       <button class="icon" title="duplicar" onclick={() => apiContracts.duplicateNode(node.id)}
         >⧉</button
@@ -399,21 +410,23 @@
   .comment:hover {
     border-color: var(--line);
   }
+  /* Una casilla apagada sigue siendo una caja: el estado "opcional" se ve, que
+     es lo que el asterisco no hacia. El estado lo pinta la casilla y solo la
+     casilla — un segundo color sobre el texto seria decir lo mismo dos veces. */
   .req {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
     flex-shrink: 0;
-    width: 24px;
-    height: 24px;
-    background: none;
-    border: var(--line-width) solid transparent;
-    border-radius: 5px;
     color: var(--text-dim);
-    opacity: 0.4;
-    font-size: 14px;
+    font-size: 11px;
     cursor: pointer;
+    user-select: none;
   }
-  .req.on {
-    opacity: 1;
-    color: var(--accent);
+  .req input {
+    margin: 0;
+    accent-color: var(--accent);
+    cursor: pointer;
   }
   .tools {
     display: flex;
@@ -443,6 +456,9 @@
   .icon:disabled {
     opacity: 0.3;
     cursor: not-allowed;
+  }
+  .ghost {
+    visibility: hidden;
   }
   .icon.on {
     color: var(--accent);
