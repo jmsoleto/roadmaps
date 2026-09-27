@@ -348,3 +348,80 @@ describe('naming models', () => {
     expect(Object.values(names)).toEqual(['Paginacion', 'Paginacion2']);
   });
 });
+
+/**
+ * The contract is what gets agreed and delivered; the mock is a reading of it.
+ * If the reading leaked into the delivery, two people with the same agreement
+ * would export different documents depending on what mock they had configured.
+ */
+describe('the mock leaves no trace in the document', () => {
+  /** A contract with a model, a reference to it, and a body worth looking at. */
+  function base(): Contract {
+    const paginacion = newNode('paginacion', 'ref');
+    paginacion.ref = 'mod-pag';
+    const total = newNode('total', 'integer');
+    total.description = 'Total de elementos, no de páginas';
+    const paginacionNode = rootNode();
+    paginacionNode.children = [newNode('pagina', 'integer')];
+    return contract({
+      server: 'https://api.ejemplo.com',
+      models: [{ id: 'mod-pag', name: 'Paginacion', description: '', node: paginacionNode }],
+      endpoints: [withBody([paginacion, total])],
+    });
+  }
+
+  function configured() {
+    const c = base();
+    const endpoint = c.endpoints[0];
+    const response = endpoint.responses[0];
+    c.mock = {
+      seed: 987654,
+      size: 45,
+      pageSize: 20,
+      variants: 5,
+      sizes: { productos: 200 },
+      pagination: {
+        [response.id]: {
+          items: 'data',
+          page: 'meta.page',
+          size: 'meta.size',
+          total: 'meta.total',
+          hasNext: 'meta.hasNext',
+          next: '',
+          prev: '',
+          base: 0,
+          pageSize: 25,
+        },
+      },
+      relations: { [endpoint.id]: { parent: 'catalogo', foreignKey: 'catalogoId' } },
+      collections: { [endpoint.id]: 'productos' },
+      identities: { productos: 'sku' },
+    };
+    const total = response.body!.children.find((n) => n.key === 'total')!;
+    total.source = { sourceId: 's-numeros', recipe: null, draw: 'unique' };
+    const ref = response.body!.children.find((n) => n.key === 'paginacion')!;
+    ref.source = { sourceId: '', recipe: { kind: 'digits', length: 8 }, draw: 'random' };
+    return c;
+  }
+
+  it('emits byte for byte what it emitted before anything was configured', () => {
+    const before = JSON.stringify(buildOpenApi(base()), null, 2);
+    const after = JSON.stringify(buildOpenApi(configured()), null, 2);
+    expect(after).toBe(before);
+  });
+
+  it('mentions neither the seed, nor a source, nor a role, anywhere', () => {
+    const text = JSON.stringify(buildOpenApi(configured()));
+    for (const trace of [
+      '987654',
+      'sourceId',
+      's-numeros',
+      'hasNext',
+      'catalogoId',
+      'seed',
+      'draw',
+    ]) {
+      expect(text).not.toContain(trace);
+    }
+  });
+});

@@ -30,6 +30,37 @@ const BY_FORMAT: Record<string, string> = {
 export type JsonValue = string | number | boolean | null | JsonValue[] | { [k: string]: JsonValue };
 
 /**
+ * What a **mock** injects into this walk, and nothing else does.
+ *
+ * The whole point of the seam: a mock is not a second generator, it is *this*
+ * walk with another source of values. Writing a parallel walk would duplicate
+ * the recursion cut, the reference resolution and the format rules, and in two
+ * months the example and the mock would stop saying the same thing.
+ *
+ * Absent, everything below behaves exactly as it did before mocks existed —
+ * which is what `example.test.ts` pins without a single test having to change.
+ */
+export interface ExampleContext {
+  /** The dotted path of the node being visited, from the body's root. */
+  path: string;
+  /**
+   * What the mock wants at this node, or `null` to leave it to the deduction.
+   *
+   * Called for every scalar **and** for every `ref`: a reference to a model that
+   * is the shape of a collection is drawn from that collection rather than
+   * generated, and that decision belongs to the mock, not here.
+   */
+  resolve(node: ApiNode, path: string): JsonValue | null;
+  /** How many elements an array holds. The example's answer is always one. */
+  arrayLength(node: ApiNode, path: string): number;
+}
+
+/** The path of a child, from its parent's. The body's root has no path. */
+export function childPath(parent: string, key: string): string {
+  return parent === '' ? key : `${parent}.${key}`;
+}
+
+/**
  * One scalar's value: what was written, or what its type and format suggest.
  *
  * A number written as `39,95` is read as `39.95`: the field is typed on a
@@ -76,11 +107,21 @@ export type ModelCatalog = readonly ApiModel[];
 type Seen = ReadonlySet<string>;
 
 /** The children of a container, as an object. Fields without a key are skipped. */
-function objectOf(node: ApiNode, models: ModelCatalog, seen: Seen): { [k: string]: JsonValue } {
+function objectOf(
+  node: ApiNode,
+  models: ModelCatalog,
+  seen: Seen,
+  ctx?: ExampleContext,
+): { [k: string]: JsonValue } {
   const out: { [k: string]: JsonValue } = {};
   for (const child of node.children ?? []) {
     if (child.key.trim() === '') continue;
-    out[child.key] = exampleOf(child, models, seen);
+    out[child.key] = exampleOf(
+      child,
+      models,
+      seen,
+      ctx === undefined ? undefined : { ...ctx, path: childPath(ctx.path, child.key) },
+    );
   }
   return out;
 }
@@ -94,35 +135,73 @@ function objectOf(node: ApiNode, models: ModelCatalog, seen: Seen): { [k: string
  * illustrative; the **schema** keeps the recursion, because there it is the
  * contract.
  */
-function modelShape(modelId: string, models: ModelCatalog, seen: Seen): JsonValue {
+function modelShape(
+  modelId: string,
+  models: ModelCatalog,
+  seen: Seen,
+  ctx?: ExampleContext,
+): JsonValue {
   const model = models.find((m) => m.id === modelId);
   if (!model?.node) return { '⚠': 'referencia a un modelo que no existe' };
   if (seen.has(modelId)) return {};
   const next = new Set(seen);
   next.add(modelId);
-  return exampleOf(model.node, models, next);
+  // The path does not grow: a reference is not a level of the JSON, so the
+  // model's own fields hang off the referencing field's path. Otherwise the same
+  // field would have two coordinates depending on whether it arrived by
+  // reference, and the mock would stop being stable.
+  return exampleOf(model.node, models, next, ctx);
 }
 
 /** The JSON one node describes. */
-export function exampleOf(node: ApiNode, models: ModelCatalog, seen: Seen = new Set()): JsonValue {
-  if (node.type === 'ref') return modelShape(node.ref, models, seen);
-
-  if (node.type === 'object') return objectOf(node, models, seen);
-
-  if (node.type === 'array') {
-    if (node.itemType === 'object') return [objectOf(node, models, seen)];
-    if (node.itemType === 'ref') {
-      const shape = modelShape(node.itemRef, models, seen);
-      // An empty array is the honest cut for a list of itself: one element that
-      // is `{}` would read as "a category holds an empty category".
-      return seen.has(node.itemRef) ? [] : [shape];
-    }
-    // An array of scalars: one element, shaped like the element type. The node's
-    // own example describes that element, not the array.
-    return [scalarValue({ ...node, type: node.itemType })];
+export function exampleOf(
+  node: ApiNode,
+  models: ModelCatalog,
+  seen: Seen = new Set(),
+  ctx?: ExampleContext,
+): JsonValue {
+  if (node.type === 'ref') {
+    const chosen = ctx?.resolve(node, ctx.path) ?? null;
+    if (chosen !== null) return chosen;
+    return modelShape(node.ref, models, seen, ctx);
   }
 
-  return scalarValue(node);
+  if (node.type === 'object') return objectOf(node, models, seen, ctx);
+
+  if (node.type === 'array') {
+    // How many elements: one for the example, as many as the mock says otherwise.
+    // Each gets its own coordinate, so `tags[0]` and `tags[1]` differ and stay
+    // put when a sibling field is added.
+    const count = ctx === undefined ? 1 : Math.max(0, ctx.arrayLength(node, ctx.path));
+    const at = (i: number): ExampleContext | undefined =>
+      ctx === undefined ? undefined : { ...ctx, path: `${ctx.path}[${i}]` };
+
+    if (node.itemType === 'object') {
+      return Array.from({ length: count }, (_, i) => objectOf(node, models, seen, at(i)));
+    }
+    if (node.itemType === 'ref') {
+      // An empty array is the honest cut for a list of itself: one element that
+      // is `{}` would read as "a category holds an empty category".
+      if (seen.has(node.itemRef)) return [];
+      return Array.from({ length: count }, (_, i) => {
+        const inner = at(i);
+        const chosen = inner
+          ? inner.resolve({ ...node, type: 'ref', ref: node.itemRef }, inner.path)
+          : null;
+        return chosen ?? modelShape(node.itemRef, models, seen, inner);
+      });
+    }
+    // An array of scalars: the node's own example describes the element, not
+    // the array.
+    const item = { ...node, type: node.itemType };
+    return Array.from({ length: count }, (_, i) => {
+      const inner = at(i);
+      return (inner ? inner.resolve(item, inner.path) : null) ?? scalarValue(item);
+    });
+  }
+
+  const chosen = ctx?.resolve(node, ctx.path) ?? null;
+  return chosen !== null ? chosen : scalarValue(node);
 }
 
 /** How many fields a body describes, for the empty state to know it is empty. */

@@ -15,3 +15,6 @@ coverage/
 
 # PWA service worker generated in dev
 dev-dist/
+
+# Playwright MCP session artefacts
+.playwright-mcp/

@@ -20,6 +20,7 @@
 import { Connection, openDatabase, request, settled, type LoadOutcome } from '../store/indexeddb';
 import type { ApiData } from './model/types';
 import type { LibraryData } from './library/types';
+import type { ValueSourcesData } from './sources/types';
 
 export type { LoadOutcome };
 
@@ -33,8 +34,14 @@ export interface LibraryBackend {
   save(data: LibraryData): Promise<void>;
 }
 
+export interface ValueSourcesBackend {
+  load(): Promise<LoadOutcome<ValueSourcesData>>;
+  save(data: ValueSourcesData): Promise<void>;
+}
+
 const STORE = 'apiContracts';
 const LIBRARY_STORE = 'apiLibrary';
+const SOURCES_STORE = 'apiValueSources';
 /** Single record holding the whole document, as the other two stores do. */
 const DOC_KEY = 'doc:v1';
 
@@ -127,4 +134,48 @@ export class IndexedDbLibraryBackend implements LibraryBackend {
 
 export function createLibraryBackend(): LibraryBackend {
   return new IndexedDbLibraryBackend();
+}
+
+/**
+ * The mock's value sources, in the store `DB_VERSION` 4 created for them.
+ *
+ * Their own store and not a second record inside the library's, for the reason
+ * that separated the library from the contracts in the first place: a document
+ * rewritten whole on every save must not drag another one with it. Editing a
+ * saved model and editing the list of order states are two things somebody does
+ * at different moments, thinking about different problems.
+ */
+export class IndexedDbValueSourcesBackend implements ValueSourcesBackend {
+  private readonly conn: Connection;
+
+  constructor(open: () => Promise<IDBDatabase> = openDatabase) {
+    this.conn = new Connection(open);
+  }
+
+  async load(): Promise<LoadOutcome<ValueSourcesData>> {
+    let raw: unknown;
+    try {
+      const db = await this.conn.get();
+      const tx = db.transaction(SOURCES_STORE, 'readonly');
+      raw = await request(tx.objectStore(SOURCES_STORE).get(DOC_KEY));
+    } catch (e) {
+      // Not `empty`: arriving on an empty list over a store that actually holds
+      // somebody's vocabulary invites writing over it, and there is no server to
+      // recover from. `local-persistence` requires the distinction.
+      return { kind: 'unavailable', reason: e instanceof Error ? e.message : String(e) };
+    }
+    if (raw === undefined || raw === null) return { kind: 'empty' };
+    return { kind: 'loaded', data: raw as ValueSourcesData };
+  }
+
+  async save(data: ValueSourcesData): Promise<void> {
+    const db = await this.conn.get();
+    const tx = db.transaction(SOURCES_STORE, 'readwrite');
+    tx.objectStore(SOURCES_STORE).put(structuredClone(data), DOC_KEY);
+    await settled(tx, 'no se pudieron guardar las fuentes de valores');
+  }
+}
+
+export function createValueSourcesBackend(): ValueSourcesBackend {
+  return new IndexedDbValueSourcesBackend();
 }

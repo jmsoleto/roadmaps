@@ -239,3 +239,130 @@ describe('what the hub counts', () => {
     expect(issueCount(c)).toBe(1);
   });
 });
+
+/**
+ * What stops a mock meaning what it looks like it means. All **minor**: none
+ * makes the contract invalid or moves a byte of what gets handed over, but none
+ * is visible either until somebody stares at a mock wondering why.
+ */
+describe('what the mock has broken', () => {
+  function mocked(over: Partial<NonNullable<Contract['mock']>> = {}) {
+    const items = newNode('data', 'array');
+    items.itemType = 'object';
+    items.children = [newNode('id', 'integer'), newNode('nombre')];
+    const meta = newNode('meta', 'object');
+    meta.children = [newNode('page', 'integer'), newNode('total', 'integer')];
+    const endpoint = newEndpoint('GET', '/clientes');
+    endpoint.responses[0].body!.children = [items, meta];
+
+    const c = contract([endpoint]);
+    c.mock = {
+      seed: 1,
+      size: 45,
+      pageSize: 20,
+      variants: 3,
+      sizes: {},
+      pagination: {},
+      relations: {},
+      collections: {},
+      identities: {},
+      ...over,
+    };
+    return c;
+  }
+
+  const minor = (issues: ReturnType<typeof validateContract>) =>
+    issues.filter((i) => i.severity === 'sobra');
+
+  it('says nothing about a contract that never asked for a mock', () => {
+    const plain = mocked();
+    delete plain.mock;
+    expect(validateContract(plain, new Set())).toEqual([]);
+  });
+
+  it('names an assignment whose source is gone, and only as minor', () => {
+    const c = mocked();
+    const nombre = c.endpoints[0].responses[0].body!.children[0].children[1];
+    nombre.source = { sourceId: 's-borrada', recipe: null, draw: 'random' };
+
+    const issues = validateContract(c, new Set(['s-otra']));
+    const hit = issues.find((i) => i.what.includes('fuente de valores que ya no existe'));
+    expect(hit).toBeDefined();
+    expect(hit!.severity).toBe('sobra');
+    expect(hit!.where).toContain('nombre');
+    expect(issues.some((i) => i.severity === 'rompe')).toBe(false);
+  });
+
+  /** Absent, nobody looked — and saying so would be worse than saying nothing. */
+  it('says nothing about assignments when the sources were not handed over', () => {
+    const c = mocked();
+    c.endpoints[0].responses[0].body!.children[0].children[1].source = {
+      sourceId: 's-borrada',
+      recipe: null,
+      draw: 'random',
+    };
+    expect(validateContract(c).some((i) => i.what.includes('fuente de valores'))).toBe(false);
+  });
+
+  it('names a role corrected onto a field that has been deleted', () => {
+    const c = mocked();
+    const responseId = c.endpoints[0].responses[0].id;
+    c.mock!.pagination = {
+      [responseId]: {
+        items: 'data',
+        page: 'meta.page',
+        size: '',
+        total: 'meta.totalElements',
+        hasNext: '',
+        next: '',
+        prev: '',
+        base: 1,
+        pageSize: 0,
+      },
+    };
+    const hit = minor(validateContract(c, new Set())).find((i) =>
+      i.what.includes('meta.totalElements'),
+    );
+    expect(hit).toBeDefined();
+    expect(hit!.what).toContain('ya no está');
+  });
+
+  it('names a relation corrected onto a parent that is no collection', () => {
+    const c = mocked();
+    c.mock!.relations = { [c.endpoints[0].id]: { parent: 'almacenes', foreignKey: 'almacenId' } };
+    const hit = minor(validateContract(c, new Set())).find((i) => i.what.includes('almacenes'));
+    expect(hit).toBeDefined();
+    expect(hit!.what).toContain('ya no es ninguna colección');
+  });
+
+  it('names a source on a field the arithmetic governs', () => {
+    const c = mocked();
+    const meta = c.endpoints[0].responses[0].body!.children[1];
+    meta.children[1].source = { sourceId: 's1', recipe: null, draw: 'random' };
+    const hit = minor(validateContract(c, new Set(['s1']))).find((i) =>
+      i.what.includes('aritmética'),
+    );
+    expect(hit).toBeDefined();
+    expect(hit!.where).toContain('meta.total');
+  });
+
+  it('names a source on the identity field, which the dataset governs', () => {
+    const c = mocked();
+    const id = c.endpoints[0].responses[0].body!.children[0].children[0];
+    id.source = { sourceId: 's1', recipe: null, draw: 'random' };
+    const hit = minor(validateContract(c, new Set(['s1']))).find((i) =>
+      i.what.includes('la identidad la gobierna el dataset'),
+    );
+    expect(hit).toBeDefined();
+  });
+
+  it('never lets any of them count against the hub', () => {
+    const c = mocked();
+    c.endpoints[0].responses[0].body!.children[0].children[0].source = {
+      sourceId: 's-borrada',
+      recipe: null,
+      draw: 'random',
+    };
+    expect(issueCount(c)).toBe(0);
+  });
+});

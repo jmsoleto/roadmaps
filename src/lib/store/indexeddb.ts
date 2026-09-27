@@ -21,8 +21,15 @@ const DB_NAME = 'tech-lead-hub';
  * v2 added the attachment store. v3 added API Hub's contracts and its model
  * library — the library empty and unused, because creating it later would mean
  * a v4 upgrade over contracts the user had already written.
+ *
+ * v4 is that upgrade, and it arrives for the mock's value sources. The lesson v3
+ * learned was to create a store before needing it; this one could not have been
+ * foreseen, and the bump is cheap for the reason the list below gives: it is
+ * **additive**, so no existing store and no existing record is touched. What it
+ * does cost is the tab somebody left open on v3, which gets the «another tab has
+ * an earlier version» message rather than silence. That is a notice, not a loss.
  */
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 
 /**
  * The object stores, created on first run or version bump.
@@ -32,7 +39,13 @@ const DB_VERSION = 3;
  * schedule. It creates only what is missing, which is what makes every bump
  * additive and leaves the other applications' data untouched.
  */
-const STORES = ['decisions', 'attachments', 'apiContracts', 'apiLibrary'] as const;
+const STORES = [
+  'decisions',
+  'attachments',
+  'apiContracts',
+  'apiLibrary',
+  'apiValueSources',
+] as const;
 
 /**
  * The three ways a load can end.

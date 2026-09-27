@@ -1,7 +1,11 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import 'fake-indexeddb/auto';
 import { IDBFactory } from 'fake-indexeddb';
-import { IndexedDbApiBackend, IndexedDbLibraryBackend } from './storage';
+import {
+  IndexedDbApiBackend,
+  IndexedDbLibraryBackend,
+  IndexedDbValueSourcesBackend,
+} from './storage';
 import { IndexedDbBackend } from '../decisions/storage';
 import { openDatabase, request } from '../store/indexeddb';
 import { emptyDecisionsData } from '../decisions/model/types';
@@ -90,6 +94,7 @@ describe('the shared database', () => {
     expect([...db.objectStoreNames].sort()).toEqual([
       'apiContracts',
       'apiLibrary',
+      'apiValueSources',
       'attachments',
       'decisions',
     ]);
@@ -166,6 +171,73 @@ describe('the library store', () => {
 
   it('reports a store that will not open as unavailable, not as empty', async () => {
     const backend = new IndexedDbLibraryBackend(() => Promise.reject(new Error('cerrada')));
+    expect((await backend.load()).kind).toBe('unavailable');
+  });
+});
+
+describe('the value sources store', () => {
+  const source = (name: string) => ({
+    id: `src-${name}`,
+    name,
+    description: '',
+    updated: '2026-09-25T00:00:00Z',
+    kind: 'list' as const,
+    values: ['alta', 'baja'],
+    recipe: null,
+  });
+
+  it('reports no sources on a first run', async () => {
+    expect(await new IndexedDbValueSourcesBackend().load()).toEqual({ kind: 'empty' });
+  });
+
+  it('round-trips the sources', async () => {
+    const backend = new IndexedDbValueSourcesBackend();
+    await backend.save({ sources: [source('estados'), source('sucursales')] });
+
+    const out = await backend.load();
+    if (out.kind !== 'loaded') throw new Error('expected the sources');
+    expect(out.data.sources.map((s) => s.name)).toEqual(['estados', 'sucursales']);
+  });
+
+  /** The reason it got its own object store rather than a corner of another. */
+  it('does not touch the contracts or the library when it is written', async () => {
+    const contracts = new IndexedDbApiBackend();
+    await contracts.save(doc(2));
+    const library = new IndexedDbLibraryBackend();
+    await library.save({
+      entries: [
+        {
+          id: 'lib-1',
+          name: 'Paginacion',
+          description: '',
+          updated: '2026-09-01T00:00:00Z',
+          models: [{ id: 'mod-1', name: 'Paginacion', description: '', node: rootNode() }],
+        },
+      ],
+    });
+
+    await new IndexedDbValueSourcesBackend().save({ sources: [source('estados')] });
+
+    const c = await contracts.load();
+    const l = await library.load();
+    if (c.kind !== 'loaded' || l.kind !== 'loaded') throw new Error('expected both');
+    expect(c.data.contracts).toHaveLength(2);
+    expect(l.data.entries).toHaveLength(1);
+  });
+
+  it('does not lose the sources when a contract is written', async () => {
+    const sources = new IndexedDbValueSourcesBackend();
+    await sources.save({ sources: [source('estados')] });
+
+    await new IndexedDbApiBackend().save(doc(1));
+
+    const out = await sources.load();
+    if (out.kind !== 'loaded') throw new Error('expected the sources');
+    expect(out.data.sources).toHaveLength(1);
+  });
+
+  it('reports a store that will not open as unavailable, not as empty', async () => {
+    const backend = new IndexedDbValueSourcesBackend(() => Promise.reject(new Error('cerrada')));
     expect((await backend.load()).kind).toBe('unavailable');
   });
 });

@@ -124,6 +124,76 @@ class ApiUiStore {
     this.exampleOpen = !this.exampleOpen;
   }
 
+  /**
+   * Whether the panel is showing the example or the mock.
+   *
+   * `example` by default, and that is not a detail: the switch is **the promise
+   * that nothing already written changed meaning, made visible**. Somebody who
+   * wants to check it flips to `example` and sees the JSON they always saw.
+   *
+   * Not persisted, same as `exampleOpen` and for the same reason: it is a
+   * preference about the screen, not about the contract.
+   */
+  panelMode = $state<'example' | 'mock'>('example');
+
+  setPanelMode(mode: 'example' | 'mock'): void {
+    this.panelMode = mode;
+  }
+
+  /**
+   * Which page or variant each block is showing, by block id.
+   *
+   * Kept per block rather than one number for the panel: stepping to the third
+   * page of a response and then looking at the request body must not move the
+   * response back to the first. Keyed by the block's id, so it also survives
+   * leaving the endpoint and coming back.
+   */
+  private steps = $state<Record<string, number>>({});
+
+  step(blockId: string): number {
+    return this.steps[blockId] ?? 0;
+  }
+
+  /** Move within a block, clamped: there is no page before the first. */
+  setStep(blockId: string, index: number, count: number): void {
+    const last = Math.max(0, count - 1);
+    this.steps = { ...this.steps, [blockId]: Math.min(last, Math.max(0, index)) };
+  }
+
+  /**
+   * Which parent a nested endpoint is showing, by endpoint id.
+   *
+   * `undefined` means «the one the path parameter's example names», which is what
+   * the contract already says. Stepping overrides it for as long as the session
+   * lasts, and never writes anything into the contract.
+   */
+  private parents = $state<Record<string, number>>({});
+
+  parentStep(endpointId: string): number | null {
+    return this.parents[endpointId] ?? null;
+  }
+
+  setParentStep(endpointId: string, index: number, count: number): void {
+    const last = Math.max(0, count - 1);
+    this.parents = { ...this.parents, [endpointId]: Math.min(last, Math.max(0, index)) };
+  }
+
+  /** Whether a block has been stepped, so a default can apply while it has not. */
+  hasStep(blockId: string): boolean {
+    return this.steps[blockId] !== undefined;
+  }
+
+  /** Whether the value sources dialog is up. */
+  sources = $state<boolean>(false);
+
+  openSources(): void {
+    this.sources = true;
+  }
+
+  closeSources(): void {
+    this.sources = false;
+  }
+
   /** Whether the library is up. */
   library = $state<boolean>(false);
 

@@ -9,6 +9,7 @@ import { usage } from './lib/hub/usage.svelte';
 import { decisions } from './lib/decisions/store.svelte';
 import { apiContracts } from './lib/api/store.svelte';
 import { apiLibrary } from './lib/api/library.svelte';
+import { valueSources } from './lib/api/sources/store.svelte';
 import { links } from './lib/links/store.svelte';
 
 // Load persisted state from the browser's local storage before the first
@@ -33,6 +34,7 @@ async function bootstrap() {
   void decisions.init();
   void apiContracts.init();
   void apiLibrary.init();
+  void valueSources.init();
 
   // Register what each application does when it is entered, then adopt the
   // location in the URL. The order matters: a session restored straight into

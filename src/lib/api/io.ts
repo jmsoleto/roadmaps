@@ -106,6 +106,9 @@ export function parseContractImport(text: string, fallbackSlot = 0): Contract {
   if (doc.kind === 'tech-lead-hub/api-library') {
     throw new ImportError('Esto es una biblioteca de modelos, no un contrato.');
   }
+  if (doc.kind === 'tech-lead-hub/api-value-sources') {
+    throw new ImportError('Esto son fuentes de valores, no un contrato.');
+  }
   if (doc.kind !== KIND) {
     throw new ImportError('El archivo no es un documento de contratos de API.');
   }

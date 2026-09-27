@@ -6,7 +6,41 @@
  */
 
 import { uid } from '../../util/id';
-import type { ApiEndpoint, ApiNode, ApiParam, ApiResponse, HttpMethod, NodeType } from './types';
+import type {
+  ApiEndpoint,
+  ApiNode,
+  ApiParam,
+  ApiResponse,
+  HttpMethod,
+  MockSettings,
+  NodeType,
+} from './types';
+
+/**
+ * What a mock is when somebody asks for one for the first time.
+ *
+ * 45 over 20 is deliberate: it is the three-page case with a partial last page —
+ * 20, 20 and 5 — which is exactly what this feature exists to demonstrate. A
+ * default where the first page is the only page would hide the thing worth
+ * showing. The seed is the caller's, because it is the one value that is random.
+ */
+export function newMockSettings(seed: number): MockSettings {
+  return {
+    seed,
+    size: MOCK_SIZE,
+    pageSize: MOCK_PAGE_SIZE,
+    variants: MOCK_VARIANTS,
+    sizes: {},
+    pagination: {},
+    relations: {},
+    collections: {},
+    identities: {},
+  };
+}
+
+export const MOCK_SIZE = 45;
+export const MOCK_PAGE_SIZE = 20;
+export const MOCK_VARIANTS = 3;
 
 export function newNode(key = 'campo', type: NodeType = 'string'): ApiNode {
   return {

@@ -166,3 +166,100 @@ describe('rejecting', () => {
     );
   });
 });
+
+describe('a contract with a mock travels whole', () => {
+  /** A contract with every kind of mock setting somebody could have touched. */
+  function withMock(): Contract {
+    const base = parseContractImport(exportContract(wired()));
+    const endpoint = base.endpoints[0];
+    const response = endpoint.responses[0];
+    base.mock = {
+      seed: 4821,
+      size: 45,
+      pageSize: 20,
+      variants: 3,
+      sizes: { clientes: 90 },
+      pagination: {
+        [response.id]: {
+          items: 'data',
+          page: 'meta.page',
+          size: 'meta.size',
+          total: 'meta.totalElements',
+          hasNext: '',
+          next: '',
+          prev: '',
+          base: 0,
+          pageSize: 25,
+        },
+      },
+      relations: { [endpoint.id]: { parent: 'clientes', foreignKey: 'clienteId' } },
+      collections: { [endpoint.id]: 'clientes' },
+      identities: { clientes: 'clienteId' },
+    };
+    if (base.models[0]?.node.children[0]) {
+      base.models[0].node.children[0].source = {
+        sourceId: 's-estados',
+        recipe: null,
+        draw: 'cycle',
+      };
+    }
+    return base;
+  }
+
+  it('carries the settings and the assignments', () => {
+    const back = parseContractImport(exportContract(withMock()));
+    expect(back.mock?.seed).toBe(4821);
+    expect(back.mock?.sizes).toEqual({ clientes: 90 });
+    expect(back.mock?.identities).toEqual({ clientes: 'clienteId' });
+    expect(back.models[0].node.children[0].source).toEqual({
+      sourceId: 's-estados',
+      recipe: null,
+      draw: 'cycle',
+    });
+  });
+
+  /**
+   * Identity is reissued on the way in, and the corrections are keyed by it. If
+   * they were not remapped, importing would silently throw away every envelope
+   * somebody had corrected and the mock would quietly go back to guessing.
+   */
+  it('keeps the corrections reachable under the new identity', () => {
+    const back = parseContractImport(exportContract(withMock()));
+    const endpoint = back.endpoints[0];
+    const response = endpoint.responses[0];
+
+    expect(Object.keys(back.mock!.pagination)).toEqual([response.id]);
+    expect(back.mock!.pagination[response.id].total).toBe('meta.totalElements');
+    expect(back.mock!.pagination[response.id].base).toBe(0);
+    expect(back.mock!.relations[endpoint.id]).toEqual({
+      parent: 'clientes',
+      foreignKey: 'clienteId',
+    });
+    expect(back.mock!.collections[endpoint.id]).toBe('clientes');
+  });
+
+  it('does not grow with unreachable entries on every round trip', () => {
+    const once = parseContractImport(exportContract(withMock()));
+    const twice = parseContractImport(exportContract(once));
+    expect(Object.keys(twice.mock!.pagination)).toHaveLength(1);
+    expect(Object.keys(twice.mock!.relations)).toHaveLength(1);
+  });
+
+  /** A contract written before any of this existed must come in untouched. */
+  it('lets a contract with no mock in without inventing one', () => {
+    const plain = wired();
+    const back = parseContractImport(exportContract(plain));
+    expect(back.mock).toBeUndefined();
+  });
+
+  /**
+   * D16: the document stays self-contained for what it describes. The values of
+   * a source are not the contract, so an assignment arriving without them is
+   * **kept** — the file of sources may come later, and erasing it would lose
+   * work over the order two files happened to be opened in.
+   */
+  it('keeps an assignment whose source is nowhere to be found', () => {
+    const back = parseContractImport(exportContract(withMock()));
+    expect(back.models[0].node.children[0].source?.sourceId).toBe('s-estados');
+  });
+});

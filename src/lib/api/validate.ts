@@ -19,7 +19,9 @@
 
 import { isContainer, walk } from './model/tree';
 import { contractBodies, pascal, usesOf } from './model/models';
-import type { Contract } from './model/types';
+import { nodeAtPath, planCollections, shapeChildrenOf } from './mock/collections';
+import { rolesOf } from './mock/pagination';
+import type { Contract, PagingOverride } from './model/types';
 
 /**
  * How much an issue costs if it is ignored (D6).
@@ -39,7 +41,11 @@ export interface Issue {
   severity: Severity;
 }
 
-export function validateContract(contract: Contract): Issue[] {
+export function validateContract(
+  contract: Contract,
+  /** The ids of the value sources that exist, when the caller knows them. */
+  knownSources?: ReadonlySet<string>,
+): Issue[] {
   const issues: Issue[] = [];
 
   for (const endpoint of contract.endpoints) {
@@ -149,6 +155,127 @@ export function validateContract(contract: Contract): Issue[] {
         where: `modelo ${model.name}`,
         what: 'no lo usa ningún campo',
         severity: 'sobra',
+      });
+    }
+  }
+
+  issues.push(...mockIssues(contract, knownSources));
+
+  return issues;
+}
+
+/** The roles a role map names, with the key each one is called by. */
+const ROLE_NAMES: { key: keyof PagingOverride; label: string }[] = [
+  { key: 'items', label: 'los elementos' },
+  { key: 'page', label: 'la página' },
+  { key: 'size', label: 'el tamaño' },
+  { key: 'total', label: 'el total' },
+  { key: 'hasNext', label: 'si hay siguiente' },
+  { key: 'next', label: 'el enlace siguiente' },
+  { key: 'prev', label: 'el enlace anterior' },
+];
+
+/**
+ * What stops a mock from meaning what it looks like it means.
+ *
+ * All **minor**, and that is the point: none of these makes the contract invalid
+ * or changes a byte of the document that gets handed over. But none of them is
+ * visible either, until somebody looks at a mock and cannot work out why it does
+ * not say what they expected — which is the same reason a broken reference is
+ * named before anybody exports.
+ *
+ * `knownSources` is optional so the hub's landing can count issues without
+ * opening the sources store. Absent, the assignments are simply not checked:
+ * saying «this source does not exist» because nobody looked would be worse than
+ * saying nothing.
+ */
+function mockIssues(contract: Contract, knownSources?: ReadonlySet<string>): Issue[] {
+  const issues: Issue[] = [];
+  const settings = contract.mock;
+  if (settings === undefined) return issues;
+
+  const plan = planCollections(contract, settings);
+
+  // A relation corrected onto a parent that is not a collection any more.
+  for (const [endpointId, relation] of Object.entries(settings.relations)) {
+    const endpoint = contract.endpoints.find((e) => e.id === endpointId);
+    if (endpoint === undefined) continue;
+    if (relation.parent !== '' && !plan.collections.has(relation.parent)) {
+      issues.push({
+        where: `${endpoint.method} ${endpoint.path}`,
+        what: `el mock filtra por «${relation.parent}», que ya no es ninguna colección`,
+        severity: 'sobra',
+      });
+    }
+  }
+
+  for (const endpoint of contract.endpoints) {
+    for (const response of endpoint.responses ?? []) {
+      const where = `${endpoint.method} ${endpoint.path} · ${response.code}`;
+      const denied = settings.pagination[response.id];
+      const roles = rolesOf(response.body ?? null, denied);
+
+      // A role corrected onto a field that has since been deleted.
+      if (denied !== undefined && response.body !== null) {
+        for (const role of ROLE_NAMES) {
+          const path = denied[role.key] as string;
+          if (path !== '' && nodeAtPath(response.body, path) === null) {
+            issues.push({
+              where,
+              what: `el mock tiene ${role.label} en «${path}», un campo que ya no está`,
+              severity: 'sobra',
+            });
+          }
+        }
+      }
+
+      // A source on a field the arithmetic governs: the numbers win, and saying
+      // so beats leaving somebody wondering why their list is ignored.
+      if (response.body !== null) {
+        for (const role of ROLE_NAMES) {
+          const path = roles[role.key] as string;
+          if (path === '') continue;
+          const node = nodeAtPath(response.body, path);
+          if (node?.source !== undefined) {
+            issues.push({
+              where: `${where} · ${path}`,
+              what: `tiene una fuente asignada, pero ${role.label} lo decide la aritmética del paginado`,
+              severity: 'sobra',
+            });
+          }
+        }
+      }
+    }
+  }
+
+  // A source on the identity field: the dataset governs it (D3).
+  for (const collection of plan.collections.values()) {
+    if (collection.identity === '') continue;
+    const field = shapeChildrenOf(collection, contract.models).find(
+      (c) => c.key === collection.identity,
+    );
+    if (field?.source !== undefined) {
+      issues.push({
+        where: `colección ${collection.key} · ${collection.identity}`,
+        what: 'tiene una fuente asignada, pero la identidad la gobierna el dataset',
+        severity: 'sobra',
+      });
+    }
+  }
+
+  // An assignment naming a source that is not here. Kept on purpose — the file
+  // of sources may arrive later — so it is named rather than repaired.
+  if (knownSources !== undefined) {
+    for (const { where, root } of contractBodies(contract)) {
+      walk(root, (child) => {
+        const id = child.source?.sourceId ?? '';
+        if (id !== '' && !knownSources.has(id)) {
+          issues.push({
+            where: `${where} · ${child.key === '' ? 'el cuerpo' : child.key}`,
+            what: 'apunta a una fuente de valores que ya no existe',
+            severity: 'sobra',
+          });
+        }
       });
     }
   }

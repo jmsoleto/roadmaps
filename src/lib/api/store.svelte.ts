@@ -31,16 +31,29 @@ import {
   type ContractView,
   type HttpMethod,
   type ItemType,
+  type MockSettings,
   type NodeType,
+  type PagingOverride,
+  type RelationOverride,
 } from './model/types';
 import {
   METHODS_WITH_BODY,
   newEndpoint,
+  newMockSettings,
   newNode,
   newParam,
   newResponse,
   rootNode,
 } from './model/factories';
+import { newSeed } from './mock/prng';
+
+/**
+ * What an unconfigured contract's mock reads as.
+ *
+ * Frozen and shared, because it is only ever read: the moment somebody changes
+ * something, `setMock` makes the contract one of its own with a real seed.
+ */
+const DEFAULT_MOCK: MockSettings = Object.freeze(newMockSettings(1));
 import { applyItemType, applyType } from './model/coerce';
 import {
   cloneWithNewIds,
@@ -120,6 +133,82 @@ export class ApiContractsStore {
 
   contract(id: string): Contract | null {
     return this.data.contracts.find((c) => c.id === id) ?? null;
+  }
+
+  // ---- the mock's settings ----
+
+  /**
+   * The open contract's mock settings, **without creating them**.
+   *
+   * Reading must not write. A getter that filled in a seed on first look would
+   * give every contract in the document a mock the moment somebody opened the
+   * panel, and would force a save doing it — which is exactly the promise this
+   * feature makes not to break. So an unconfigured contract reads as the
+   * defaults and stays unconfigured on disk until somebody changes something.
+   */
+  get mock(): MockSettings {
+    return this.open?.mock ?? DEFAULT_MOCK;
+  }
+
+  /** Whether this contract has settings of its own, or is reading the defaults. */
+  get hasMock(): boolean {
+    return this.open?.mock !== undefined;
+  }
+
+  /**
+   * Change the mock's settings, creating them on the first change.
+   *
+   * The seed is issued here and not in the factory's defaults, because it is the
+   * one value that is genuinely random and must not differ between two reads of
+   * the same unconfigured contract.
+   */
+  setMock(patch: Partial<MockSettings>): void {
+    const contract = this.open;
+    if (contract === null) return;
+    contract.mock = { ...(contract.mock ?? newMockSettings(newSeed())), ...patch };
+    this.touch();
+  }
+
+  /** Another mock: the one gesture where unpredictability is the point. */
+  reseed(): void {
+    this.setMock({ seed: newSeed() });
+  }
+
+  /**
+   * Deny what was inferred about a response's envelope.
+   *
+   * Stored whole, and only once somebody has touched it: a contract nobody has
+   * corrected keeps nothing at all, which is what lets an old one work without
+   * being opened.
+   */
+  denyPaging(responseId: string, roles: PagingOverride): void {
+    this.setMock({ pagination: { ...this.mock.pagination, [responseId]: { ...roles } } });
+  }
+
+  /** Take back a denial, and let the inference speak again. */
+  undenyPaging(responseId: string): void {
+    const rest = { ...this.mock.pagination };
+    delete rest[responseId];
+    this.setMock({ pagination: rest });
+  }
+
+  /** Deny what was inferred about an endpoint's parent. */
+  denyRelation(endpointId: string, relation: RelationOverride): void {
+    this.setMock({ relations: { ...this.mock.relations, [endpointId]: { ...relation } } });
+  }
+
+  undenyRelation(endpointId: string): void {
+    const rest = { ...this.mock.relations };
+    delete rest[endpointId];
+    this.setMock({ relations: rest });
+  }
+
+  /** Deny the size of one collection, or take the denial back with `null`. */
+  denySize(key: string, size: number | null): void {
+    const rest = { ...this.mock.sizes };
+    if (size === null) delete rest[key];
+    else rest[key] = Math.max(0, Math.trunc(size));
+    this.setMock({ sizes: rest });
   }
 
   // ---- contracts ----

@@ -20,8 +20,12 @@
   import { exampleOf } from '../../api/example';
   import { downloadText } from '../../hub/download';
   import { exportContract, exportFilename } from '../../api/io';
+  import { valueSources } from '../../api/sources/store.svelte';
+  import { panelWorld } from '../../api/mock/panel';
+  import { viewOf } from '../../api/mock/view';
+  import { stepLabel } from '../../api/mock/panel';
 
-  type TabId = 'yaml' | 'json' | 'examples' | 'brief' | 'backup';
+  type TabId = 'yaml' | 'json' | 'examples' | 'mock' | 'brief' | 'backup';
 
   let panelEl = $state<HTMLDivElement | null>(null);
   let tab = $state<TabId>('yaml');
@@ -29,7 +33,11 @@
   let opener: HTMLElement | null = null;
 
   const contract = $derived(apiContracts.open);
-  const issues = $derived(contract ? validateContract(contract) : []);
+  // The sources are handed over so the validator can say which assignments name
+  // one that is gone. Without them it stays quiet rather than guessing.
+  const issues = $derived(
+    contract ? validateContract(contract, new Set(valueSources.sources.map((s) => s.id))) : [],
+  );
 
   /** A file name that survives being saved: no accents, no spaces. */
   const slug = $derived(
@@ -60,6 +68,42 @@
     return parts.join('\n\n') || '(este endpoint no tiene ningún cuerpo)';
   }
 
+  /**
+   * The mock of the open endpoint, every body and every page of it.
+   *
+   * What the panel shows has to be able to leave whole: the panel is for
+   * agreeing it in front of somebody, and the file is for handing it to whoever
+   * implements it or pasting it to an agent. Each body says what it is, and
+   * which page or variant it is, because a file of eight JSONs with nothing
+   * between them is not usable by anybody.
+   */
+  function mockText(): string {
+    const endpoint = apiContracts.openEndpoint;
+    if (!contract) return '';
+    if (!endpoint) return '(elige un endpoint para ver su mock)';
+
+    const world = panelWorld(contract, apiContracts.mock, (id) => valueSources.find(id));
+    const parts: string[] = [];
+    for (const response of endpoint.responses) {
+      if (!response.body) continue;
+      const view = viewOf(world, endpoint, response);
+      const count = view.bodies.length;
+      view.bodies.forEach((body, i) => {
+        const step = stepLabel(view.kind, i, count);
+        const head = [
+          `respuesta ${response.code}`,
+          view.note === '' ? '' : ` · ${view.note}`,
+          step === '' ? '' : ` · ${step}`,
+        ].join('');
+        parts.push(
+          `// ${endpoint.method} ${endpoint.path} · ${head}\n${JSON.stringify(body, null, 2)}`,
+        );
+      });
+    }
+    if (parts.length === 0) return '(este endpoint no tiene ningún cuerpo de respuesta)';
+    return `// semilla ${apiContracts.mock.seed}\n\n${parts.join('\n\n')}`;
+  }
+
   const TABS: { id: TabId; label: string; file: string; text: () => string }[] = [
     {
       id: 'yaml',
@@ -74,6 +118,7 @@
       text: () => (contract ? JSON.stringify(buildOpenApi(contract), null, 2) : ''),
     },
     { id: 'examples', label: 'Ejemplos JSON', file: 'ejemplos.json', text: examplesText },
+    { id: 'mock', label: 'Mock', file: 'mock.json', text: mockText },
     {
       id: 'brief',
       label: 'Briefing',

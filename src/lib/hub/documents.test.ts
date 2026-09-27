@@ -104,3 +104,22 @@ describe('the library, which is also API Hub’s', () => {
     );
   });
 });
+
+describe('the value sources, which are API Hub’s third document', () => {
+  it('recognises them as API Hub’s', () => {
+    expect(ownerOf({ kind: 'tech-lead-hub/api-value-sources', sources: [] })).toBe('api');
+  });
+
+  /** All three documents are API Hub's, so none is foreign to it. */
+  it('says nothing to API Hub about any of its three', () => {
+    expect(foreignDocumentMessage({ kind: 'tech-lead-hub/api-value-sources' }, 'api')).toBeNull();
+  });
+
+  it('names API Hub when they land in another application', () => {
+    for (const app of ['roadmaps', 'decisions', 'links']) {
+      expect(foreignDocumentMessage({ kind: 'tech-lead-hub/api-value-sources' }, app)).toContain(
+        'API Hub',
+      );
+    }
+  });
+});

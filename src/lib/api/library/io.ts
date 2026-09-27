@@ -84,6 +84,9 @@ export function parseLibraryImport(text: string): LibraryEntry[] {
   if (doc.kind === 'tech-lead-hub/api-contract') {
     throw new ImportError('Esto es un contrato, no una biblioteca de modelos.');
   }
+  if (doc.kind === 'tech-lead-hub/api-value-sources') {
+    throw new ImportError('Esto son fuentes de valores, no una biblioteca de modelos.');
+  }
   if (doc.kind !== KIND) {
     throw new ImportError('El archivo no es una biblioteca de modelos.');
   }

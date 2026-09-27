@@ -58,9 +58,18 @@ export function reissueIds(contract: Contract): void {
     if (model.node) reissueNode(model.node, models);
   }
 
+  // The mock's corrections are keyed by endpoint and by response id, so the
+  // remapping has to reach them too — otherwise importing a contract would
+  // silently drop every envelope and every relation somebody had corrected, and
+  // the mock would go back to whatever the inference says. Collected as the ids
+  // are reissued, and applied once at the end.
+  const endpointIds = new Map<string, string>();
+  const responseIds = new Map<string, string>();
+
   for (const endpoint of contract.endpoints) {
     const old = endpoint.id;
     endpoint.id = uid('ep');
+    endpointIds.set(old, endpoint.id);
     // The remembered view names an endpoint by id, so it has to follow.
     if (contract.view?.kind === 'endpoint' && contract.view.id === old) {
       contract.view = { kind: 'endpoint', id: endpoint.id };
@@ -68,7 +77,9 @@ export function reissueIds(contract: Contract): void {
     for (const param of endpoint.params ?? []) param.id = uid('par');
     if (endpoint.body) reissueNode(endpoint.body, models);
     for (const response of endpoint.responses ?? []) {
+      const oldResponse = response.id;
       response.id = uid('res');
+      responseIds.set(oldResponse, response.id);
       if (response.body) reissueNode(response.body, models);
     }
   }
@@ -77,4 +88,31 @@ export function reissueIds(contract: Contract): void {
     const next = models.get(contract.view.id);
     contract.view = next ? { kind: 'model', id: next } : null;
   }
+
+  if (contract.mock !== undefined) {
+    contract.mock = {
+      ...contract.mock,
+      pagination: rekey(contract.mock.pagination, responseIds),
+      relations: rekey(contract.mock.relations, endpointIds),
+      collections: rekey(contract.mock.collections, endpointIds),
+    };
+  }
+}
+
+/**
+ * The same map under the new ids, dropping what nothing answers to any more.
+ *
+ * Dropped and not kept: a correction keyed by an id that no longer exists is
+ * unreachable, and leaving it would grow the document on every round trip with
+ * entries nothing can ever read or delete. `sizes` and `identities` are not
+ * rekeyed because they are keyed by collection — a path segment, which identity
+ * never touches.
+ */
+function rekey<T>(map: Record<string, T>, ids: ReadonlyMap<string, string>): Record<string, T> {
+  const out: Record<string, T> = {};
+  for (const [old, value] of Object.entries(map)) {
+    const next = ids.get(old);
+    if (next !== undefined) out[next] = value;
+  }
+  return out;
 }

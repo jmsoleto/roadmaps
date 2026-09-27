@@ -29,7 +29,9 @@
     type ApiNode,
     type ItemType,
     type NodeType,
+    type SourceDraw,
   } from '../../api/model/types';
+  import { valueSources } from '../../api/sources/store.svelte';
   import { untrack } from 'svelte';
   import Self from './TreeNode.svelte';
 
@@ -265,6 +267,49 @@
             }}
           />
         </label>
+      {/if}
+      {#if scalar}
+        <!-- Where the value comes from in a mock. In the advanced strip and not
+             in the row: the row is at its limit, and a whole requirement exists
+             to keep its column of controls from moving. -->
+        <label>
+          fuente
+          <select
+            value={node.source?.sourceId ?? ''}
+            onchange={(e) => {
+              const id = e.currentTarget.value;
+              if (id === '') delete node.source;
+              else
+                node.source = { sourceId: id, recipe: null, draw: node.source?.draw ?? 'random' };
+              apiContracts.touch();
+            }}
+          >
+            <option value="">— del tipo</option>
+            {#each valueSources.sources as source (source.id)}
+              <option value={source.id}>{source.name}</option>
+            {/each}
+          </select>
+        </label>
+        {#if node.source !== undefined}
+          <label>
+            consumo
+            <select
+              value={node.source.draw}
+              onchange={(e) => {
+                if (node.source === undefined) return;
+                // Replaced whole rather than mutated in place: Svelte flags a
+                // deep write into an unbound prop, and the shallow assignment
+                // beside it is what the rest of this strip already does.
+                node.source = { ...node.source, draw: e.currentTarget.value as SourceDraw };
+                apiContracts.touch();
+              }}
+            >
+              <option value="random">al azar</option>
+              <option value="cycle">en ciclo</option>
+              <option value="unique">sin repetir</option>
+            </select>
+          </label>
+        {/if}
       {/if}
       <label class="check">
         <input
