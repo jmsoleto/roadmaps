@@ -22,6 +22,7 @@ import { pathMarkers } from './model/paths';
 import { pascal } from './model/models';
 import { scalarValue, exampleOf } from './example';
 import type { YamlValue } from './yaml';
+import { enumIsNumeric, enumValues } from './model/csv';
 import type { ApiEndpoint, ApiModel, ApiNode, ApiParam, Contract, NodeType } from './model/types';
 
 export type OpenApiDocument = { [k: string]: YamlValue };
@@ -57,18 +58,37 @@ export function schemaNames(models: readonly ApiModel[]): SchemaNames {
 
 const refPath = (name: string) => `#/components/schemas/${name}`;
 
-/** OpenAPI 3.0 has no `null` type; a nullable string is the honest stand-in. */
+/**
+ * OpenAPI 3.0 has no `null` type; a nullable string is the honest stand-in.
+ *
+ * And it has no `enum` type either: an enumeration is a `type` plus the closed
+ * list, so the editor's `enum` becomes `string` or `number` here according to
+ * what its own values say (D3). The deduction is **not** made in this file: it
+ * is `enumIsNumeric` in `model/csv.ts`, because the example and the mock emit
+ * the same values and the three had to stop disagreeing. They did disagree —
+ * this function used to coerce by `node.type` while the other two always
+ * handed out text, so one numeric enumeration left as numbers in the document
+ * and as strings in the mock of that same document.
+ */
 function scalarSchema(node: ApiNode): Schema {
   if (node.type === 'null') return { type: 'string', nullable: true };
 
-  const out: Schema = { type: node.type };
+  const out: Schema = { type: node.type === 'enum' ? baseTypeOf(node.enums) : node.type };
   if (node.format) out.format = node.format;
-  if (node.enums.length > 0) {
-    out.enum =
-      node.type === 'number' || node.type === 'integer' ? node.enums.map(Number) : [...node.enums];
-  }
+  if (node.enums.length > 0) out.enum = enumValues(node.enums);
   if (node.example.trim() !== '') out.example = scalarValue(node);
   return out;
+}
+
+/**
+ * What an enumeration says it is, in the words of the document.
+ *
+ * `number` and not `integer` even when every value is whole: `integer` is a
+ * promise about every value the field can ever take, and all this function has
+ * seen is the list in front of it. `number` admits the whole ones.
+ */
+function baseTypeOf(values: readonly string[]): string {
+  return enumIsNumeric(values) ? 'number' : 'string';
 }
 
 function objectSchema(children: readonly ApiNode[], names: SchemaNames): Schema {

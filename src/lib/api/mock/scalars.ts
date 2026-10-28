@@ -19,6 +19,7 @@
  * order, and no dictionary does.
  */
 
+import { enumValue } from '../model/csv';
 import type { JsonValue } from '../example';
 import { scalarValue } from '../example';
 import type { ApiNode } from '../model/types';
@@ -89,9 +90,16 @@ function intBetween(seed: number, coord: string, min: number, max: number): numb
  * Handled before the type, and for every type: an enumeration on an integer
  * field is a legitimate contract, and today's deduction ignores it and answers
  * `1`. Inside a mock, answering one of the declared values is strictly better.
+ *
+ * An `enum` field takes the type its own list deduced, which is the same answer
+ * the schema and the example give (D4). The branches below stay for the shape a
+ * document written before the type existed still has — an enumeration sitting
+ * on a `string` or an `integer` — which is read as `enum` on the way in but is
+ * still a legitimate thing to hand this function directly.
  */
 function fromEnums(node: Scalar, seed: number, coord: string): JsonValue {
   const chosen = node.enums[pick(seed, coord, node.enums.length)];
+  if (node.type === 'enum') return enumValue(chosen, node.enums);
   if (node.type === 'number' || node.type === 'integer') {
     const parsed = Number(chosen.replace(',', '.'));
     if (Number.isNaN(parsed)) return chosen;

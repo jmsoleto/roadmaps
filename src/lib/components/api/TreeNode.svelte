@@ -64,9 +64,25 @@
   // once to seed it — the component is keyed by node id, so it is never reused
   // for a different field — and the effect below re-syncs it when the list
   // changes from somewhere that is not this box, such as a paste.
+  //
+  // **The re-sync stops at the caret**, and that guard is the whole reason this
+  // box works in the row. Without it the order inside one keystroke is: the
+  // binding writes the text, the effect compares it against a node that has not
+  // been told yet, decides they disagree, and rewrites the text back from the
+  // node — and only then does `oninput` run, now reading the text the effect
+  // just reverted and writing *that* to the node. One keystroke in, one
+  // keystroke eaten, and the document emptied behind it. In the advanced strip
+  // the effect ran late enough to lose that race; in the row, where `.fields`
+  // carries its own delegated `oninput`, it wins it.
+  //
+  // The guard is also the honest rule: a list only arrives «from somewhere
+  // else» while nobody is typing into this box. With the caret in it, the box
+  // is what is true and the node is what is catching up.
+  let enumBox = $state<HTMLInputElement | null>(null);
   let enumText = $state(untrack(() => formatList(node.enums)));
   $effect(() => {
     const canonical = formatList(node.enums);
+    if (enumBox !== null && document.activeElement === enumBox) return;
     if (parseList(enumText).join('\u0000') !== node.enums.join('\u0000')) enumText = canonical;
   });
 
@@ -176,7 +192,36 @@
         </select>
       {/if}
 
-      {#if scalar}
+      <!-- The second half of a type declaration lives in the row, next to the
+           first: `array` says what it holds, `ref` says which model, and an
+           `enum` says which values. In the advanced strip it was a list nobody
+           knew existed, because the type picker said nothing about
+           enumerations (D8). -->
+      {#if node.type === 'enum'}
+        <input
+          class="enums"
+          bind:this={enumBox}
+          bind:value={enumText}
+          placeholder="alta, baja, pendiente"
+          aria-label="valores que admite"
+          title="valores que admite"
+          oninput={(e) => {
+            // The event's value and not `enumText`: by the time this runs the
+            // binding has already written the state, but the DOM value is
+            // current whatever the order turns out to be — and the order here
+            // is not obvious, as the effect above explains at length.
+            node.enums = parseList(e.currentTarget.value);
+          }}
+        />
+      {/if}
+
+      <!-- Everywhere but on an enumeration, where the list takes its place and
+           its width (D13). Measured: with both in the row the comment sat at
+           its 90px minimum on every enumerated field at 1400px — and the
+           comment is the motive of the tool. Of the two, the example is the one
+           that says least here: the example of an enumeration is one of its
+           admitted values, and the whole list is in the box beside it. -->
+      {#if scalar && node.type !== 'enum'}
         <input
           class="example"
           bind:value={node.example}
@@ -241,6 +286,21 @@
 
   {#if advanced}
     <div class="advanced" style:padding-left="{depth * 14 + 26}px">
+      <!-- The example an enumeration does not show in its row. It is still a
+           declared fact about the field and it still beats the deduced value,
+           so it has to be writable somewhere — just not at the cost of the
+           comment (D13). -->
+      {#if node.type === 'enum'}
+        <label>
+          ejemplo
+          <input
+            bind:value={node.example}
+            placeholder={node.enums[0] ?? 'uno de los valores'}
+            aria-label="ejemplo"
+            oninput={() => apiContracts.touch()}
+          />
+        </label>
+      {/if}
       {#if scalar}
         <label>
           formato
@@ -255,17 +315,6 @@
               <option value={format}>{format === '' ? '—' : format}</option>
             {/each}
           </select>
-        </label>
-        <label class="grow">
-          valores
-          <input
-            bind:value={enumText}
-            placeholder="alta, baja, pendiente"
-            oninput={() => {
-              node.enums = parseList(enumText);
-              apiContracts.touch();
-            }}
-          />
         </label>
       {/if}
       {#if scalar}
@@ -441,6 +490,16 @@
     width: 110px;
     flex-shrink: 0;
   }
+  /* La lista cede ancho antes que el comentario, nunca al contrario: el
+     comentario es el motivo de la herramienta y la enumeracion no (D8). De ahi
+     que se encoja, con un minimo por debajo del cual se lee como una caja rota
+     y no como una lista. */
+  .enums {
+    width: 150px;
+    min-width: 72px;
+    flex-shrink: 1;
+    color: var(--accent);
+  }
   .type.model {
     max-width: 160px;
     color: var(--accent);
@@ -524,13 +583,6 @@
     display: flex;
     align-items: center;
     gap: 5px;
-  }
-  .advanced label.grow {
-    flex: 1;
-    min-width: 160px;
-  }
-  .advanced label.grow input {
-    flex: 1;
   }
   .advanced .check {
     cursor: pointer;

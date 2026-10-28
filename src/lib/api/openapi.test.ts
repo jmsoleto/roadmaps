@@ -10,6 +10,8 @@ import {
   schemaOf,
 } from './openapi';
 import { toYaml } from './yaml';
+import { scalarValue } from './example';
+import { variedScalar } from './mock/scalars';
 import { newEndpoint, newNode, newParam, rootNode } from './model/factories';
 import type { ApiEndpoint, Contract } from './model/types';
 
@@ -423,5 +425,92 @@ describe('the mock leaves no trace in the document', () => {
     ]) {
       expect(text).not.toContain(trace);
     }
+  });
+});
+
+describe('an enumeration is a type plus a closed list', () => {
+  it('emits a text enumeration as a string with its values', () => {
+    const node = newNode('estado', 'enum');
+    node.enums = ['alta', 'baja'];
+    expect(schemaOf(node)).toEqual({ type: 'string', enum: ['alta', 'baja'] });
+  });
+
+  it('emits a numeric enumeration as a number with numeric values', () => {
+    const node = newNode('nivel', 'enum');
+    node.enums = ['1', '2', '3'];
+    expect(schemaOf(node)).toEqual({ type: 'number', enum: [1, 2, 3] });
+  });
+
+  it('keeps a code with a leading zero as text', () => {
+    const node = newNode('provincia', 'enum');
+    node.enums = ['01', '02'];
+    expect(schemaOf(node)).toEqual({ type: 'string', enum: ['01', '02'] });
+  });
+
+  /** D6: an empty enumeration declares no list at all rather than a fake one. */
+  it('declares no list when there are no values yet', () => {
+    const node = newNode('estado', 'enum');
+    expect(schemaOf(node)).toEqual({ type: 'string' });
+  });
+
+  it('carries the comment like any other field', () => {
+    const node = newNode('estado', 'enum');
+    node.enums = ['alta', 'baja'];
+    node.description = 'En qué punto está el pedido';
+    expect(schemaOf(node)).toEqual({
+      type: 'string',
+      enum: ['alta', 'baja'],
+      description: 'En qué punto está el pedido',
+    });
+  });
+
+  it('emits the example with the type the list deduced', () => {
+    const node = newNode('nivel', 'enum');
+    node.enums = ['1', '2'];
+    node.example = '2';
+    expect(schemaOf(node)).toEqual({ type: 'number', enum: [1, 2], example: 2 });
+  });
+
+  it('still admits nullable', () => {
+    const node = newNode('estado', 'enum');
+    node.enums = ['alta'];
+    node.nullable = true;
+    expect(schemaOf(node)).toEqual({ type: 'string', enum: ['alta'], nullable: true });
+  });
+});
+
+describe('the document, the example and the mock agree on one enumeration', () => {
+  /**
+   * The requirement that a contract must not contradict itself. Before this
+   * change the three read `enums` independently: the exporter coerced by
+   * `node.type` and the other two always handed out text, so a numeric
+   * enumeration left as numbers in the schema and as strings in the example
+   * and the mock of that very document.
+   */
+  it('says number in all three for a numeric list', () => {
+    const node = newNode('nivel', 'enum');
+    node.enums = ['1', '2', '3'];
+
+    expect(schemaOf(node).type).toBe('number');
+    expect(typeof scalarValue(node)).toBe('number');
+    expect(typeof variedScalar(node, 7, 'nivel')).toBe('number');
+  });
+
+  it('says string in all three for a list of words', () => {
+    const node = newNode('estado', 'enum');
+    node.enums = ['alta', 'baja'];
+
+    expect(schemaOf(node).type).toBe('string');
+    expect(typeof scalarValue(node)).toBe('string');
+    expect(typeof variedScalar(node, 7, 'estado')).toBe('string');
+  });
+
+  it('says string in all three for codes with a leading zero', () => {
+    const node = newNode('provincia', 'enum');
+    node.enums = ['01', '02'];
+
+    expect(schemaOf(node).type).toBe('string');
+    expect(typeof scalarValue(node)).toBe('string');
+    expect(typeof variedScalar(node, 7, 'provincia')).toBe('string');
   });
 });

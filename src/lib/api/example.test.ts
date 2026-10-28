@@ -197,3 +197,42 @@ describe('a model that contains itself', () => {
     expect(exampleOf(field, [x])).toEqual({ yo: {} });
   });
 });
+
+describe('the example of an enumerated field', () => {
+  it('is the first admitted value when nothing was written', () => {
+    const node = newNode('estado', 'enum');
+    node.enums = ['alta', 'baja'];
+    expect(scalarValue(node)).toBe('alta');
+  });
+
+  it('is a number when the list is numeric', () => {
+    const node = newNode('nivel', 'enum');
+    node.enums = ['1', '2'];
+    expect(scalarValue(node)).toBe(1);
+  });
+
+  /** A written example is a declared fact about that field and it wins. */
+  it('is what somebody wrote, when they wrote one', () => {
+    const node = newNode('estado', 'enum');
+    node.enums = ['alta', 'baja'];
+    node.example = 'baja';
+    expect(scalarValue(node)).toBe('baja');
+  });
+
+  it('is a number when somebody wrote one of a numeric list', () => {
+    const node = newNode('nivel', 'enum');
+    node.enums = ['1', '2'];
+    node.example = '2';
+    expect(scalarValue(node)).toBe(2);
+  });
+
+  it('keeps a code with a leading zero as it was agreed', () => {
+    const node = newNode('provincia', 'enum');
+    node.enums = ['01', '02'];
+    expect(scalarValue(node)).toBe('01');
+  });
+
+  it('falls back to a placeholder while the list is still empty', () => {
+    expect(scalarValue(newNode('estado', 'enum'))).toBe('texto');
+  });
+});

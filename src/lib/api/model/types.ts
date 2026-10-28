@@ -16,9 +16,18 @@
  * data.
  */
 
-/** A field's type. `ref` points at a reusable model; `null` is the JSON null. */
+/**
+ * A field's type. `ref` points at a reusable model; `null` is the JSON null.
+ *
+ * Three of them are **types of this editor and not of OpenAPI**, and the
+ * exporter translates all three: `ref` becomes a `$ref`, `null` becomes a
+ * nullable string because OpenAPI 3.0 has no null type, and `enum` becomes
+ * `type: string` or `type: number` plus the list of admitted values. There is
+ * no `type: enum` in any OpenAPI document; there is a field whose value is one
+ * of a closed list, which is what somebody means when they say it out loud.
+ */
 export type NodeType =
-  'string' | 'number' | 'integer' | 'boolean' | 'object' | 'array' | 'ref' | 'null';
+  'string' | 'enum' | 'number' | 'integer' | 'boolean' | 'object' | 'array' | 'ref' | 'null';
 
 /**
  * The types the picker offers.
@@ -27,9 +36,18 @@ export type NodeType =
  * `NodeType` from the first change and handled everywhere — a case that cannot
  * be produced yet is not a case that does not exist — which is why turning it
  * on was a line in this array rather than a rewrite.
+ *
+ * `enum` joined second, and **the order matters this time** (D2). The list of
+ * admitted values was already in the document and already exported; what was
+ * missing was anybody finding it, because it lived behind the advanced strip
+ * while the type picker said nothing about enumerations existing. Every field
+ * is born `string`, so `string` is where the eye already is: a type that fixes
+ * «I did not know you could say that» and sits at the end of the list fixes
+ * nothing.
  */
 export const NODE_TYPES: readonly NodeType[] = [
   'string',
+  'enum',
   'number',
   'integer',
   'boolean',
@@ -39,7 +57,13 @@ export const NODE_TYPES: readonly NodeType[] = [
   'null',
 ];
 
-/** What an array can be told to hold. */
+/**
+ * What an array can be told to hold.
+ *
+ * `enum` is deliberately not here: an array with an enumeration has to settle
+ * first whether the closed list belongs to the array or to its elements, and
+ * that is a model decision, not a picker entry.
+ */
 export const ITEM_TYPES: readonly ItemType[] = [
   'object',
   'ref',
@@ -63,7 +87,16 @@ export const HTTP_METHODS: readonly HttpMethod[] = [
 /** Where a parameter can travel. */
 export const PARAM_INS: readonly ParamIn[] = ['query', 'path', 'header'];
 
-/** The types a parameter can take: scalars only. */
+/**
+ * The types a parameter can take: scalars only.
+ *
+ * Written out rather than derived, and that is now load-bearing. `enum` is a
+ * scalar, so `ApiParam['type']` — which is `NodeType` minus four cases — gained
+ * it **for free and falsely** when `enum` joined: `ApiParam` has nowhere to
+ * keep the list of values (D10). Nothing breaks, because the picker iterates
+ * this array, but the compiler stopped guarding that case. Enumerated
+ * parameters are their own change, and this is the note it should find.
+ */
 export const PARAM_TYPES: readonly ApiParam['type'][] = ['string', 'number', 'integer', 'boolean'];
 
 /**

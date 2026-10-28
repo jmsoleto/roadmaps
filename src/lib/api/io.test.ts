@@ -263,3 +263,48 @@ describe('a contract with a mock travels whole', () => {
     expect(back.models[0].node.children[0].source?.sourceId).toBe('s-estados');
   });
 });
+
+describe('an enumeration travels, and an old document arrives as one', () => {
+  it('keeps the type and the values on the way out and back', () => {
+    const contract = wired();
+    const estado = newNode('estado', 'enum');
+    estado.enums = ['alta', 'baja', 'pendiente'];
+    const nivel = newNode('nivel', 'enum');
+    nivel.enums = ['1', '2'];
+    contract.endpoints[0].responses[0].body!.children.push(estado, nivel);
+
+    const back = parseContractImport(exportContract(contract));
+    const [, , a, b] = back.endpoints[0].responses[0].body!.children;
+    expect([a.type, a.enums]).toEqual(['enum', ['alta', 'baja', 'pendiente']]);
+    expect([b.type, b.enums]).toEqual(['enum', ['1', '2']]);
+  });
+
+  /**
+   * The other door of `normalizeApiData`: a file exported by a version that did
+   * not have the type yet still has to open as what it says (D9).
+   */
+  it('reads a file written before the type existed as an enumeration', () => {
+    const contract = wired();
+    const estado = newNode('estado', 'string');
+    estado.enums = ['alta', 'baja'];
+    contract.endpoints[0].responses[0].body!.children.push(estado);
+    const asWrittenBefore = exportContract(contract);
+
+    const back = parseContractImport(asWrittenBefore);
+    const field = back.endpoints[0].responses[0].body!.children.at(-1)!;
+    expect(field.type).toBe('enum');
+    expect(field.enums).toEqual(['alta', 'baja']);
+  });
+
+  it('emits the enumeration in the OpenAPI document of the imported contract', () => {
+    const contract = wired();
+    const nivel = newNode('nivel', 'integer');
+    nivel.enums = ['1', '2'];
+    contract.endpoints[0].responses[0].body!.children.push(nivel);
+
+    const back = parseContractImport(exportContract(contract));
+    const doc = buildOpenApi(back) as Record<string, never>;
+    const body = JSON.stringify(doc);
+    expect(body).toContain('"enum":[1,2]');
+  });
+});

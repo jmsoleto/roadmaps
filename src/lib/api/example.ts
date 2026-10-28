@@ -13,6 +13,7 @@
  * weeks later.
  */
 
+import { enumValue } from './model/csv';
 import { isContainer } from './model/tree';
 import type { ApiModel, ApiNode } from './model/types';
 
@@ -83,13 +84,17 @@ export function scalarValue(
   }
   if (node.type === 'null') return null;
 
-  if (written !== '') return written;
+  // An enumerated value carries the type its own list deduced, so the example
+  // and the schema cannot disagree (D4). This used to hand out text always,
+  // which put `example: "1"` under `type: number` — the same class of schema
+  // violation an external linter already caught once in the parameters.
+  if (written !== '') return node.type === 'enum' ? enumValue(written, node.enums) : written;
   if (node.format === 'int64') return '9007199254740993';
   if (node.format === 'float') return '1.5';
   if (node.format in BY_FORMAT) return BY_FORMAT[node.format];
   // The first admitted value beats a generic placeholder: it is real, and it
   // shows the reader what the enumeration actually looks like.
-  if (node.enums.length > 0) return node.enums[0];
+  if (node.enums.length > 0) return enumValue(node.enums[0], node.enums);
   return 'texto';
 }
 

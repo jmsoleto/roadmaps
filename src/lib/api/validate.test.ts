@@ -366,3 +366,49 @@ describe('what the mock has broken', () => {
     expect(issueCount(c)).toBe(0);
   });
 });
+
+describe('an enumeration left without values', () => {
+  /**
+   * The other half of the decision not to put a sample value in (D6/D7):
+   * deciding the system does not fill it in, and then not saying it, leaves a
+   * field that can stay half-declared with nothing pointing at it.
+   */
+  it('is reported, saying where the field is', () => {
+    const estado = newNode('estado', 'enum');
+    const issues = validateContract(contract([withFields([newNode('id'), estado])]));
+    const issue = issues.find((i) => i.what.includes('valor admitido'));
+    expect(issue).toBeDefined();
+    expect(issue!.what).toContain('«estado»');
+    expect(issue!.where).toContain('/productos');
+  });
+
+  it('is a lesser issue than a broken reference, not the same one', () => {
+    const estado = newNode('estado', 'enum');
+    const issues = validateContract(contract([withFields([estado])]));
+    expect(issues.find((i) => i.what.includes('valor admitido'))!.severity).toBe('sobra');
+  });
+
+  it('does not count towards what breaks the contract', () => {
+    const estado = newNode('estado', 'enum');
+    expect(issueCount(contract([withFields([newNode('id'), estado])]))).toBe(0);
+  });
+
+  it('says nothing about an enumeration that has its values', () => {
+    const estado = newNode('estado', 'enum');
+    estado.enums = ['alta', 'baja'];
+    const issues = validateContract(contract([withFields([estado])]));
+    expect(issues.map((i) => i.what).join(' ')).not.toContain('valor admitido');
+  });
+
+  it('says nothing about a plain scalar, which admits anything by design', () => {
+    const issues = validateContract(contract([withFields([newNode('nombre', 'string')])]));
+    expect(issues.map((i) => i.what).join(' ')).not.toContain('valor admitido');
+  });
+
+  it('reaches an enumeration nested inside an object', () => {
+    const cliente = newNode('cliente', 'object');
+    cliente.children = [newNode('tipo', 'enum')];
+    const issues = validateContract(contract([withFields([cliente])]));
+    expect(issues.find((i) => i.what.includes('valor admitido'))!.what).toContain('«tipo»');
+  });
+});

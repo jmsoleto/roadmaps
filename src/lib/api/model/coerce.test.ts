@@ -98,3 +98,58 @@ describe('arrays', () => {
     expect(node.children.map((c) => c.key)).toEqual(['nombre', 'precio']);
   });
 });
+
+describe('changing a field to an enumeration', () => {
+  /**
+   * Nothing in `applyType` mentions `enum`, and that is the finding, not an
+   * oversight: `isScalar` is defined by exclusion, so a new scalar type arrives
+   * already governed by the rules that were written for the others (D11).
+   */
+  it('keeps the values when the field stays scalar', () => {
+    const node = newNode('estado', 'string');
+    node.enums = ['alta', 'baja'];
+    applyType(node, 'enum');
+    expect(node.enums).toEqual(['alta', 'baja']);
+    applyType(node, 'string');
+    expect(node.enums).toEqual(['alta', 'baja']);
+  });
+
+  it('keeps the key, the comment and the obligation', () => {
+    const node = newNode('estado', 'string');
+    node.description = 'En qué punto está el pedido';
+    node.required = true;
+    applyType(node, 'enum');
+    expect([node.key, node.description, node.required]).toEqual([
+      'estado',
+      'En qué punto está el pedido',
+      true,
+    ]);
+  });
+
+  it('is born with no values at all, and gets no sample one (D6)', () => {
+    const node = newNode('estado', 'string');
+    applyType(node, 'enum');
+    expect(node.enums).toEqual([]);
+  });
+
+  it('still asks for an example, because it is a scalar', () => {
+    const node = newNode('estado', 'enum');
+    node.example = 'alta';
+    applyType(node, 'enum');
+    expect(node.example).toBe('alta');
+  });
+
+  it('drops the values when it stops being scalar', () => {
+    const node = newNode('estado', 'enum');
+    node.enums = ['alta', 'baja'];
+    applyType(node, 'object');
+    expect(node.enums).toEqual([]);
+  });
+
+  it('drops the model it pointed at, like any other type that is not a ref', () => {
+    const node = newNode('estado', 'ref');
+    node.ref = 'mod-1';
+    applyType(node, 'enum');
+    expect(node.ref).toBe('');
+  });
+});

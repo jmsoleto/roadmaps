@@ -586,6 +586,24 @@ describe('chaining a field from the one before it', () => {
     expect(chained.enums).toEqual([]);
   });
 
+  /**
+   * The shape travels and the contents do not, applied to a type that did not
+   * exist when that rule was written (D6). Nothing in `addSiblingAfter` mentions
+   * `enum`: it builds the sibling from scratch and lets `applyType` settle it,
+   * so an enumeration arrives empty on its own. If this ever needs a line of
+   * code, the test has found something the design did not foresee.
+   */
+  it('chains an enumeration carrying the type and not the values', async () => {
+    const { store, root } = await withBody();
+    const field = store.addChild(root.id)!;
+    store.setNodeType(field.id, 'enum');
+    field.enums = ['alta', 'baja'];
+
+    const chained = store.addSiblingAfter(field.id)!;
+    expect(chained.type).toBe('enum');
+    expect(chained.enums).toEqual([]);
+  });
+
   /** Numbered like an added field, not suffixed like a copy. */
   it('gives each chained field a key nobody else is using', async () => {
     const { store, root } = await withBody();
@@ -865,5 +883,56 @@ describe('expanding a reference', () => {
     expect(items.itemType).toBe('object');
     expect(items.itemRef).toBe('');
     expect(items.children).toHaveLength(1);
+  });
+});
+
+describe('opening a contract written before the enumeration was a type', () => {
+  /**
+   * The door this change's compatibility actually comes through: starting the
+   * application. `io.test.ts` covers the other one — a file somebody imports —
+   * and both read through `normalizeApiData`, so yesterday's contract opens as
+   * what it says, with nothing lost and nothing rewritten (D9).
+   */
+  const asWrittenBefore = (key: string, type: ApiNode['type'], enums: string[]): ApiNode =>
+    node(key, { type, enums, description: 'lo que se dijo en voz alta' });
+
+  const stored = (): ApiData => {
+    const contract = wired();
+    contract.endpoints[0].responses[0].body = node('', {
+      type: 'object',
+      children: [
+        asWrittenBefore('estado', 'string', ['alta', 'baja']),
+        asWrittenBefore('nivel', 'integer', ['1', '2']),
+        asWrittenBefore('nombre', 'string', []),
+      ],
+    });
+    return { contracts: [contract], openId: contract.id };
+  };
+
+  const fieldsOf = (store: { data: ApiData }) =>
+    store.data.contracts[0].endpoints[0].responses[0].body!.children;
+
+  it('reads the admitted values as enumerations', async () => {
+    const { store } = await storeWith({ kind: 'loaded', data: stored() });
+    const fields = fieldsOf(store);
+
+    expect(fields.map((f) => f.type)).toEqual(['enum', 'enum', 'string']);
+    expect(fields[0].enums).toEqual(['alta', 'baja']);
+    expect(fields[1].enums).toEqual(['1', '2']);
+  });
+
+  it('loses nothing else on the way in', async () => {
+    const { store } = await storeWith({ kind: 'loaded', data: stored() });
+    const fields = fieldsOf(store);
+
+    expect(fields.map((f) => f.key)).toEqual(['estado', 'nivel', 'nombre']);
+    expect(fields.every((f) => f.description === 'lo que se dijo en voz alta')).toBe(true);
+    expect(fields.every((f) => f.required)).toBe(true);
+  });
+
+  /** No forced write: the repair rides on the next save that happens anyway. */
+  it('does not rewrite the stored document just to repair it', async () => {
+    const { backend } = await storeWith({ kind: 'loaded', data: stored() });
+    expect(backend.saved).toBeNull();
   });
 });

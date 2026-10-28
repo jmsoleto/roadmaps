@@ -26,10 +26,12 @@ import type { Contract, PagingOverride } from './model/types';
 /**
  * How much an issue costs if it is ignored (D6).
  *
- * `rompe` means what gets handed over describes something that is not there;
- * `sobra` means it is correct with a block too many. Presenting the two the
- * same way teaches people to ignore the whole list, which is the usual way a
- * validator dies.
+ * `rompe` means what gets handed over describes something that is not there.
+ * `sobra` is everything else worth saying: the document is correct and only
+ * untidy — a block too many, a dangling assignment, a list left unwritten —
+ * so somebody can read it, decide it does not matter today, and hand it over.
+ * Presenting the two the same way teaches people to ignore the whole list,
+ * which is the usual way a validator dies.
  */
 export type Severity = 'rompe' | 'sobra';
 
@@ -127,6 +129,18 @@ export function validateContract(
           where,
           what: `${field} es un array de un modelo que no existe`,
           severity: 'rompe',
+        });
+      }
+      // A declaration left half-written. `sobra` and not `rompe`: the field is
+      // handed over with its type and nothing it says is false — what is
+      // missing is the list that would have made it closed. It is the warning
+      // that stands in for the sample value the system deliberately does not
+      // put in (D6).
+      if (node.type === 'enum' && node.enums.length === 0) {
+        issues.push({
+          where,
+          what: `${field} no tiene ningún valor admitido`,
+          severity: 'sobra',
         });
       }
     });

@@ -163,3 +163,133 @@ describe("normalising a field's value source", () => {
     expect(node.source).toEqual({ sourceId: 's1', recipe: null, draw: 'random' });
   });
 });
+
+describe('reading a contract written before the enumeration was a type', () => {
+  /**
+   * The compatibility of this change, and it is a rule in the single reading
+   * door rather than a migration (D9): nothing is lost and nothing is
+   * rewritten, because the values were already written and the base type is
+   * deduced from them.
+   */
+  const withField = (field: Record<string, unknown>, model?: Record<string, unknown>) => ({
+    contracts: [
+      {
+        id: 'c1',
+        title: 'Pedidos',
+        models: model
+          ? [
+              {
+                id: 'm1',
+                name: 'Pedido',
+                node: { id: 'mn0', key: '', type: 'object', children: [model] },
+              },
+            ]
+          : [],
+        endpoints: [
+          {
+            id: 'e1',
+            method: 'GET',
+            path: '/pedidos',
+            body: {
+              id: 'b0',
+              key: '',
+              type: 'object',
+              children: [{ id: 'b1', key: 'filtro', type: 'string', children: [], enums: ['si'] }],
+            },
+            responses: [
+              {
+                id: 'r1',
+                code: '200',
+                body: { id: 'n0', key: '', type: 'object', children: [field] },
+              },
+            ],
+          },
+        ],
+      },
+    ],
+    openId: null,
+  });
+
+  const read = (raw: unknown) => normalizeApiData(raw)!;
+  const fieldOf = (raw: unknown) =>
+    read(raw).contracts[0].endpoints[0].responses[0].body!.children[0];
+
+  it('reads a text field with admitted values as an enumeration', () => {
+    const node = fieldOf(
+      withField({ id: 'n1', key: 'estado', type: 'string', children: [], enums: ['alta', 'baja'] }),
+    );
+    expect(node.type).toBe('enum');
+    expect(node.enums).toEqual(['alta', 'baja']);
+  });
+
+  it('reads an integer field with admitted values as an enumeration too', () => {
+    const node = fieldOf(
+      withField({ id: 'n1', key: 'nivel', type: 'integer', children: [], enums: ['1', '2'] }),
+    );
+    expect(node.type).toBe('enum');
+    expect(node.enums).toEqual(['1', '2']);
+  });
+
+  it('leaves a scalar with no admitted values exactly as it was', () => {
+    const node = fieldOf(withField({ id: 'n1', key: 'nombre', type: 'string', children: [] }));
+    expect(node.type).toBe('string');
+  });
+
+  it('leaves a container alone, whatever it carries', () => {
+    const node = fieldOf(
+      withField({
+        id: 'n1',
+        key: 'items',
+        type: 'array',
+        itemType: 'string',
+        children: [],
+        enums: ['alta'],
+      }),
+    );
+    expect(node.type).toBe('array');
+  });
+
+  it('reaches the request body and the models, not only the responses', () => {
+    const data = read(
+      withField(
+        { id: 'n1', key: 'estado', type: 'string', children: [], enums: ['alta'] },
+        { id: 'mn1', key: 'moneda', type: 'string', children: [], enums: ['EUR', 'USD'] },
+      ),
+    );
+    expect(data.contracts[0].endpoints[0].body!.children[0].type).toBe('enum');
+    expect(data.contracts[0].models[0].node.children[0].type).toBe('enum');
+  });
+
+  it('reaches a field nested inside an object', () => {
+    const node = fieldOf(
+      withField({
+        id: 'n1',
+        key: 'cliente',
+        type: 'object',
+        children: [{ id: 'n2', key: 'tipo', type: 'string', children: [], enums: ['a', 'b'] }],
+      }),
+    );
+    expect(node.children[0].type).toBe('enum');
+  });
+
+  it('changes nothing on a second pass', () => {
+    const raw = withField({
+      id: 'n1',
+      key: 'estado',
+      type: 'string',
+      children: [],
+      enums: ['alta', 'baja'],
+    });
+    const once = read(raw);
+    const twice = normalizeApiData(JSON.parse(JSON.stringify(once)))!;
+    expect(twice).toEqual(once);
+  });
+
+  it('leaves a field that already says enum alone', () => {
+    const node = fieldOf(
+      withField({ id: 'n1', key: 'estado', type: 'enum', children: [], enums: ['alta'] }),
+    );
+    expect(node.type).toBe('enum');
+    expect(node.enums).toEqual(['alta']);
+  });
+});

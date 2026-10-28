@@ -9,13 +9,21 @@
  *
  * The depth stopped at the contract for as long as there was no older shape of a
  * field tree to repair. The mock's value sources changed that: a node can now
- * carry a `source`, so there is one thing inside a tree that a hand-edited or
- * older document can get wrong, and exactly one thing is what gets walked. The
- * rest of a node is still left alone, for the original reason.
+ * carry a `source`, so there was one thing inside a tree that a hand-edited or
+ * older document could get wrong, and exactly one thing was what got walked.
+ *
+ * The enumeration becoming a **type** made it two. A field that already carried
+ * a list of admitted values was written as a `string` or an `integer`, because
+ * `enum` did not exist as a type yet, and it has to open as what it says it is.
+ * That is the whole compatibility of that change, and it lives here rather than
+ * in a migration for the usual reason: nothing is lost and nothing is
+ * rewritten — the values were already written down, and the base type is
+ * deduced from them. The rest of a node is still left alone.
  */
 
 import { PALETTE_SLOTS } from '../../theme/tokens';
 import { MOCK_PAGE_SIZE, MOCK_SIZE, MOCK_VARIANTS } from './factories';
+import { isScalar } from './tree';
 import {
   RECIPE_KINDS,
   SOURCE_DRAWS,
@@ -176,14 +184,19 @@ export function normalizeRecipe(raw: unknown): Recipe | null {
 }
 
 /**
- * Repair the `source` of every node of a tree, in place.
+ * Repair one node of a tree, and everything under it, in place.
  *
  * In place because the normaliser already passes the document's own arrays
- * through, and because this walk repairs **one property**: rebuilding every node
- * to fix it would be a deep copy of every contract on every load, for a field
- * that is usually absent.
+ * through, and because this walk repairs **two properties and no more**:
+ * rebuilding every node would be a deep copy of every contract on every load,
+ * for two fields that are usually absent or already right.
+ *
+ * Both repairs obey the two rules this file states about itself: idempotent —
+ * a node that already says `enum` is left alone, and a readable `source` comes
+ * back identical — and no forced write, so the repair consolidates on the next
+ * save that happens through the normal flow.
  */
-function repairSources(node: unknown): void {
+function repairNode(node: unknown): void {
   if (node === null || typeof node !== 'object') return;
   const n = node as ApiNode & { source?: unknown };
   if ('source' in n) {
@@ -191,16 +204,23 @@ function repairSources(node: unknown): void {
     if (source === null) delete n.source;
     else n.source = source;
   }
-  if (Array.isArray(n.children)) for (const child of n.children) repairSources(child);
+  // A field that admits a closed list of values **is** an enumeration, whatever
+  // the document called it before the type existed. Guarded by the type being
+  // scalar: a list left behind on an object or an array means nothing, and
+  // `applyType` would have dropped it anyway.
+  if (n.type !== 'enum' && isScalar(n) && Array.isArray(n.enums) && n.enums.length > 0) {
+    n.type = 'enum';
+  }
+  if (Array.isArray(n.children)) for (const child of n.children) repairNode(child);
 }
 
 /** Every tree a contract holds: its models, and every body of every endpoint. */
-function repairContractSources(c: Partial<Contract>): void {
-  if (Array.isArray(c.models)) for (const m of c.models) repairSources(m?.node);
+function repairContractNodes(c: Partial<Contract>): void {
+  if (Array.isArray(c.models)) for (const m of c.models) repairNode(m?.node);
   if (Array.isArray(c.endpoints)) {
     for (const e of c.endpoints) {
-      repairSources(e?.body);
-      if (Array.isArray(e?.responses)) for (const r of e.responses) repairSources(r?.body);
+      repairNode(e?.body);
+      if (Array.isArray(e?.responses)) for (const r of e.responses) repairNode(r?.body);
     }
   }
 }
@@ -213,7 +233,7 @@ function normalizeContract(raw: unknown, index: number): Contract | null {
   const endpoints = Array.isArray(c.endpoints) ? c.endpoints : [];
   const models = Array.isArray(c.models) ? c.models : [];
 
-  repairContractSources(c);
+  repairContractNodes(c);
   const mock = normalizeMock(c.mock);
 
   return {

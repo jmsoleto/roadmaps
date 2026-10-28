@@ -119,6 +119,52 @@ describe('what a varied scalar looks like', () => {
     expect(seen).toEqual(new Set(['alta', 'baja', 'pendiente']));
   });
 
+  it('spreads an enumerated field the same way, with its own type', () => {
+    const root = rootNode();
+    const node = newNode('estado', 'enum');
+    node.enums = ['alta', 'baja', 'pendiente'];
+    root.children = [node];
+    const seen = new Set<unknown>();
+    for (let seed = 0; seed < 40; seed++) {
+      for (const variant of bodyVariants(root, [], settings({ seed }), scope)) {
+        seen.add(obj(variant).estado);
+      }
+    }
+    expect(seen).toEqual(new Set(['alta', 'baja', 'pendiente']));
+  });
+
+  /**
+   * The disagreement this change closes: the document promised numbers and the
+   * mock of that same document handed out strings.
+   */
+  it('hands out numbers for a numeric enumeration', () => {
+    const root = rootNode();
+    const node = newNode('nivel', 'enum');
+    node.enums = ['1', '2', '3'];
+    root.children = [node];
+    const seen = new Set<unknown>();
+    for (let seed = 0; seed < 40; seed++) {
+      for (const variant of bodyVariants(root, [], settings({ seed }), scope)) {
+        seen.add(obj(variant).nivel);
+      }
+    }
+    expect(seen).toEqual(new Set([1, 2, 3]));
+  });
+
+  it('keeps codes with a leading zero exactly as they were agreed', () => {
+    const root = rootNode();
+    const node = newNode('provincia', 'enum');
+    node.enums = ['01', '02'];
+    root.children = [node];
+    const seen = new Set<unknown>();
+    for (let seed = 0; seed < 40; seed++) {
+      for (const variant of bodyVariants(root, [], settings({ seed }), scope)) {
+        seen.add(obj(variant).provincia);
+      }
+    }
+    expect(seen).toEqual(new Set(['01', '02']));
+  });
+
   it('honours the format of a field nobody wrote an example in', () => {
     const root = rootNode();
     const fecha = newNode('alta');
