@@ -13,7 +13,7 @@ import { toYaml } from './yaml';
 import { scalarValue } from './example';
 import { variedScalar } from './mock/scalars';
 import { newEndpoint, newNode, newParam, rootNode } from './model/factories';
-import type { ApiEndpoint, Contract } from './model/types';
+import type { ApiEndpoint, ApiModel, Contract } from './model/types';
 
 function contract(over: Partial<Contract> = {}): Contract {
   return {
@@ -512,5 +512,79 @@ describe('the document, the example and the mock agree on one enumeration', () =
     expect(schemaOf(node).type).toBe('string');
     expect(typeof scalarValue(node)).toBe('string');
     expect(typeof variedScalar(node, 7, 'provincia')).toBe('string');
+  });
+});
+
+describe('a body that is a model', () => {
+  /**
+   * None of this needed a line in `openapi.ts`: `schemaOf` handled a `ref` long
+   * before a body could be one, because a body is an `ApiNode` and the root is
+   * not a special node. These tests pin that it stays true.
+   */
+  const errorModel = (): ApiModel => {
+    const node = rootNode();
+    node.children = [newNode('codigo', 'integer'), newNode('mensaje')];
+    return { id: 'mod-err', name: 'Error', description: '', node };
+  };
+
+  const refBody = (over: Partial<ApiEndpoint> = {}) => {
+    const endpoint = { ...newEndpoint('GET', '/catalogo/productos'), ...over };
+    const body = endpoint.responses[0].body!;
+    body.type = 'ref';
+    body.ref = 'mod-err';
+    body.children = [];
+    return endpoint;
+  };
+
+  it('emits the body as a reference to the model schema', () => {
+    const doc = buildOpenApi(contract({ models: [errorModel()], endpoints: [refBody()] }));
+    expect(body200(doc).schema).toEqual({ $ref: '#/components/schemas/Error' });
+  });
+
+  it('emits the model once in components, however many bodies point at it', () => {
+    const a = refBody({ path: '/a' });
+    const b = refBody({ path: '/b' });
+    const doc = buildOpenApi(contract({ models: [errorModel()], endpoints: [a, b] }));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect(Object.keys((doc.components as any).schemas)).toEqual(['Error']);
+  });
+
+  it('gives the body the example of the model it points at', () => {
+    const doc = buildOpenApi(contract({ models: [errorModel()], endpoints: [refBody()] }));
+    expect(body200(doc).example).toEqual({ codigo: 1, mensaje: 'texto' });
+  });
+
+  it('emits a body that is a list of a model as an array of references', () => {
+    const endpoint = newEndpoint('GET', '/catalogo/productos');
+    const body = endpoint.responses[0].body!;
+    body.type = 'array';
+    body.itemType = 'ref';
+    body.itemRef = 'mod-err';
+    const doc = buildOpenApi(contract({ models: [errorModel()], endpoints: [endpoint] }));
+    expect(body200(doc).schema).toEqual({
+      type: 'array',
+      items: { $ref: '#/components/schemas/Error' },
+    });
+  });
+
+  it('emits a request body that is a model the same way', () => {
+    const endpoint = newEndpoint('POST', '/catalogo/productos');
+    endpoint.body!.type = 'ref';
+    endpoint.body!.ref = 'mod-err';
+    endpoint.body!.children = [];
+    const doc = buildOpenApi(contract({ models: [errorModel()], endpoints: [endpoint] }));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const req = (doc.paths as any)['/catalogo/productos'].post.requestBody;
+    expect(req.content['application/json'].schema).toEqual({ $ref: '#/components/schemas/Error' });
+  });
+
+  /** The state the body bar can already reach, with nowhere to say which model. */
+  it('marks a body that is a list of a model nobody named', () => {
+    const endpoint = newEndpoint('GET', '/catalogo/productos');
+    const body = endpoint.responses[0].body!;
+    body.type = 'array';
+    body.itemType = 'ref';
+    const doc = buildOpenApi(contract({ models: [errorModel()], endpoints: [endpoint] }));
+    expect(body200(doc).schema.items.description).toContain('no existe');
   });
 });

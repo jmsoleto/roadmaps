@@ -23,8 +23,27 @@
   let { label, root, onDrop }: Props = $props();
 
   const container = $derived(isContainer(root));
-  /** A body is an object or an array of them; a body that is a number is not a body. */
-  const ROOT_TYPES: NodeType[] = ['object', 'array'];
+  /**
+   * What a body can be.
+   *
+   * An object, an array of them, or **a model**: a body that is a number is
+   * still not a body, but an error response is almost always a block the
+   * contract already has written down with a name, and retyping it in every
+   * 400, 404 and 409 is how the three end up saying different things.
+   *
+   * `ref` is one entry in this array and nothing else, because the whole path
+   * was already there: `schemaOf` emitted the `$ref`, `exampleOf` resolved it,
+   * the mock already asked `if (body.type === 'ref')` and the validator already
+   * knew not to call a reference an empty body. A body is an `ApiNode` and the
+   * root was never a special node. What was missing was this bar — which could
+   * not even *show* a reference, so it drew `object` over one.
+   */
+  const ROOT_TYPES: NodeType[] = ['object', 'array', 'ref'];
+
+  const models = $derived(apiContracts.open?.models ?? []);
+  const isRef = $derived(root.type === 'ref');
+  const isArrayOfRef = $derived(root.type === 'array' && root.itemType === 'ref');
+  const pointsAtModel = $derived(isRef ? root.ref : isArrayOfRef ? root.itemRef : '');
 </script>
 
 <div class="block">
@@ -48,12 +67,43 @@
         {#each ITEM_TYPES as type (type)}<option value={type}>de {type}</option>{/each}
       </select>
     {/if}
+    <!-- The same picker the row of a field has had since models existed. An
+         array of a model needed it as badly as a reference did: the bar already
+         offered «de ref» and had nowhere to say of which, so it could hand over
+         a document with a broken reference inside `items`. -->
+    {#if isRef || isArrayOfRef}
+      <select
+        class="type model"
+        value={pointsAtModel}
+        aria-label="modelo al que apunta"
+        onchange={(e) =>
+          isRef
+            ? apiContracts.setNodeRef(root.id, e.currentTarget.value)
+            : apiContracts.setNodeItemRef(root.id, e.currentTarget.value)}
+      >
+        <option value="">— elige un modelo —</option>
+        {#each models as model (model.id)}<option value={model.id}>{model.name}</option>{/each}
+      </select>
+    {/if}
     <span class="spacer"></span>
     {#if container}
       <button class="btn" onclick={() => apiContracts.addChild(root.id)}>+ campo</button>
       <button class="btn" onclick={() => apiUi.openPaste(root.id)}>pegar JSON</button>
       <button class="btn" onclick={() => apiContracts.extractToModel(root.id)}
         >extraer a modelo</button
+      >
+    {/if}
+    <!-- The same two verbs, with the same words the row uses: one vocabulary
+         for one idea. Without «expandir aquí» the only way back from a
+         reference is to make the body an object and retype it, with the fields
+         sitting one click away inside the model. -->
+    {#if isRef || isArrayOfRef}
+      <button class="btn" onclick={() => apiContracts.expandRef(root.id)}>expandir aquí</button>
+      <button
+        class="btn"
+        disabled={pointsAtModel === ''}
+        onclick={() => apiContracts.setView({ kind: 'model', id: pointsAtModel })}
+        >abrir el modelo</button
       >
     {/if}
     {#if onDrop}
@@ -80,6 +130,12 @@
         {/each}
       {/if}
     </div>
+  {:else if isRef}
+    <p class="empty">Este cuerpo es el modelo al que apunta: su forma se describe ahí y no aquí.</p>
+  {:else if isArrayOfRef}
+    <p class="empty">
+      Este cuerpo es una lista del modelo al que apunta: su forma se describe ahí y no aquí.
+    </p>
   {:else}
     <p class="empty">Un array de valores sueltos no tiene campos que describir.</p>
   {/if}
@@ -123,6 +179,12 @@
   .type:focus {
     border-color: var(--accent);
   }
+  /* El modelo en el color de acento, como en la fila de un campo: es lo que
+     hace que un cuerpo que apunta a algo se distinga de uno que se describe. */
+  .type.model {
+    max-width: 180px;
+    color: var(--accent);
+  }
   .btn {
     background: none;
     border: var(--line-width) solid var(--line);
@@ -137,6 +199,17 @@
   .btn:hover {
     color: var(--accent);
     border-color: var(--accent);
+  }
+  /* Mismos valores que `.icon:disabled` en la fila: un cuerpo que todavia no ha
+     elegido modelo no tiene modelo que abrir, y el boton debe decirlo apagado
+     en lugar de no responder. */
+  .btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+  }
+  .btn:disabled:hover {
+    color: var(--text-dim);
+    border-color: var(--line);
   }
   .tree {
     padding: 4px 0;

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { issueCount, validateContract } from './validate';
-import { newEndpoint, newNode } from './model/factories';
+import { newEndpoint, newNode, rootNode } from './model/factories';
 import type { ApiEndpoint, Contract } from './model/types';
 
 function contract(endpoints: ApiEndpoint[] = []): Contract {
@@ -410,5 +410,70 @@ describe('an enumeration left without values', () => {
     cliente.children = [newNode('tipo', 'enum')];
     const issues = validateContract(contract([withFields([cliente])]));
     expect(issues.find((i) => i.what.includes('valor admitido'))!.what).toContain('«tipo»');
+  });
+});
+
+describe('a body that points at a model', () => {
+  const errorModel = () => {
+    const node = rootNode();
+    node.children = [newNode('mensaje')];
+    return { id: 'mod-err', name: 'Error', description: '', node };
+  };
+
+  const refBody = () => {
+    const endpoint = newEndpoint('GET', '/productos');
+    const body = endpoint.responses[0].body!;
+    body.type = 'ref';
+    body.ref = 'mod-err';
+    body.children = [];
+    return endpoint;
+  };
+
+  /**
+   * A reference is not a container, so the «declared and left empty» check
+   * already skips it. Pinned because the opposite — accusing a body that says
+   * everything of saying nothing — would be the kind of false alarm that
+   * teaches people to ignore the list.
+   */
+  it('is not accused of being a body with no fields', () => {
+    const issues = validateContract({ ...contract([refBody()]), models: [errorModel()] });
+    expect(issues.map((i) => i.what)).not.toContain(
+      'el cuerpo está declarado y no tiene ningún campo',
+    );
+  });
+
+  it('says nothing at all about a body that points at a model that exists', () => {
+    const issues = validateContract({ ...contract([refBody()]), models: [errorModel()] });
+    expect(issues.filter((i) => i.severity === 'rompe')).toEqual([]);
+  });
+
+  it('catches a body pointing at a model that is not there', () => {
+    const issues = validateContract(contract([refBody()]));
+    const issue = issues.find((i) => i.what.includes('apunta a un modelo que no existe'));
+    expect(issue).toBeDefined();
+    expect(issue!.severity).toBe('rompe');
+    expect(issue!.where).toContain('/productos');
+  });
+
+  /**
+   * Reachable today with the body bar alone: it offers «array of ref» and has
+   * nowhere to say of which. The warning is what protects whoever gets there
+   * while the picker can still produce it.
+   */
+  it('catches a body that is a list of a model nobody named', () => {
+    const endpoint = newEndpoint('GET', '/productos');
+    const body = endpoint.responses[0].body!;
+    body.type = 'array';
+    body.itemType = 'ref';
+    const issues = validateContract({ ...contract([endpoint]), models: [errorModel()] });
+    const issue = issues.find((i) => i.what.includes('array de un modelo que no existe'));
+    expect(issue).toBeDefined();
+    expect(issue!.severity).toBe('rompe');
+  });
+
+  it('counts a body as a use of the model, so deleting it warns', () => {
+    const c = { ...contract([refBody()]), models: [errorModel()] };
+    const issues = validateContract(c);
+    expect(issues.map((i) => i.what)).not.toContain('no lo usa nadie');
   });
 });

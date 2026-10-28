@@ -936,3 +936,96 @@ describe('opening a contract written before the enumeration was a type', () => {
     expect(backend.saved).toBeNull();
   });
 });
+
+describe('a body that points at a model', () => {
+  /**
+   * A body is an `ApiNode` like any other and the root is not a special node,
+   * so everything the store already does to a field it already does to a body.
+   * These tests exist to **pin** that, not to drive new code: if any of them
+   * needs a line in the store, this change's design was wrong (D5).
+   */
+  async function withBodyAndModel() {
+    const { store } = await opened();
+    const ep = store.addEndpoint()!;
+    const body = ep.responses[0].body!;
+    const model = store.addModel()!;
+    store.renameModel(model.id, 'Error');
+    return { store, ep, body, model };
+  }
+
+  it('extracts the whole body to a model and points the body at it', async () => {
+    const { store, body } = await withBodyAndModel();
+    store.addChild(body.id)!.key = 'codigo';
+    store.addChild(body.id)!.key = 'mensaje';
+
+    const model = store.extractToModel(body.id)!;
+
+    expect(body.type).toBe('ref');
+    expect(body.ref).toBe(model.id);
+    expect(body.children).toEqual([]);
+    expect(model.node.children.map((c) => c.key)).toContain('mensaje');
+  });
+
+  it('expands a referenced body back into its own fields', async () => {
+    const { store, body, model } = await withBodyAndModel();
+    store.addChild(model.node.id)!.key = 'detalle';
+    store.setNodeType(body.id, 'ref');
+    store.setNodeRef(body.id, model.id);
+
+    store.expandRef(body.id);
+
+    expect(body.type).toBe('object');
+    expect(body.ref).toBe('');
+    expect(body.children.map((c) => c.key)).toContain('detalle');
+  });
+
+  /** Expanding copies: the model has to survive it, like it does for a field. */
+  it('leaves the model alone when a body expands it', async () => {
+    const { store, body, model } = await withBodyAndModel();
+    store.setNodeType(body.id, 'ref');
+    store.setNodeRef(body.id, model.id);
+
+    store.expandRef(body.id);
+
+    expect(store.open!.models.map((m) => m.id)).toContain(model.id);
+  });
+
+  it('points a body at a model, and at an array of that model', async () => {
+    const { store, body, model } = await withBodyAndModel();
+
+    store.setNodeType(body.id, 'ref');
+    store.setNodeRef(body.id, model.id);
+    expect([body.type, body.ref]).toEqual(['ref', model.id]);
+
+    store.setNodeType(body.id, 'array');
+    store.setNodeItemType(body.id, 'ref');
+    store.setNodeItemRef(body.id, model.id);
+    expect([body.type, body.itemType, body.itemRef]).toEqual(['array', 'ref', model.id]);
+  });
+
+  /**
+   * The rule that already governs a field, applied to the root (D3): the shape
+   * of a reference is the model's, so the fields that were there cannot stay.
+   * The way to keep them is to extract them, which is what makes them the model.
+   */
+  it('drops the fields the body had, like any other field does', async () => {
+    const { store, body, model } = await withBodyAndModel();
+    store.addChild(body.id)!.key = 'codigo';
+    store.addChild(body.id)!.key = 'mensaje';
+
+    store.setNodeType(body.id, 'ref');
+    store.setNodeRef(body.id, model.id);
+
+    expect(body.children).toEqual([]);
+  });
+
+  it('makes the example of the body the example of the model', async () => {
+    const { store, body, model } = await withBodyAndModel();
+    model.node.children[0].key = 'mensaje';
+    model.node.children[0].example = 'no encontrado';
+    store.setNodeType(body.id, 'ref');
+    store.setNodeRef(body.id, model.id);
+
+    expect(exampleOf(body, store.open!.models)).toEqual({ mensaje: 'no encontrado' });
+  });
+});
