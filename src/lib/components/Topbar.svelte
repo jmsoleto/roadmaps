@@ -129,11 +129,19 @@
     <div class="spacer"></div>
   {/if}
   {#each actions as action (action.label)}
+    {@const pilot = action.kind === 'button' ? action.pilot : undefined}
     <button
       class="add-tab"
+      class:lit={pilot !== undefined}
       onclick={() => run(action)}
       disabled={action.disabled}
-      title={action.title}>{action.label}</button
+      title={action.title}
+      >{#if pilot}<span
+          class="pilot"
+          class:alert={pilot === 'alert'}
+          role="img"
+          aria-label={pilot === 'alert' ? 'conectado, sin poder leer' : 'conectado'}
+        ></span>{/if}{action.label}</button
     >
   {/each}
   <button class="add-tab" onclick={() => ui.openTheme()} title="tema de colores">◐ tema</button>
@@ -216,6 +224,47 @@
   .add-tab:disabled {
     opacity: 0.45;
     cursor: not-allowed;
+  }
+  /* Lit: the data of this application is in a folder (piloto-de-carpeta). A
+     solid border and the accent's tint, against the dashed outline of every
+     other action. */
+  .add-tab.lit {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    border-style: solid;
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--tint-accent);
+  }
+  .pilot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 6px var(--accent);
+    animation: pilot 2.4s ease-in-out infinite;
+  }
+  /* Connected but not readable: steady, in the alert colour. An alert does
+     not breathe. */
+  .pilot.alert {
+    background: var(--danger);
+    box-shadow: 0 0 6px var(--danger);
+    animation: none;
+  }
+  @keyframes pilot {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.35;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .pilot {
+      animation: none;
+    }
   }
   .hidden-file {
     display: none;

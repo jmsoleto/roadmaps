@@ -4,6 +4,9 @@ import { API_ID, DECISIONS_ID, LINKS_ID, ROADMAPS_ID } from './apps';
 import { links } from '../links/store.svelte';
 import { isUnreadable, type AppAction } from './types';
 import { store } from '../store/app.svelte';
+import { roadmapsFolder } from '../store/roadmaps-folder.svelte';
+import { apiFolder } from '../api/folder.svelte';
+import { linksFolder } from '../links/folder.svelte';
 import { apiContracts } from '../api/store.svelte';
 
 /**
@@ -317,4 +320,39 @@ describe('la tarjeta de Links con la carpeta sin leer (carpeta-links, 3.4)', () 
       },
     );
   });
+});
+
+describe('el piloto del botón de carpeta (piloto-de-carpeta)', () => {
+  const cases = [
+    { id: ROADMAPS_ID, connection: () => roadmapsFolder, data: () => store },
+    { id: API_ID, connection: () => apiFolder, data: () => apiContracts },
+    { id: LINKS_ID, connection: () => linksFolder, data: () => links },
+  ] as const;
+
+  const pilotOf = (id: string) => {
+    const action = hubApp(id)!.actions!().find((a) => a.label.includes('carpeta'))!;
+    return action.kind === 'button' ? action.pilot : undefined;
+  };
+
+  for (const c of cases) {
+    it(`${c.id}: sin carpeta no hay piloto; conectada parpadea; sin poder leer, alerta`, () => {
+      const conn = c.connection();
+      const data = c.data() as { unavailable: unknown };
+      const before = { name: conn.folderName, unavailable: data.unavailable };
+      try {
+        conn.folderName = null;
+        data.unavailable = null;
+        expect(pilotOf(c.id)).toBeUndefined();
+
+        conn.folderName = 'repo/x';
+        expect(pilotOf(c.id)).toBe('ok');
+
+        data.unavailable = { reason: 'x', why: { cause: 'permiso' } };
+        expect(pilotOf(c.id)).toBe('alert');
+      } finally {
+        conn.folderName = before.name;
+        data.unavailable = before.unavailable;
+      }
+    });
+  }
 });

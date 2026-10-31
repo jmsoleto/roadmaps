@@ -196,7 +196,19 @@ export type AppComponent = Component<Record<string, never>>;
 export type ActionNotice = string | void;
 
 export type AppAction =
-  | { kind: 'button'; label: string; title?: string; disabled?: boolean; run: () => ActionNotice }
+  | {
+      kind: 'button';
+      label: string;
+      title?: string;
+      disabled?: boolean;
+      /**
+       * A pilot light inside the button, which also shows it lit
+       * (piloto-de-carpeta). `ok` pulses softly; `alert` stays on in the alert
+       * colour. Absent is the ordinary button.
+       */
+      pilot?: 'ok' | 'alert';
+      run: () => ActionNotice;
+    }
   | {
       kind: 'file';
       label: string;

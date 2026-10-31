@@ -66,3 +66,7 @@ Sin ninguna referencia a Roadmaps: el test lo usa con un id de aplicación inven
 - [x] 9.1 README: sección Datos (los dos modos, qué viaja y qué no, que la app no hace git, el aviso de no editar durante un `git pull`) y la línea de Stack. Verificar leyéndolo contra las specs
 - [ ] 9.2 **Punto de verificación** de extremo a extremo en Chrome, sobre un clon real: conectar con datos del navegador, editar, `git diff` legible y mínimo, commit y push a una rama. Un segundo perfil de Chrome clona, conecta, ve los mismos roadmaps con su propio plegado, edita y abre PR. Provocar un conflicto y comprobar la pantalla que nombra el fichero
 - [x] 9.3 `npm run check`, `npm run lint` y `npm run test` en verde
+
+## Pendiente al archivar
+
+Archivado el 2026-10-31 con tres tareas sin hacer, todas de comprobación manual en el Chrome del usuario: la spike de permisos (1.1 y 1.2) y la prueba de extremo a extremo con git real y dos perfiles (9.2). Lo que cubrían se comprobó en parte en Chromium con OPFS como carpeta (conectar, volcar, recargar con la conexión recordada, conflictos, desconectar), pero no el comportamiento real del permiso de Chrome entre sesiones ni un flujo de PR. Siguen siendo trabajo por hacer, fuera de este registro.

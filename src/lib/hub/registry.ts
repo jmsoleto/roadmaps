@@ -286,6 +286,7 @@ function linksActions(): AppAction[] {
       title: linksFolder.folderName
         ? `conectado a «${linksFolder.folderName}»`
         : 'guardar los enlaces en una carpeta (un repo de git)',
+      pilot: folderPilot(linksFolder.folderName, links.unavailable !== null),
       run: () => ui.openFolder(LINKS_ID),
     },
   ];
@@ -338,6 +339,7 @@ function apiActions(): AppAction[] {
       title: apiFolder.folderName
         ? `conectado a «${apiFolder.folderName}»`
         : 'guardar los contratos en una carpeta (un repo de git)',
+      pilot: folderPilot(apiFolder.folderName, apiContracts.unavailable !== null),
       run: () => ui.openFolder(API_ID),
     },
   ];
@@ -368,6 +370,16 @@ function exportActiveRoadmap(): void {
   downloadText(`${name}.json`, json);
 }
 
+/**
+ * The folder button's pilot (piloto-de-carpeta): none in the browser, a soft
+ * pulse when the folder is connected and can be used (or is opening), steady
+ * alert when it is connected but cannot be read.
+ */
+function folderPilot(folder: string | null, unreadable: boolean): 'ok' | 'alert' | undefined {
+  if (folder === null) return undefined;
+  return unreadable ? 'alert' : 'ok';
+}
+
 function roadmapsActions(): AppAction[] {
   // The same rule as API Hub's, now that Roadmaps can wait on a folder: nothing
   // is created over data that has not been read, or could not be.
@@ -396,6 +408,7 @@ function roadmapsActions(): AppAction[] {
       title: roadmapsFolder.folderName
         ? `conectado a «${roadmapsFolder.folderName}»`
         : 'guardar los roadmaps en una carpeta (un repo de git)',
+      pilot: folderPilot(roadmapsFolder.folderName, store.unavailable !== null),
       run: () => ui.openFolder(ROADMAPS_ID),
     },
   ];

@@ -4,7 +4,9 @@
 
 Cómo sobreviven los datos entre sesiones, sabiendo que no hay servidor y que perderlos no tiene vuelta atrás.
 
-**Un almacén por aplicación**, y ninguna lee el de otra. El de Roadmaps es el almacenamiento de clave-valor del navegador, bajo una clave versionada, y no se mueve de ahí. El de Links Hub es también de clave-valor, bajo una clave propia al lado de aquella y nunca dentro: es la excepción declarada frente a los dos siguientes, porque un almacén capaz de hacer esperar no puede quedarse entre el usuario y el panel que necesita en mitad de una caída. El de Decisions vive fuera de él, en un almacén cuya cuota no compite con aquella: agotar la del primero haría fallar el guardado de Roadmaps, y ese fallo no es visible para el usuario. Dentro de ese almacén, el contenido binario de los adjuntos va aparte del documento, que se reescribe entero en cada guardado.
+**Un almacén por aplicación**, y ninguna lee el de otra. El de Roadmaps es el almacenamiento de clave-valor del navegador, bajo una clave versionada, y no se mueve de ahí. El de Links Hub es también de clave-valor, bajo una clave propia al lado de aquella y nunca dentro: es la excepción declarada frente a los dos siguientes, porque un almacén capaz de hacer esperar no puede quedarse entre el usuario y el panel que necesita en mitad de una caída. Esa excepción vale mientras Links Hub no esté conectado a una carpeta. El de Decisions vive fuera de él, en un almacén cuya cuota no compite con aquella: agotar la del primero haría fallar el guardado de Roadmaps, y ese fallo no es visible para el usuario. Dentro de ese almacén, el contenido binario de los adjuntos va aparte del documento, que se reescribe entero en cada guardado.
+
+Roadmaps, API Hub y Links Hub pueden guardar en cambio en una carpeta del dispositivo (`folder-persistence`). Mientras lo hacen, su almacén del navegador queda intacto, y lo que es de cada persona (qué está abierto, qué está plegado, el zoom) sigue aquí, como estado de sesión, fuera de los datos.
 
 Cubre además las fechas absolutas como formato canónico, el autosave con agrupación de escrituras, la persistencia del estado de sesión y de las preferencias de tema, el volcado de los cambios pendientes al cerrar, y la distinción entre un almacén vacío y uno que no se ha podido abrir.
 
@@ -66,9 +68,11 @@ El sistema MUST convertir a posiciones de paleta los colores de fases, items y r
 
 El sistema MUST persistir todos los datos de Roadmaps (roadmaps, fases, items, milestones, dependencias, responsables, catálogo de dependencias externas, asignaciones de dependencia externa, estado de completitud de cada item y línea base del plan de cada roadmap) en el almacenamiento local del navegador, bajo una clave versionada que identifique el formato de los datos guardados.
 
-Cada aplicación del hub MUST tener su propio almacén, y una aplicación MUST NOT leer ni escribir el almacén de otra. El almacén de Roadmaps es el descrito aquí y MUST NOT cambiar de sitio ni de clave.
+Esto vale **mientras Roadmaps no esté conectado a una carpeta**. Con una carpeta conectada, los datos de Roadmaps se guardan allí según `folder-persistence`, y el almacén del navegador MUST quedar intacto, sin leerse ni escribirse, hasta que se desconecte. Es lo que permite que desconectar devuelva los datos tal como estaban.
 
-El almacén es propio de cada navegador y de cada perfil: los datos no se sincronizan entre máquinas ni entre navegadores, y desaparecen si el usuario borra los datos del sitio. El mecanismo de copia de seguridad y de trasvase es el export/import JSON descrito en `data-portability`, y **su alcance es el que cada aplicación declare allí**: en Roadmaps y en API Hub el documento es una unidad de trabajo —un roadmap, un contrato—, en Decisions es el conjunto entero, y en Links Hub es un área. Una aplicación cuyo documento sea una unidad y no el conjunto MUST NOT presentarse como respaldada por completo: mientras no declare un documento de conjunto, guardar todo su contenido son tantos ficheros como unidades tenga, y esta capability no promete lo contrario.
+Cada aplicación del hub MUST tener su propio almacén, y una aplicación MUST NOT leer ni escribir el almacén de otra. El almacén de Roadmaps en el navegador es el descrito aquí y MUST NOT cambiar de sitio ni de clave.
+
+El almacén es propio de cada navegador y de cada perfil: los datos no se sincronizan entre máquinas ni entre navegadores, y desaparecen si el usuario borra los datos del sitio. El mecanismo de copia de seguridad y de trasvase es el export/import JSON descrito en `data-portability`, y **su alcance es el que cada aplicación declare allí**: en Roadmaps y en API Hub el documento es una unidad de trabajo (un roadmap, un contrato), en Decisions es el conjunto entero, y en Links Hub es un área. Una aplicación cuyo documento sea una unidad y no el conjunto MUST NOT presentarse como respaldada por completo: mientras no declare un documento de conjunto, guardar todo su contenido son tantos ficheros como unidades tenga, y esta capability no promete lo contrario. Conectarla a una carpeta es la otra forma de tenerla respaldada por completo.
 
 #### Scenario: Primer arranque sin datos previos
 
@@ -105,9 +109,18 @@ El almacén es propio de cada navegador y de cada perfil: los datos no se sincro
 - **WHEN** el usuario quiere guardar fuera del navegador todo el contenido de Links Hub
 - **THEN** el sistema le permite hacerlo exportando cada área, y no ofrece un único documento que las contenga todas
 
+#### Scenario: Con carpeta conectada el navegador no se toca
+
+- **WHEN** el usuario edita roadmaps con Roadmaps conectado a una carpeta
+- **THEN** el almacén de Roadmaps en el navegador conserva exactamente lo que tenía al conectar
+
 ### Requirement: Autosave con agrupación de escrituras
 
-El sistema MUST guardar los cambios de forma automática, agrupando las escrituras próximas en el tiempo en una sola. Cada guardado MUST escribir el estado completo de una vez, de modo que el almacén nunca contenga un estado a medio escribir.
+El sistema MUST guardar los cambios de forma automática, agrupando las escrituras próximas en el tiempo en una sola.
+
+En el almacén del navegador, cada guardado MUST escribir el estado completo de una vez, de modo que el almacén nunca contenga un estado a medio escribir.
+
+En una carpeta conectada el estado está repartido en varios ficheros y la plataforma no ofrece escribir varios a la vez. La garantía MUST ser entonces por fichero: cada fichero escrito MUST quedar con su contenido anterior íntegro o con el nuevo íntegro. El indicador de guardado MUST NOT mostrarse hasta que hayan terminado todas las escrituras de ese guardado.
 
 #### Scenario: Ediciones en ráfaga
 
@@ -116,23 +129,33 @@ El sistema MUST guardar los cambios de forma automática, agrupando las escritur
 
 #### Scenario: Consistencia del estado guardado
 
-- **WHEN** el sistema persiste el estado
+- **WHEN** el sistema persiste el estado en el almacén del navegador
 - **THEN** lo escribe como una única operación, y una lectura posterior obtiene el estado anterior íntegro o el nuevo íntegro, nunca una mezcla de ambos
+
+#### Scenario: Consistencia por fichero en una carpeta
+
+- **WHEN** el sistema persiste el estado en una carpeta conectada
+- **THEN** cada fichero que escribe queda con su contenido anterior íntegro o con el nuevo íntegro, y el indicador de guardado aparece solo cuando han terminado todos
 
 ### Requirement: Persistencia del estado de sesión
 
-El sistema MUST recordar entre sesiones el roadmap activo y las preferencias de vista (p. ej. el nivel de zoom), en el mismo almacén que el resto de preferencias.
+El sistema MUST recordar entre sesiones el roadmap activo, qué fases están plegadas y las preferencias de vista (p. ej. el nivel de zoom), en el mismo almacén que el resto de preferencias.
 
-Los **dos anchos de la columna de nombres** —el de la vista de roadmap y el de la vista "Todos"— son preferencias de vista de pleno derecho y MUST recordarse igual, cada uno por separado. Un ancho de columna es una decisión que se toma una vez y se espera encontrar tal cual al volver.
+Los **dos anchos de la columna de nombres**, el de la vista de roadmap y el de la vista "Todos", son preferencias de vista de pleno derecho y MUST recordarse igual, cada uno por separado. Un ancho de columna es una decisión que se toma una vez y se espera encontrar tal cual al volver.
 
 El sistema MUST guardarlos al terminar el gesto de redimensionado, no durante el arrastre: un arrastre genera decenas de posiciones intermedias y ninguna de ellas es una decisión.
 
-Estas preferencias MUST vivir fuera de los datos de los roadmaps, y por tanto MUST NOT viajar en la exportación ni alterarse al importar. El ancho de una columna describe cómo mira el usuario, no lo que hay planificado.
+Estas preferencias, el roadmap activo y el plegado de las fases incluidos, MUST vivir fuera de los datos de los roadmaps. Por tanto MUST NOT viajar en la exportación, MUST NOT alterarse al importar y MUST NOT escribirse en una carpeta conectada. Describen cómo mira el usuario, no lo que hay planificado.
 
 #### Scenario: Reabrir en el último estado
 
 - **WHEN** el usuario cierra la aplicación con un roadmap y un nivel de zoom concretos y la vuelve a abrir
 - **THEN** la aplicación restaura ese roadmap como roadmap activo y ese nivel de zoom
+
+#### Scenario: El plegado de las fases sobrevive a la sesión
+
+- **WHEN** el usuario pliega varias fases, cierra la aplicación y la vuelve a abrir
+- **THEN** esas fases siguen plegadas y las demás desplegadas
 
 #### Scenario: Los anchos de columna sobreviven a la sesión
 
@@ -149,16 +172,33 @@ Estas preferencias MUST vivir fuera de los datos de los roadmaps, y por tanto MU
 - **WHEN** el usuario exporta sus roadmaps y los importa en otro navegador
 - **THEN** los roadmaps llegan completos y los anchos de columna del navegador de destino no cambian
 
+#### Scenario: Datos guardados con el estado de vista dentro
+
+- **WHEN** la aplicación carga datos de una versión anterior que guardaban el roadmap activo y el plegado de las fases junto a los roadmaps
+- **THEN** conserva ese roadmap activo y ese plegado como estado de sesión, sin perderlos ni forzar una escritura
+
 ### Requirement: Guardado de cambios pendientes al cerrar
 
-El sistema MUST persistir los cambios pendientes de guardar cuando el usuario cierra la pestaña o la ventana de la aplicación, sin esperar a que expire la agrupación del autosave.
+Con el almacén del navegador, el sistema MUST persistir los cambios pendientes de guardar cuando el usuario cierra la pestaña o la ventana de la aplicación, sin esperar a que expire la agrupación del autosave.
 
 La garantía alcanza hasta donde alcanza la plataforma: el cierre iniciado por el usuario. El sistema NO puede garantizar el guardado cuando el navegador descarta la pestaña sin previo aviso, situación en la que se pierden como mucho los cambios de la última ráfaga de edición.
 
+Con una carpeta conectada, la escritura es asíncrona y la plataforma no espera a que termine antes de descargar la página. El sistema MUST entonces empezar la escritura de lo pendiente al cerrar y, mientras quede alguna escritura sin terminar, MUST pedir al navegador que confirme el cierre, de modo que el usuario pueda quedarse hasta que acabe. Sin escrituras pendientes, el cierre MUST NOT pedir confirmación.
+
 #### Scenario: Cierre con cambios pendientes
 
-- **WHEN** el usuario realiza un cambio y cierra la pestaña o la ventana antes de que expire la agrupación del autosave
+- **WHEN** el usuario realiza un cambio y cierra la pestaña o la ventana antes de que expire la agrupación del autosave, con Roadmaps en el almacén del navegador
 - **THEN** el cambio se escribe en el almacén antes de que la página se descargue, y al volver a abrir la aplicación el cambio está ahí
+
+#### Scenario: Cierre con escrituras pendientes en la carpeta
+
+- **WHEN** el usuario cierra la pestaña con Roadmaps conectado a una carpeta y un cambio que todavía no se ha escrito
+- **THEN** el navegador pide confirmar el cierre, y si el usuario se queda el cambio termina de escribirse en la carpeta
+
+#### Scenario: Cierre sin nada pendiente en la carpeta
+
+- **WHEN** el usuario cierra la pestaña con Roadmaps conectado y todo escrito
+- **THEN** la página se cierra sin pedir confirmación
 
 ### Requirement: Normalización de datos sin dependencias externas al cargar
 
@@ -231,7 +271,7 @@ Cuando el sistema no consigue abrir el almacén de una aplicación, MUST decírs
 
 Arrancar en blanco sobre un almacén que sí tiene datos invita a volver a escribir encima de ellos, y esa pérdida sería irreversible: no hay servidor del que recuperarlos.
 
-La regla vale para toda aplicación con almacén propio, y MUST NOT resolverse en cada una a su manera: lo que el usuario ve al no poder leerse sus datos MUST ser reconociblemente lo mismo en todas.
+La regla vale para toda aplicación con almacén propio, y MUST NOT resolverse en cada una a su manera: lo que el usuario ve al no poder leerse sus datos MUST ser reconociblemente lo mismo en todas. Una carpeta conectada es un almacén más: la carpeta que falta, el fichero ilegible y el permiso no concedido son formas de no poder abrirlo, y se presentan igual.
 
 #### Scenario: El almacén no abre
 
@@ -262,6 +302,21 @@ La regla vale para toda aplicación con almacén propio, y MUST NOT resolverse e
 
 - **WHEN** el almacén de API Hub no se puede abrir
 - **THEN** Roadmaps, Decisions y la landing del hub siguen funcionando con normalidad
+
+#### Scenario: La carpeta de Roadmaps no se puede leer
+
+- **WHEN** Roadmaps está conectado a una carpeta que no se puede leer o sobre la que falta el permiso
+- **THEN** el sistema indica que los roadmaps no están disponibles, con la misma presentación que Decisions y API Hub, en lugar de mostrar el plan vacío o el sembrado inicial
+
+#### Scenario: Una carpeta marcada sin roadmaps
+
+- **WHEN** Roadmaps se conecta a una carpeta suya que no contiene ningún roadmap
+- **THEN** el sistema muestra el estado vacío normal, con el alta disponible, y no siembra el roadmap de ejemplo en la carpeta
+
+#### Scenario: Las demás siguen funcionando sin la carpeta de Roadmaps
+
+- **WHEN** la carpeta de Roadmaps no se puede leer
+- **THEN** Decisions, API Hub, Links Hub y la landing del hub siguen funcionando con normalidad
 
 ### Requirement: Los bytes de los adjuntos se guardan aparte del documento
 El sistema MUST guardar el contenido binario de los adjuntos en un almacén distinto del que guarda el documento de decisiones, dentro del mismo almacén de la aplicación, referenciado desde la ficha de cada adjunto.
@@ -339,6 +394,8 @@ La normalización MUST ser idempotente y MUST NOT provocar por sí sola una escr
 
 El sistema MUST persistir los contratos de API en un almacén del navegador cuya capacidad no compita con la del almacenamiento de clave-valor que usa Roadmaps, por el mismo motivo por el que Decisions tiene el suyo: agotar esa cuota haría fallar el guardado de Roadmaps, y ese fallo no es visible para el usuario.
 
+Esto vale **mientras API Hub no esté conectado a una carpeta**. Con una carpeta conectada, sus tres documentos se guardan allí según `folder-persistence`, y su almacén del navegador MUST quedar intacto hasta que se desconecte.
+
 El sistema MUST guardar la biblioteca de modelos reutilizables aparte del documento de contratos, dentro del mismo almacén de la aplicación. La biblioteca es transversal a todos los contratos y el documento se reescribe entero en cada guardado; con la biblioteca dentro, escribir una letra en un contrato reescribiría también la biblioteca completa.
 
 El sitio de la biblioteca se creó antes de que hubiera nada que guardar en ella, y esa fue la decisión correcta: crearlo después habría obligado a migrar contratos que el usuario ya tuviera, que es justamente la migración irreversible que este proyecto evita. Se elige por donde acaba y no por donde empieza.
@@ -370,11 +427,18 @@ Guardar en la biblioteca MUST NOT reescribir el documento de contratos, y guarda
 - **WHEN** el usuario guarda modelos en la biblioteca y cierra el navegador por completo
 - **THEN** al volver a abrir siguen ahí, disponibles desde cualquier contrato
 
+#### Scenario: Con carpeta conectada el navegador no se toca
+
+- **WHEN** el usuario edita contratos con API Hub conectado a una carpeta
+- **THEN** el almacén de API Hub en el navegador conserva exactamente lo que tenía al conectar
+
 ### Requirement: El almacén de Links Hub vive fuera del de las demás aplicaciones
 
 Las áreas y los enlaces de Links Hub MUST guardarse bajo una clave propia del almacenamiento local, separada de la de Roadmaps y del almacén de documentos de Decisions y API Hub, de modo que ninguna aplicación pueda corromper ni desalojar los datos de otra.
 
-El almacenamiento MUST ser síncrono y estar disponible antes del primer fotograma. Es la excepción declarada frente a Decisions y API Hub, y la razón es el día en que se usa: en una guardia no puede haber un desenlace «el almacén no responde» entre el usuario y el enlace que necesita, y el volumen —unas decenas de enlaces— no justifica pagar ese riesgo.
+Mientras Links Hub no esté conectado a una carpeta, el almacenamiento MUST ser síncrono y estar disponible antes del primer fotograma. Es la excepción declarada frente a Decisions y API Hub, y la razón es el día en que se usa: en una guardia no puede haber un desenlace «el almacén no responde» entre el usuario y el enlace que necesita, y el volumen —unas decenas de enlaces— no justifica pagar ese riesgo.
+
+Con una carpeta conectada, la excepción no vale, y es una decisión de quien conecta: leer una carpeta es asíncrono y puede depender de un permiso. Links Hub MUST entonces mostrar que se está abriendo mientras lee la carpeta, y MUST distinguir una carpeta que no se puede leer de una vacía, con las mismas reglas que las demás aplicaciones. El almacén del navegador MUST quedar intacto hasta que se desconecte.
 
 El sistema MUST tolerar un contenido ilegible o escrito por una versión anterior arrancando con lo que sí pueda interpretar, en lugar de no arrancar.
 
@@ -392,3 +456,39 @@ El sistema MUST tolerar un contenido ilegible o escrito por una versión anterio
 
 - **WHEN** el usuario elimina todos los enlaces de Links Hub
 - **THEN** los roadmaps, las decisiones y los contratos siguen intactos
+
+#### Scenario: Sin carpeta, nunca hay espera
+
+- **WHEN** el usuario abre Links Hub sin ninguna carpeta conectada
+- **THEN** los enlaces están en pantalla desde el primer fotograma, sin ningún estado de «abriendo»
+
+#### Scenario: Con carpeta, la espera se dice
+
+- **WHEN** el usuario abre Links Hub conectado a una carpeta que todavía se está leyendo, o sobre la que falta el permiso
+- **THEN** el sistema indica que se está abriendo o que falta el permiso, y no muestra un panel vacío
+
+### Requirement: El estado de vista de API Hub es estado de sesión
+
+El sistema MUST recordar entre sesiones qué contrato estaba abierto, qué endpoint o modelo se veía en cada contrato y qué nodos de los árboles estaban plegados, como preferencias del navegador y fuera de los documentos de API Hub. Por tanto MUST NOT viajar en la exportación de un contrato ni de la biblioteca, y MUST NOT alterarse al importar.
+
+Al cargar documentos guardados por una versión anterior, que llevan ese estado dentro, el sistema MUST conservarlo como estado de sesión sin perderlo y sin forzar una escritura de los documentos.
+
+#### Scenario: Reabrir donde se estaba
+
+- **WHEN** el usuario cierra la aplicación con un contrato abierto, un endpoint a la vista y varios campos plegados, y la vuelve a abrir
+- **THEN** encuentra ese contrato, ese endpoint y esos campos plegados
+
+#### Scenario: Un nodo nuevo nace desplegado
+
+- **WHEN** el usuario añade un campo a un modelo
+- **THEN** el campo aparece desplegado, sin que se escriba ninguna preferencia
+
+#### Scenario: Documentos guardados con el estado de vista dentro
+
+- **WHEN** la aplicación carga contratos de una versión anterior que guardaban el contrato abierto, la vista de cada contrato y el plegado de sus nodos
+- **THEN** los conserva como estado de sesión, sin perderlos ni forzar una escritura
+
+#### Scenario: Exportar un contrato no lleva la vista
+
+- **WHEN** el usuario exporta un contrato con campos plegados
+- **THEN** el documento exportado no dice qué campos estaban plegados ni qué endpoint se estaba viendo
