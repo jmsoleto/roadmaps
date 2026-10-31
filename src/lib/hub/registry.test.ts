@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { hubApp, hubApps } from './registry';
 import { API_ID, DECISIONS_ID, LINKS_ID, ROADMAPS_ID } from './apps';
 import { links } from '../links/store.svelte';
-import type { AppAction } from './types';
+import { isUnreadable, type AppAction } from './types';
+import { store } from '../store/app.svelte';
 
 /**
  * The contract the shell consumes, exercised the way the shell consumes it.
@@ -119,5 +120,80 @@ describe('the actions Links Hub declares', () => {
     links.setActiveArea(null);
     const importAction = linkActions().find((a) => a.label.includes('importar'));
     expect(importAction?.disabled).toBeFalsy();
+  });
+});
+
+describe('la tarjeta de Roadmaps con la carpeta sin leer (carpeta-roadmaps, D10)', () => {
+  // The registry reads the app's singletons; these tests drive them directly
+  // and put them back, so the order of the suite does not matter.
+  async function withStore(
+    state: { ready: boolean; unavailable: (typeof store)['unavailable'] },
+    fn: () => void | Promise<void>,
+  ) {
+    const before = { ready: store.ready, unavailable: store.unavailable };
+    store.ready = state.ready;
+    store.unavailable = state.unavailable;
+    try {
+      await fn();
+    } finally {
+      store.ready = before.ready;
+      store.unavailable = before.unavailable;
+    }
+  }
+
+  const summary = () => hubApp(ROADMAPS_ID)!.summary!();
+
+  it('mientras abre no enseña cifras', async () => {
+    await withStore({ ready: false, unavailable: null }, () => {
+      const s = summary();
+      expect(isUnreadable(s)).toBe(true);
+      expect('stats' in s).toBe(false);
+    });
+  });
+
+  it('sin permiso ofrece concederlo', async () => {
+    await withStore(
+      { ready: true, unavailable: { reason: 'x', why: { cause: 'permiso' } } },
+      () => {
+        const s = summary();
+        expect(isUnreadable(s) && s.reason).toContain('permiso');
+        expect(isUnreadable(s) && typeof s.grant).toBe('function');
+      },
+    );
+  });
+
+  it('con un fichero ilegible no ofrece conceder nada', async () => {
+    await withStore(
+      {
+        ready: true,
+        unavailable: { reason: 'x', why: { cause: 'fichero-ilegible', file: 'rm-1.json' } },
+      },
+      () => {
+        const s = summary();
+        expect(isUnreadable(s)).toBe(true);
+        expect(isUnreadable(s) && s.grant).toBeUndefined();
+      },
+    );
+  });
+
+  it('no aporta avisos a la tira de la landing ni deja crear desde la barra', async () => {
+    await withStore(
+      { ready: true, unavailable: { reason: 'x', why: { cause: 'permiso' } } },
+      () => {
+        const actions = hubApp(ROADMAPS_ID)!.actions!();
+        const create = actions.find((a) => a.label.includes('nuevo'));
+        expect(create?.disabled).toBe(true);
+        const folder = actions.find((a) => a.label.includes('carpeta'));
+        expect(folder?.disabled).toBeFalsy();
+      },
+    );
+  });
+
+  it('con los datos leídos vuelve a dar sus cifras', async () => {
+    await withStore({ ready: true, unavailable: null }, () => {
+      const s = summary();
+      expect(isUnreadable(s)).toBe(false);
+      expect('stats' in s && s.stats).toHaveLength(3);
+    });
   });
 });

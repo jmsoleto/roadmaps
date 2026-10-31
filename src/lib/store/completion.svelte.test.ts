@@ -8,23 +8,29 @@
 
 import { describe, it, expect } from 'vitest';
 import { AppStore } from './app.svelte';
-import type { Storage } from './storage';
+import type { RoadmapsBackend, RoadmapsLoad } from './storage';
 import type { AppData, Item, Roadmap } from '../model/types';
 import { todayIso, addDays } from '../time/timeline';
 
-class FakeStorage implements Storage {
+/**
+ * Data as versions before carpeta-roadmaps wrote it, with the open roadmap
+ * inside. The store still reads it, lifting `activeId` into a preference, and
+ * these fixtures use that path to say which roadmap is open.
+ */
+type StoredData = AppData & { activeId?: string | null };
+
+class FakeStorage implements RoadmapsBackend {
+  readonly source = 'browser' as const;
+  readonly pending = false;
+  async settled(): Promise<void> {}
   saved: AppData | null = null;
-  constructor(private initial: AppData | null = null) {}
-  async load(): Promise<AppData | null> {
-    return this.initial;
+  constructor(private initial: StoredData | null = null) {}
+  async load(): Promise<RoadmapsLoad> {
+    return this.initial ? { kind: 'loaded', data: this.initial } : { kind: 'empty' };
   }
   async save(data: AppData): Promise<void> {
     this.saved = data;
   }
-  async getPref(): Promise<string | null> {
-    return null;
-  }
-  async setPref(): Promise<void> {}
 }
 
 function item(id: string, start: string, end: string, deps: string[] = []): Item {
@@ -59,7 +65,6 @@ function roadmapWith(children: Item[]): Roadmap {
         id: 'ph',
         name: 'fase',
         colorSlot: 0,
-        expanded: true,
         assigneeId: null,
         notes: '',
         startDate: null,

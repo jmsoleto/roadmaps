@@ -171,6 +171,21 @@ Una página de prueba fuera del árbol de la app, que no se commitea, para medir
 
 Su resultado no cambia el diseño, porque «falta permiso» existe en cualquier caso. Lo que cambia es cuánto se va a ver ese estado, y con eso se decide cuánto cuidar su texto y el de la tarjeta. Se apunta en este design al terminar.
 
+### D12: Lo que concretó la implementación
+
+Decisiones que el plan no fijaba, o que cambiaron al escribir el código:
+
+- **Saber al arrancar si hay carpeta no puede esperar a IndexedDB.** D5 guardaba solo el handle. Pero `main.ts` decide si espera a Roadmaps antes de montar nada, y preguntarle eso a IndexedDB es justo la espera que no puede bloquear el arranque. `folder/handles.ts` guarda también, en `localStorage` (`tech-lead-hub:folder:<app>`), el nombre de la carpeta conectada: se escribe después del handle y se borra antes, para que un fallo a medias deje la app desconectada y no esperando una conexión que no puede restaurar. Ese nombre (`repo/roadmaps`) es además lo que se enseña.
+- **El marcador es del módulo genérico** (`folder/marker.ts`), no del formato de Roadmaps: API Hub y Links escribirán el mismo fichero con su propio `app`.
+- **La pantalla de no disponible es un componente** (`StoreUnavailable.svelte`). Decisions y API Hub tenían la misma copia del markup y los estilos; Roadmaps habría sido la tercera. La spec pide que se vea igual en todas, y el componente lo garantiza. Decisions y API Hub pasan a usarlo sin cambiar lo que muestran.
+- **La topbar dice dónde están los datos de cada aplicación.** El contrato `HubApp` gana `scope()`. La etiqueta «local» (D10 de un change anterior) pasa a enseñar `repo/roadmaps` cuando Roadmaps está conectado. La acción «⧉ carpeta» abre el diálogo, y no se desactiva nunca: también es la salida de una carpeta ilegible.
+- **El resumen de la tarjeta** se llama `AppUnreadable` y no `unavailable`. Cubre también el estado «abriendo», que con una carpeta no es instantáneo y tampoco debe enseñar ceros.
+- **Dos ficheros con el mismo id hacen ilegible la carpeta** (D8). Uno taparía al otro, y el siguiente guardado borraría el tapado.
+- **Un id que no sea `rm-<alfanumérico>`** se escribe como `rm-x<hex>.json`. Ningún id que cree la app es así; protege contra ids heredados que se saldrían de la carpeta.
+- **Una escritura que falla** no enciende «guardado ✓». La topbar enseña «no se pudo guardar» (`store.saveError`) y el backend reintenta en el siguiente guardado, porque solo da un fichero por escrito cuando la escritura se confirma.
+- **El cierre comprueba lo pendiente antes de vaciar la cola** (D9). El `flush` del propio cierre lanza una escritura, y comprobarlo después pedía confirmación siempre, aunque todo estuviera ya en disco.
+- **`previewRows` también recibe el plegado** (D3). Si no, al arrastrar una fase las plegadas se pintaban desplegadas.
+
 ## Risks / Trade-offs
 
 - **[Chrome vuelve a pedir el permiso en cada sesión]** → La tarjeta resuelve con un clic desde la landing, sin entrar en la app (D10). Si la spike muestra que la PWA instalada lo conserva, el README recomienda instalarla.
@@ -178,6 +193,7 @@ Su resultado no cambia el diseño, porque «falta permiso» existe en cualquier 
 - **[Alguien edita mientras hace `git pull`]** → La app no se entera hasta la siguiente lectura y puede escribir encima de lo que trajo el pull. git lo enseña como un cambio local sin commitear, así que no se pierde nada sin rastro. Aviso en el README hasta el change de cambios externos.
 - **[Fin de línea en Windows]** → La app siempre escribe `\n`, y el `autocrlf` de git puede convertirlo en el disco. La lectura lo tolera (`JSON.parse`) y D6 compara contra su propio mapa, no contra el disco. La verificación del volcado relee justo tras escribir, antes de que git intervenga. La plantilla de repo llevará un `.gitattributes`.
 - **[Sacar `expanded` y `activeId` del modelo toca Gantt y store]** → Es mecánico pero amplio. Los tests del store cubren el plegado y el roadmap activo, y se mantienen como red.
+- **[La cabecera de la landing dice «Todo va según el plan» aunque Roadmaps no se haya podido leer]** → Una aplicación ilegible no aporta avisos a la tira, y la cabecera se calcula de los avisos. Es una afirmación sobre datos que no se han mirado. Queda fuera de este change porque toca `hub-landing` («Cabecera de estado del hub») para todas las aplicaciones. Ver la pregunta abierta.
 - **[Volver a una versión anterior de la app tras este cambio]** → Una versión vieja leería datos del navegador sin `expanded` y pintaría las fases plegadas (trata `undefined` como falso). Es improbable con una PWA que se actualiza sola, y no pierde datos.
 - **[Un volcado verificado puede quedar a medias si se cierra la pestaña durante la escritura]** → No se guarda el handle hasta verificar, así que en la próxima sesión Roadmaps sigue en el navegador, con todo. La carpeta queda con ficheros sueltos, que git enseña.
 
@@ -190,3 +206,4 @@ La única transformación automática es D3 (estado de vista a preferencias), qu
 ## Open Questions
 
 - El texto exacto de la confirmación de D7 y de la pantalla de no disponible por causa. Se ajusta en la implementación con el resultado de la spike.
+- Si una aplicación cuya carpeta no se puede leer debería impedir que la cabecera de la landing diga «Todo va según el plan». Ver Risks.

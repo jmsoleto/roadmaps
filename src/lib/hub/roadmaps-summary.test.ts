@@ -32,7 +32,6 @@ const phase = (children: Item[], over: Partial<Phase> = {}): Phase => ({
   id: `p${++seq}`,
   name: 'fase',
   colorSlot: 0,
-  expanded: true,
   assigneeId: null,
   notes: '',
   startDate: null,

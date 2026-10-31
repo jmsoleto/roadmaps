@@ -72,6 +72,17 @@ class UiStore {
     this.newRoadmap = true;
   }
 
+  /** Whether the folder dialog (connect / disconnect) is open. */
+  folder = $state<boolean>(false);
+
+  openFolder(): void {
+    this.folder = true;
+  }
+
+  closeFolder(): void {
+    this.folder = false;
+  }
+
   closeNewRoadmap(): void {
     this.newRoadmap = false;
   }

@@ -10,7 +10,23 @@
 import type { AppData, Assignee, Blocker, Item, Phase, Roadmap, IsoDate } from '../model/types';
 import { DEFAULT_DAY_W, DEFAULT_SIDEBAR_W, ZOOM_LEVELS } from '../config';
 import { clampSidebarDrag, readSidebarPref } from '../util/sidebar-width';
-import { createStorage, type Storage } from './storage';
+import {
+  createPrefs,
+  createStorage,
+  type DataSource,
+  type Prefs,
+  type RoadmapsBackend,
+  type Unavailability,
+} from './storage';
+import {
+  PREF_ACTIVE,
+  PREF_COLLAPSED,
+  liftViewState,
+  parseActive,
+  parseCollapsed,
+  serializeActive,
+  serializeCollapsed,
+} from './view-state';
 import { seedAppData, newRoadmap } from '../seed';
 import { uid } from '../util/id';
 import { nameKey } from '../util/roadmap-name';
@@ -35,10 +51,25 @@ const minIso = (a: IsoDate, b: IsoDate): IsoDate => (a < b ? a : b);
 const maxIso = (a: IsoDate, b: IsoDate): IsoDate => (a > b ? a : b);
 
 export class AppStore {
-  private storage: Storage;
+  private storage: RoadmapsBackend;
+  private prefs: Prefs;
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
 
-  data = $state<AppData>({ roadmaps: [], assignees: [], blockers: [], activeId: null });
+  data = $state<AppData>({ roadmaps: [], assignees: [], blockers: [] });
+  /**
+   * The roadmap opened last: which one to show on leaving "Todos", and whose
+   * name the topbar breadcrumb carries.
+   *
+   * A preference, not data (carpeta-roadmaps, D3): two people looking at the
+   * same shared plan each have their own.
+   */
+  activeId = $state<string | null>(null);
+  /**
+   * Ids of the phases that are folded. Folded and not unfolded, so that a new
+   * phase is born open without anyone writing anything, and the list stays
+   * short. A preference for the same reason as `activeId`.
+   */
+  collapsed = $state<string[]>([]);
   dayW = $state<number>(DEFAULT_DAY_W);
   /**
    * Ancho de la columna de nombres en cada vista, en píxeles.
@@ -67,7 +98,7 @@ export class AppStore {
    * caller runs `setActive` afterwards and wins.
    *
    * Still deliberately not persisted, for the same reason as before: where you
-   * are is decided on arrival, not remembered. `data.activeId` therefore means
+   * are is decided on arrival, not remembered. `activeId` therefore means
    * "the roadmap opened last" — which one to show on leaving "Todos", and whose
    * name the topbar breadcrumb carries.
    */
@@ -76,34 +107,134 @@ export class AppStore {
   justSaved = $state<boolean>(false);
   /** True once the initial async load has completed. */
   ready = $state<boolean>(false);
+  /**
+   * Why the roadmaps could not be read, or `null` when they could.
+   *
+   * While set, nothing is written and nothing can be created: arriving on an
+   * empty plan over data that could not be read invites writing over it
+   * (`local-persistence`, «Un almacén que no se puede abrir se distingue de un
+   * almacén vacío»).
+   */
+  unavailable = $state<{ reason: string; why: Unavailability } | null>(null);
+  /** Where the data lives right now. */
+  source = $state<DataSource>('browser');
+  /** Why the last save failed, or `null`. Only a folder can fail a save in a way worth showing. */
+  saveError = $state<string | null>(null);
 
-  constructor(storage: Storage = createStorage()) {
+  constructor(storage: RoadmapsBackend = createStorage(), prefs: Prefs = createPrefs()) {
+    this.storage = storage;
+    this.prefs = prefs;
+  }
+
+  /**
+   * Point the store at another backend: the folder on connecting, the browser
+   * on disconnecting. The caller runs `init()` afterwards.
+   *
+   * A change still waiting for the debounce is dropped, not carried over: it
+   * belongs to the backend being left, and the caller flushes that one first.
+   */
+  useBackend(storage: RoadmapsBackend): void {
+    if (this.saveTimer) {
+      clearTimeout(this.saveTimer);
+      this.saveTimer = null;
+    }
     this.storage = storage;
   }
 
-  /** Load persisted state (or seed on first run). Must be awaited before mount. */
+  /** The backend the store is using. */
+  get backend(): RoadmapsBackend {
+    return this.storage;
+  }
+
+  /**
+   * Load persisted state, or seed it on a first run in the browser.
+   *
+   * Three outcomes, not two. `empty` seeds the example roadmap only when the
+   * data lives in the browser: a folder is somebody's repo, and an empty one is
+   * a team plan that has been emptied, not a first run (carpeta-roadmaps, D4).
+   * `unavailable` leaves the plan empty and locked, and says why.
+   */
   async init(): Promise<void> {
-    const loaded = normalizeRoadmapColors(
-      normalizeCompletion(normalizeBlockers(normalizeColors(await this.storage.load()))),
-    );
-    if (loaded) {
+    this.ready = false;
+    this.unavailable = null;
+    this.source = this.storage.source;
+    const outcome = await this.storage.load();
+
+    let legacy: ReturnType<typeof liftViewState> = { activeId: undefined, collapsed: undefined };
+    if (outcome.kind === 'loaded') {
+      const loaded = normalizeRoadmapColors(
+        normalizeCompletion(normalizeBlockers(normalizeColors(outcome.data))),
+      );
+      legacy = liftViewState(loaded);
       this.data = loaded;
-    } else {
+    } else if (outcome.kind === 'empty' && this.storage.source === 'browser') {
       this.data = seedAppData();
       await this.flush();
+    } else {
+      this.data = { roadmaps: [], assignees: [], blockers: [] };
+      if (outcome.kind === 'unavailable') {
+        this.unavailable = { reason: outcome.reason, why: outcome.why };
+      }
     }
-    if (this.data.activeId === null && this.data.roadmaps.length > 0) {
-      this.data.activeId = this.data.roadmaps[0].id;
-    }
-    const zoom = Number(await this.storage.getPref('zoom'));
+    await this.hydrateViewState(legacy);
+    const zoom = Number(await this.prefs.getPref('zoom'));
     if (ZOOM_LEVELS.includes(zoom as (typeof ZOOM_LEVELS)[number])) this.dayW = zoom;
-    this.sidebarW = readSidebarPref(await this.storage.getPref('sidebar-w'));
-    this.metaSidebarW = readSidebarPref(await this.storage.getPref('meta-sidebar-w'));
+    this.sidebarW = readSidebarPref(await this.prefs.getPref('sidebar-w'));
+    this.metaSidebarW = readSidebarPref(await this.prefs.getPref('meta-sidebar-w'));
     this.ready = true;
   }
 
+  /**
+   * Read the view state from preferences, falling back on what older data
+   * carried inside it.
+   *
+   * A preference that exists wins over the data. When only the data said
+   * something, it is written to the preference here, because the next save of
+   * the data no longer carries it and it would otherwise be lost. That writes a
+   * preference, never the data (`local-persistence`, «Datos guardados con el
+   * estado de vista dentro»).
+   */
+  private async hydrateViewState(legacy: ReturnType<typeof liftViewState>): Promise<void> {
+    const prefActive = parseActive(await this.prefs.getPref(PREF_ACTIVE));
+    const prefCollapsed = parseCollapsed(await this.prefs.getPref(PREF_COLLAPSED));
+
+    let active = prefActive !== undefined ? prefActive : (legacy.activeId ?? null);
+    if (prefActive === undefined && legacy.activeId !== undefined) {
+      void this.prefs.setPref(PREF_ACTIVE, serializeActive(active));
+    }
+    if (active !== null && !this.data.roadmaps.some((r) => r.id === active)) active = null;
+    this.activeId = active ?? this.data.roadmaps[0]?.id ?? null;
+
+    if (prefCollapsed !== undefined) {
+      this.collapsed = prefCollapsed;
+    } else if (legacy.collapsed !== undefined) {
+      this.collapsed = legacy.collapsed;
+      void this.prefs.setPref(PREF_COLLAPSED, serializeCollapsed(this.collapsed));
+    } else {
+      this.collapsed = [];
+    }
+  }
+
   get activeRoadmap(): Roadmap | null {
-    return this.data.roadmaps.find((r) => r.id === this.data.activeId) ?? null;
+    return this.data.roadmaps.find((r) => r.id === this.activeId) ?? null;
+  }
+
+  /** Make `id` the roadmap opened last, remembering it as a preference. */
+  private setActiveId(id: string | null): void {
+    this.activeId = id;
+    void this.prefs.setPref(PREF_ACTIVE, serializeActive(id));
+  }
+
+  isCollapsed(phaseId: string): boolean {
+    return this.collapsed.includes(phaseId);
+  }
+
+  private setCollapsed(phaseId: string, folded: boolean): void {
+    if (folded === this.isCollapsed(phaseId)) return;
+    this.collapsed = folded
+      ? [...this.collapsed, phaseId]
+      : this.collapsed.filter((id) => id !== phaseId);
+    void this.prefs.setPref(PREF_COLLAPSED, serializeCollapsed(this.collapsed));
   }
 
   private findPhase(phaseId: string): Phase | undefined {
@@ -117,9 +248,8 @@ export class AppStore {
   // ---- view state ----
 
   setActive(id: string): void {
-    this.data.activeId = id;
+    this.setActiveId(id);
     this.metaView = false;
-    this.scheduleSave();
   }
 
   toggleMetaView(on: boolean): void {
@@ -130,14 +260,14 @@ export class AppStore {
     const i = ZOOM_LEVELS.indexOf(this.dayW as (typeof ZOOM_LEVELS)[number]);
     if (i < ZOOM_LEVELS.length - 1) this.dayW = ZOOM_LEVELS[i + 1];
     else if (i === -1) this.dayW = DEFAULT_DAY_W;
-    void this.storage.setPref('zoom', String(this.dayW));
+    void this.prefs.setPref('zoom', String(this.dayW));
   }
 
   zoomOut(): void {
     const i = ZOOM_LEVELS.indexOf(this.dayW as (typeof ZOOM_LEVELS)[number]);
     if (i > 0) this.dayW = ZOOM_LEVELS[i - 1];
     else if (i === -1) this.dayW = DEFAULT_DAY_W;
-    void this.storage.setPref('zoom', String(this.dayW));
+    void this.prefs.setPref('zoom', String(this.dayW));
   }
 
   /*
@@ -155,7 +285,7 @@ export class AppStore {
   }
 
   saveSidebarW(): void {
-    void this.storage.setPref('sidebar-w', String(this.sidebarW));
+    void this.prefs.setPref('sidebar-w', String(this.sidebarW));
   }
 
   setMetaSidebarW(px: number, portW: number): void {
@@ -163,7 +293,7 @@ export class AppStore {
   }
 
   saveMetaSidebarW(): void {
-    void this.storage.setPref('meta-sidebar-w', String(this.metaSidebarW));
+    void this.prefs.setPref('meta-sidebar-w', String(this.metaSidebarW));
   }
 
   // ---- import / export (data-portability) ----
@@ -181,6 +311,7 @@ export class AppStore {
 
   /** Import a roadmap from JSON text (current or legacy format). */
   importFromText(text: string): void {
+    if (this.unavailable) return;
     // The slot only applies when the document brings none; where it lands is
     // the only thing that can decide it (D4).
     const { roadmap, assignees, blockers } = parseImport(
@@ -198,7 +329,7 @@ export class AppStore {
       }
     }
     this.data.roadmaps.push(roadmap);
-    this.data.activeId = roadmap.id;
+    this.setActiveId(roadmap.id);
     this.metaView = false;
     this.scheduleSave();
   }
@@ -233,10 +364,11 @@ export class AppStore {
    * roadmaps sharing a name (roadmap-editor, "Alcance de la unicidad").
    */
   addRoadmap(name: string): boolean {
+    if (this.unavailable) return false;
     if (this.roadmapNameError(name)) return false;
     const rm = newRoadmap(name, this.data.roadmaps.length % PALETTE_SLOTS);
     this.data.roadmaps.push(rm);
-    this.data.activeId = rm.id;
+    this.setActiveId(rm.id);
     this.metaView = false;
     this.scheduleSave();
     return true;
@@ -291,20 +423,15 @@ export class AppStore {
 
   deleteRoadmap(id: string): void {
     this.data.roadmaps = this.data.roadmaps.filter((r) => r.id !== id);
-    if (this.data.activeId === id) {
-      this.data.activeId = this.data.roadmaps[0]?.id ?? null;
-    }
+    if (this.activeId === id) this.setActiveId(this.data.roadmaps[0]?.id ?? null);
     this.scheduleSave();
   }
 
   // ---- phase mutations ----
 
+  /** Fold or unfold a phase. A preference: the plan does not change, nothing is saved. */
   togglePhaseExpanded(phaseId: string): void {
-    const phase = this.findPhase(phaseId);
-    if (phase) {
-      phase.expanded = !phase.expanded;
-      this.scheduleSave();
-    }
+    if (this.findPhase(phaseId)) this.setCollapsed(phaseId, !this.isCollapsed(phaseId));
   }
 
   addPhase(): void {
@@ -314,7 +441,6 @@ export class AppStore {
       id: uid('ph'),
       name: 'Nueva fase',
       colorSlot: rm.rows.length % PALETTE_SLOTS,
-      expanded: true,
       assigneeId: null,
       notes: '',
       startDate: null,
@@ -415,7 +541,7 @@ export class AppStore {
       endAtCompletion: null,
       baselineEnd: null,
     });
-    phase.expanded = true;
+    this.setCollapsed(phase.id, false);
     this.scheduleSave();
   }
 
@@ -440,7 +566,7 @@ export class AppStore {
       endAtCompletion: null,
       baselineEnd: null,
     });
-    phase.expanded = true;
+    this.setCollapsed(phase.id, false);
     this.scheduleSave();
   }
 
@@ -826,17 +952,43 @@ export class AppStore {
   }
 
   scheduleSave(): void {
+    if (this.unavailable) return;
     if (this.saveTimer) clearTimeout(this.saveTimer);
     this.saveTimer = setTimeout(() => void this.flush(), SAVE_DEBOUNCE_MS);
   }
 
-  /** Persist immediately (e.g. on window close) so no pending change is lost. */
+  /** True while a change is waiting for the debounce or a write is still running. */
+  get pending(): boolean {
+    return this.saveTimer !== null || this.storage.pending;
+  }
+
+  /**
+   * Persist immediately (e.g. on window close) so no pending change is lost.
+   *
+   * Never while the data is unavailable: whatever is in memory then is not the
+   * plan, and writing it would replace the plan with nothing.
+   *
+   * The "guardado ✓" indicator waits for the backend to have nothing pending,
+   * not just for this write to start: in a folder, a write can still be running
+   * when the next one is queued (`local-persistence`, «Autosave»).
+   */
   async flush(): Promise<void> {
     if (this.saveTimer) {
       clearTimeout(this.saveTimer);
       this.saveTimer = null;
     }
-    await this.storage.save($state.snapshot(this.data));
+    if (this.unavailable) return;
+    try {
+      await this.storage.save($state.snapshot(this.data));
+      await this.storage.settled();
+    } catch (e) {
+      // The backend keeps what it could not write as unwritten, so the next
+      // save retries it. Until then there is no "guardado ✓" to show.
+      this.saveError = e instanceof Error ? e.message : String(e);
+      console.error('roadmaps save failed', e);
+      return;
+    }
+    this.saveError = null;
     this.justSaved = true;
     setTimeout(() => (this.justSaved = false), 800);
   }

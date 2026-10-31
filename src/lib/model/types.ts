@@ -115,7 +115,6 @@ export interface Phase {
   name: string;
   /** Position in the active theme's bar palette. */
   colorSlot: number;
-  expanded: boolean;
   assigneeId: string | null;
   notes: string;
   /** Optional explicit phase span; when absent it is derived from children. */
@@ -153,13 +152,19 @@ export interface Roadmap {
   baselineDate: IsoDate | null;
 }
 
-/** The full persisted application state. */
+/**
+ * The full persisted application state: what is planned, and nothing else.
+ *
+ * Which roadmap is open and which phases are folded are not here. They are how
+ * one person looks at the plan, so they live in preferences beside the zoom
+ * (`../store/view-state.ts`). In a folder shared through git, keeping them here
+ * would make folding a phase a change in somebody's pull request.
+ */
 export interface AppData {
   roadmaps: Roadmap[];
   assignees: Assignee[];
   /** Global blocker catalog, shared by every roadmap. */
   blockers: Blocker[];
-  activeId: string | null;
 }
 
 /** Defaults applied to roadmaps that don't specify a timeline (timeline-config). */

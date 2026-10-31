@@ -1,23 +1,29 @@
 import { describe, it, expect } from 'vitest';
 import { AppStore } from './app.svelte';
-import type { Storage } from './storage';
+import type { Prefs, RoadmapsBackend, RoadmapsLoad } from './storage';
 import type { AppData, Item, Phase } from '../model/types';
 import { exportRoadmap } from '../io/portability';
 
+/**
+ * Data as versions before carpeta-roadmaps wrote it, with the open roadmap
+ * inside. The store still reads it, lifting `activeId` into a preference, and
+ * these fixtures use that path to say which roadmap is open.
+ */
+type StoredData = AppData & { activeId?: string | null };
+
 /** In-memory backend so the store can be exercised without a real localStorage. */
-class FakeStorage implements Storage {
+class FakeStorage implements RoadmapsBackend {
+  readonly source = 'browser' as const;
+  readonly pending = false;
+  async settled(): Promise<void> {}
   saved: AppData | null = null;
-  constructor(private initial: AppData | null = null) {}
-  async load(): Promise<AppData | null> {
-    return this.initial;
+  constructor(private initial: StoredData | null = null) {}
+  async load(): Promise<RoadmapsLoad> {
+    return this.initial ? { kind: 'loaded', data: this.initial } : { kind: 'empty' };
   }
   async save(data: AppData): Promise<void> {
     this.saved = data;
   }
-  async getPref(): Promise<string | null> {
-    return null;
-  }
-  async setPref(): Promise<void> {}
 }
 
 const roadmap = (id: string) => ({
@@ -30,7 +36,7 @@ const roadmap = (id: string) => ({
   rows: [],
 });
 
-const dataWith = (ids: string[], activeId: string | null): AppData => ({
+const dataWith = (ids: string[], activeId: string | null): StoredData => ({
   roadmaps: ids.map(roadmap),
   assignees: [{ id: 'as1', name: 'Ana', colorSlot: 0 }],
   blockers: [],
@@ -49,7 +55,7 @@ describe('vista de arranque', () => {
     const { store } = await storeWith(['a', 'b'], 'b');
     expect(store.metaView).toBe(true);
     // El activo persistido sobrevive: es "el último abierto", no la vista.
-    expect(store.data.activeId).toBe('b');
+    expect(store.activeId).toBe('b');
   });
 
   it('arranca en "Todos" sin ningún roadmap', async () => {
@@ -69,14 +75,14 @@ describe('vista de arranque', () => {
     const { store } = await storeWith(['a', 'b'], 'a');
     store.setActive('b');
     expect(store.metaView).toBe(false);
-    expect(store.data.activeId).toBe('b');
+    expect(store.activeId).toBe('b');
   });
 
   it('borrar desde "Todos" deja al usuario en "Todos"', async () => {
     const { store } = await storeWith(['a', 'b'], 'a');
     store.deleteRoadmap('a');
     expect(store.metaView).toBe(true);
-    expect(store.data.activeId).toBe('b');
+    expect(store.activeId).toBe('b');
   });
 });
 
@@ -85,7 +91,7 @@ describe('addRoadmap', () => {
     const { store } = await storeWith(['a'], 'a');
     expect(store.addRoadmap('Plataforma')).toBe(true);
     expect(store.data.roadmaps.map((r) => r.name)).toEqual(['a', 'Plataforma']);
-    expect(store.data.activeId).toBe(store.data.roadmaps[1].id);
+    expect(store.activeId).toBe(store.data.roadmaps[1].id);
     expect(store.metaView).toBe(false);
   });
 
@@ -153,7 +159,7 @@ describe('addRoadmap', () => {
     expect(store.metaView).toBe(true);
     expect(store.addRoadmap('a')).toBe(false);
     expect(store.data.roadmaps.map((r) => r.name)).toEqual(['a', 'b']);
-    expect(store.data.activeId).toBe('b');
+    expect(store.activeId).toBe('b');
     expect(store.metaView).toBe(true);
   });
 
@@ -224,14 +230,14 @@ describe('deleteRoadmap', () => {
     const { store } = await storeWith(['a', 'b', 'c'], 'a');
     store.deleteRoadmap('b');
     expect(store.data.roadmaps.map((r) => r.id)).toEqual(['a', 'c']);
-    expect(store.data.activeId).toBe('a');
+    expect(store.activeId).toBe('a');
   });
 
   it('reasigna el activo al borrar el roadmap activo', async () => {
     const { store } = await storeWith(['a', 'b', 'c'], 'b');
     store.deleteRoadmap('b');
     expect(store.data.roadmaps.map((r) => r.id)).toEqual(['a', 'c']);
-    expect(store.data.activeId).toBe('a');
+    expect(store.activeId).toBe('a');
     expect(store.activeRoadmap?.id).toBe('a');
   });
 
@@ -239,7 +245,7 @@ describe('deleteRoadmap', () => {
     const { store } = await storeWith(['a'], 'a');
     store.deleteRoadmap('a');
     expect(store.data.roadmaps).toEqual([]);
-    expect(store.data.activeId).toBeNull();
+    expect(store.activeId).toBeNull();
     expect(store.activeRoadmap).toBeNull();
   });
 
@@ -247,7 +253,7 @@ describe('deleteRoadmap', () => {
     const { store } = await storeWith(['a', 'b'], 'a');
     store.deleteRoadmap('zzz');
     expect(store.data.roadmaps.map((r) => r.id)).toEqual(['a', 'b']);
-    expect(store.data.activeId).toBe('a');
+    expect(store.activeId).toBe('a');
   });
 
   it('no toca los responsables globales', async () => {
@@ -261,7 +267,9 @@ describe('deleteRoadmap', () => {
     store.deleteRoadmap('a');
     await store.flush();
     expect(backend.saved?.roadmaps.map((r) => r.id)).toEqual(['b']);
-    expect(backend.saved?.activeId).toBe('b');
+    // El activo ya no viaja en los datos: es una preferencia (carpeta-roadmaps, D3).
+    expect(backend.saved && 'activeId' in backend.saved).toBe(false);
+    expect(store.activeId).toBe('b');
   });
 });
 
@@ -288,7 +296,6 @@ const ph = (id: string, children: ReturnType<typeof it_>[]) => ({
   id,
   name: id,
   colorSlot: 0,
-  expanded: true,
   assigneeId: null,
   notes: '',
   startDate: null,
@@ -298,7 +305,7 @@ const ph = (id: string, children: ReturnType<typeof it_>[]) => ({
 
 /** A store on one active roadmap holding the given phases. */
 async function storeWithRows(rows: ReturnType<typeof ph>[]) {
-  const data: AppData = {
+  const data: StoredData = {
     roadmaps: [{ ...roadmap('r'), rows }],
     assignees: [],
     blockers: [],
@@ -560,14 +567,17 @@ describe('slot de color del roadmap', () => {
 });
 
 /** Backend que sí recuerda preferencias, para los anchos de columna. */
-class PrefStorage implements Storage {
+class PrefStorage implements RoadmapsBackend, Prefs {
+  readonly source = 'browser' as const;
+  readonly pending = false;
+  async settled(): Promise<void> {}
   prefs = new Map<string, string>();
   writes = 0;
   constructor(initial: Record<string, string> = {}) {
     for (const [k, v] of Object.entries(initial)) this.prefs.set(k, v);
   }
-  async load(): Promise<AppData | null> {
-    return dataWith(['r1'], 'r1');
+  async load(): Promise<RoadmapsLoad> {
+    return { kind: 'loaded', data: dataWith(['r1'], 'r1') };
   }
   async save(): Promise<void> {}
   async getPref(key: string): Promise<string | null> {
@@ -581,8 +591,11 @@ class PrefStorage implements Storage {
 
 async function storeWithPrefs(initial: Record<string, string> = {}) {
   const backend = new PrefStorage(initial);
-  const store = new AppStore(backend);
+  const store = new AppStore(backend, backend);
   await store.init();
+  // The fixture carries its open roadmap the old way, and the boot lifts it
+  // into a preference. These tests count the writes that come after.
+  backend.writes = 0;
   return { store, backend };
 }
 
@@ -695,12 +708,11 @@ function overlappingItem(id: string, start: string, end: string, deps: string[] 
   };
 }
 
-function overlappingData(): AppData {
+function overlappingData(): StoredData {
   const ph: Phase = {
     id: 'ph',
     name: 'ph',
     colorSlot: 0,
-    expanded: true,
     assigneeId: null,
     notes: '',
     startDate: null,

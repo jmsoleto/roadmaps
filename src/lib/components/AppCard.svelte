@@ -9,7 +9,7 @@
    * A card that is not live shows **no figures at all** — never zeroes, which
    * would assert something is being counted.
    */
-  import type { HubApp } from '../hub/types';
+  import { isUnreadable, type HubApp } from '../hub/types';
   import AppIcon from './AppIcon.svelte';
 
   interface Props {
@@ -19,7 +19,19 @@
   let { app }: Props = $props();
 
   const live = $derived(app.state === 'live');
-  const summary = $derived(live && app.summary ? app.summary() : null);
+  const reported = $derived(live && app.summary ? app.summary() : null);
+  const summary = $derived(reported && !isUnreadable(reported) ? reported : null);
+  const unreadable = $derived(reported && isUnreadable(reported) ? reported : null);
+  let granting = $state(false);
+  async function grant() {
+    if (!unreadable?.grant) return;
+    granting = true;
+    try {
+      await unreadable.grant();
+    } finally {
+      granting = false;
+    }
+  }
 </script>
 
 <div class="card" class:dashed={!live}>
@@ -80,6 +92,25 @@
         >
       {/if}
     </div>
+  {:else if unreadable}
+    <!-- No figures and no "create": nothing has been read, so nothing can be
+         counted, and nothing may be written over it. The way in stays, because
+         that is where the user can retry or disconnect. -->
+    <div class="unreadable">{unreadable.reason}</div>
+    <div class="actions">
+      {#if unreadable.grant}
+        <button type="button" class="primary" disabled={granting} onclick={grant}>
+          conceder acceso
+        </button>
+      {/if}
+      <button
+        type="button"
+        class={unreadable.grant ? 'secondary' : 'primary'}
+        onclick={() => app.open?.()}
+      >
+        abrir {app.name.replace(/\s+Hub$/, '')} →
+      </button>
+    </div>
   {:else}
     <div class="soon">próximamente</div>
   {/if}
@@ -94,6 +125,14 @@
     background: var(--surface);
     border: var(--line-width) solid var(--line);
     border-radius: 10px;
+  }
+  .unreadable {
+    padding: 16px 0;
+    border-top: var(--line-width) solid var(--line-weak);
+    border-bottom: var(--line-width) solid var(--line-weak);
+    font-size: 13.5px;
+    line-height: 1.5;
+    color: var(--text-dim);
   }
   .card.dashed {
     background: var(--veil);

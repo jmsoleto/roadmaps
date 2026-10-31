@@ -89,7 +89,8 @@ describe('registering another application', () => {
       list: { label: 'SIN CERRAR', rows: [], emptyLabel: 'nada roto' },
       alerts: [],
     });
-    expect(mine!().list.label).toBe('SIN CERRAR');
+    const got = mine!();
+    expect('list' in got && got.list.label).toBe('SIN CERRAR');
   });
 
   it('routes on its own id once registered', () => {

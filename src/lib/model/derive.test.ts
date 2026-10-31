@@ -38,7 +38,6 @@ function phase(children: Item[]): Phase {
     id: `p-${children[0]?.id ?? 'empty'}`,
     name: 'fase',
     colorSlot: 0,
-    expanded: true,
     assigneeId: null,
     notes: '',
     startDate: null,
@@ -142,8 +141,8 @@ describe('getMetaWindow', () => {
 
 // ---- reordering geometry ----
 
-/** A phase with an explicit id and `n` items, expanded or not. */
-function namedPhase(id: string, n: number, expanded = true): Phase {
+/** A phase with an explicit id and `n` items. Folding it is the caller's business. */
+function namedPhase(id: string, n: number): Phase {
   const children: Item[] = [];
   for (let k = 0; k < n; k++) {
     const it = item(`${id}-${k}`, `${id}-${k}`);
@@ -154,7 +153,6 @@ function namedPhase(id: string, n: number, expanded = true): Phase {
     id,
     name: id,
     colorSlot: 0,
-    expanded,
     assigneeId: null,
     notes: '',
     startDate: null,
@@ -175,8 +173,11 @@ function rmOf(rows: Phase[]): Roadmap {
   };
 }
 
-const keys = (rm: Roadmap, drag: Parameters<typeof previewRows>[1]) =>
-  previewRows(rm, drag).map(rowKey);
+const keys = (
+  rm: Roadmap,
+  drag: Parameters<typeof previewRows>[1],
+  isCollapsed?: Parameters<typeof previewRows>[2],
+) => previewRows(rm, drag, isCollapsed).map(rowKey);
 
 describe('getPhaseBlocks', () => {
   it('spans header, items and add row for an expanded phase', () => {
@@ -185,8 +186,8 @@ describe('getPhaseBlocks', () => {
   });
 
   it('spans a single row for a collapsed phase, whatever it holds', () => {
-    const rm = rmOf([namedPhase('a', 4, false)]);
-    expect(getPhaseBlocks(rm)).toEqual([{ phaseId: 'a', start: 0, len: 1 }]);
+    const rm = rmOf([namedPhase('a', 4)]);
+    expect(getPhaseBlocks(rm, (id) => id === 'a')).toEqual([{ phaseId: 'a', start: 0, len: 1 }]);
   });
 
   it('spans header and add row for an expanded phase with no items', () => {
@@ -195,14 +196,15 @@ describe('getPhaseBlocks', () => {
   });
 
   it('chains the starts across a mix of collapsed and expanded phases', () => {
-    const rm = rmOf([namedPhase('a', 2), namedPhase('b', 3, false), namedPhase('c', 1)]);
-    expect(getPhaseBlocks(rm)).toEqual([
+    const rm = rmOf([namedPhase('a', 2), namedPhase('b', 3), namedPhase('c', 1)]);
+    const folded = (id: string) => id === 'b';
+    expect(getPhaseBlocks(rm, folded)).toEqual([
       { phaseId: 'a', start: 0, len: 4 },
       { phaseId: 'b', start: 4, len: 1 },
       { phaseId: 'c', start: 5, len: 3 },
     ]);
     // The last block ends exactly where the flattened list does.
-    expect(getVisibleRows(rm)).toHaveLength(8);
+    expect(getVisibleRows(rm, folded)).toHaveLength(8);
   });
 
   it('returns nothing for a roadmap with no phases', () => {
@@ -242,8 +244,8 @@ describe('dropIndex', () => {
 describe('dropBlockIndex', () => {
   // a(4 filas: cabecera + 2 items + añadir), b(1, plegada), c(3): alturas
   // distintas, que es justo el caso que dropIndex no sabe leer.
-  const rm = rmOf([namedPhase('a', 2), namedPhase('b', 3, false), namedPhase('c', 1)]);
-  const blocks = getPhaseBlocks(rm);
+  const rm = rmOf([namedPhase('a', 2), namedPhase('b', 3), namedPhase('c', 1)]);
+  const blocks = getPhaseBlocks(rm, (id) => id === 'b');
 
   it('deja la fase donde está mientras el gesto no llega a media fila', () => {
     expect(dropBlockIndex(blocks, 0, 0)).toBe(0);
@@ -313,8 +315,8 @@ describe('previewRows', () => {
   });
 
   it('carries a phase block whole, items and add row included', () => {
-    const rm = rmOf([namedPhase('a', 2), namedPhase('b', 0, false)]);
-    expect(keys(rm, { kind: 'phase', phaseId: 'a', from: 0, to: 1 })).toEqual([
+    const rm = rmOf([namedPhase('a', 2), namedPhase('b', 0)]);
+    expect(keys(rm, { kind: 'phase', phaseId: 'a', from: 0, to: 1 }, (id) => id === 'b')).toEqual([
       'p:b',
       'p:a',
       'i:ai0',

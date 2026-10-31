@@ -11,7 +11,7 @@
  * and two applications writing the same key would blend their lists.
  */
 
-import { createStorage, type Storage } from '../store/storage';
+import { createPrefs, type Prefs } from '../store/storage';
 import { APPS } from './apps';
 import {
   liveRecent,
@@ -35,7 +35,7 @@ const LEGACY_APP = 'roadmaps';
 const PREF_LAST_SEEN = 'hub.lastSeen';
 
 export class UsageStore {
-  private storage: Storage;
+  private storage: Prefs;
 
   /** Openings by application id. Absent means "none recorded". */
   recent = $state<Record<string, RecentEntry[]>>({});
@@ -49,7 +49,7 @@ export class UsageStore {
   lastSeen = $state<number | null>(null);
   ready = $state<boolean>(false);
 
-  constructor(storage: Storage = createStorage()) {
+  constructor(storage: Prefs = createPrefs()) {
     this.storage = storage;
   }
 

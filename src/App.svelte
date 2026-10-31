@@ -10,6 +10,7 @@
   import Drawer from './lib/components/Drawer.svelte';
   import DragTooltip from './lib/components/DragTooltip.svelte';
   import NewRoadmapDialog from './lib/components/NewRoadmapDialog.svelte';
+  import FolderDialog from './lib/components/FolderDialog.svelte';
   import HubLanding from './lib/components/HubLanding.svelte';
   import QuickCapture from './lib/components/decisions/QuickCapture.svelte';
 
@@ -38,11 +39,25 @@
     //
     // What none of this covers is the browser discarding the tab without
     // warning, where the event never fires at all.
-    const flush = () => {
+    //
+    // With Roadmaps in a folder, its write is asynchronous too, and it is the
+    // user's shared plan. So the write is started and, if it is still running,
+    // the browser is asked to confirm leaving: its own «¿Salir del sitio?»
+    // keeps the page alive while the write finishes (carpeta-roadmaps, D9).
+    // With nothing pending, closing asks nothing.
+    const flush = (e: BeforeUnloadEvent) => {
+      // Read before flushing: the flush itself starts a write, and asking after
+      // it would ask every time, even with everything already on disk.
+      const unwritten = store.source === 'folder' && store.pending;
       void store.flush();
       void apiContracts.flush();
       void apiLibrary.flush();
       void valueSources.flush();
+      if (unwritten) {
+        e.preventDefault();
+        // Older engines read this instead of `preventDefault`.
+        e.returnValue = '';
+      }
     };
     window.addEventListener('beforeunload', flush);
 
@@ -64,6 +79,7 @@
        dialog. They are not part of any application's branch, because there are
        no branches left — they are the shell's own overlays. -->
   <NewRoadmapDialog />
+  <FolderDialog />
   <QuickCapture />
   <DragTooltip />
 </div>

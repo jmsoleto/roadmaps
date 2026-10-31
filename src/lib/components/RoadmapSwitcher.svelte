@@ -39,7 +39,7 @@
 
   /** A roadmap carries its own palette slot, so reordering the list never repaints it. */
   const activeSlot = $derived(
-    store.data.roadmaps.find((r) => r.id === store.data.activeId)?.colorSlot ?? 0,
+    store.data.roadmaps.find((r) => r.id === store.activeId)?.colorSlot ?? 0,
   );
 
   const allOptions = $derived<Option[]>([
@@ -49,7 +49,7 @@
       id: rm.id,
       label: rm.name,
       slot: rm.colorSlot,
-      current: !store.metaView && rm.id === store.data.activeId,
+      current: !store.metaView && rm.id === store.activeId,
     })),
   ]);
 

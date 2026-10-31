@@ -12,6 +12,7 @@
    * empty. Showing an empty list over contracts that were not read is the
    * mistake the whole seam exists to prevent.
    */
+  import StoreUnavailable from '../StoreUnavailable.svelte';
   import { apiContracts } from '../../api/store.svelte';
   import { apiUi } from '../../api/ui.svelte';
   import { usage } from '../../hub/usage.svelte';
@@ -56,15 +57,11 @@
   <!-- Not "there is nothing": "we do not know yet". -->
   <div class="loading">Abriendo los contratos…</div>
 {:else if apiContracts.unavailable}
-  <div class="unavailable">
-    <h2>Los contratos no están disponibles</h2>
-    <p class="reason">{apiContracts.unavailable.reason}</p>
-    <p class="explain">
-      No se muestra una lista vacía a propósito: podría haber contratos guardados que no se han
-      podido leer, y escribir encima sería irreversible. El resto del hub sigue funcionando con
-      normalidad.
-    </p>
-  </div>
+  <StoreUnavailable
+    title="Los contratos no están disponibles"
+    reason={apiContracts.unavailable.reason}
+    explain="No se muestra una lista vacía a propósito: podría haber contratos guardados que no se han podido leer, y escribir encima sería irreversible. El resto del hub sigue funcionando con normalidad."
+  />
 {:else if open}
   <div class="contract">
     <ContractRail contract={open} />
@@ -198,36 +195,6 @@
     text-align: center;
     color: var(--text-dim);
     font-size: 13.5px;
-  }
-  .unavailable {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 10px;
-    max-width: 560px;
-    margin: 48px auto;
-    padding: 24px;
-    background: var(--tint-danger);
-    border: var(--line-width) solid var(--line);
-    border-left: 2px solid var(--danger);
-    border-radius: 8px;
-  }
-  .unavailable h2 {
-    margin: 0;
-    font-size: 18px;
-    color: var(--text);
-  }
-  .reason {
-    margin: 0;
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 12.5px;
-    color: var(--danger);
-  }
-  .explain {
-    margin: 0;
-    font-size: 13.5px;
-    line-height: 1.5;
-    color: var(--text-dim);
   }
 
   .home {

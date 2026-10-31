@@ -47,6 +47,7 @@
   /** The application's own breadcrumb control, when it has one. */
   const Context = $derived(app?.context ?? null);
   const actions = $derived(app?.actions?.() ?? []);
+  const scope = $derived(app?.scope?.() ?? null);
 
   /**
    * Say what an action handed back, if it handed back anything.
@@ -142,7 +143,13 @@
   <!-- Not a user name (D10): there are no accounts, and suggesting a session in
        an app whose data dies with the site's storage is the expensive
        misunderstanding. It says where the data is. -->
-  <span class="scope">local</span>
+  <!-- With a folder connected, it names the folder: that is where the data is. -->
+  <span class="scope" class:folder={scope !== null} title={scope ? `carpeta ${scope}` : undefined}
+    >{scope ?? 'local'}</span
+  >
+  {#if store.saveError}
+    <span class="import-error" title={store.saveError}>no se pudo guardar</span>
+  {/if}
   <span class="save-indicator" class:show={store.justSaved}>guardado ✓</span>
 </div>
 
@@ -181,6 +188,14 @@
     font-family: 'IBM Plex Mono', monospace;
     font-size: 11px;
     color: var(--text-dim);
+  }
+  /* A folder name can be long; it must not push the breadcrumb out. */
+  .scope.folder {
+    flex-shrink: 1;
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .add-tab {
     flex-shrink: 0;

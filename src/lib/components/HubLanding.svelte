@@ -6,6 +6,7 @@
    * and it does so knowing nothing about roadmaps or decisions — it iterates the
    * registry and renders whatever each app reports.
    */
+  import { isUnreadable } from '../hub/types';
   import { hubApps } from '../hub/registry';
   import { APP_IDENTITIES } from '../hub/identity';
   import { formatLongDate, formatRelative } from '../hub/relative-time';
@@ -19,7 +20,10 @@
   const alerts = $derived<Alert[]>(
     apps
       .filter((a) => a.state === 'live' && a.summary)
-      .flatMap((a) => a.summary!().alerts)
+      .flatMap((a) => {
+        const s = a.summary!();
+        return isUnreadable(s) ? [] : s.alerts;
+      })
       .sort(byToneDescending),
   );
 

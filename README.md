@@ -31,7 +31,7 @@ Roadmaps es la evolución de la miniaplicación original de un solo HTML
 ## Stack
 
 - **Frontend:** Svelte 5 + Vite + TypeScript
-- **Persistencia:** `localStorage` (Roadmaps, Links) e IndexedDB (Decisions, API Hub), con export/import JSON como backup
+- **Persistencia:** `localStorage` (Roadmaps, Links) e IndexedDB (Decisions, API Hub), con export/import JSON como backup; Roadmaps puede guardar además en una carpeta del dispositivo (File System Access API, Chrome y Edge)
 - **Distribución:** PWA en GitHub Pages
 - **Navegación:** rutas por hash a nivel de aplicación (`#/` el hub, `#/roadmaps`, `#/decisions`, `#/api`, `#/links`)
 - **Fechas:** ISO absolutas (`YYYY-MM-DD`); la ventana temporal es configurable por roadmap
@@ -72,13 +72,54 @@ del hub.
 
 ## Datos
 
-Los roadmaps viven en el `localStorage` del navegador, así que son **propios de cada
-navegador y de cada perfil**: no se sincronizan entre máquinas y se pierden si se
-borran los datos del sitio. Para mover un roadmap entre navegadores o hacer copia de
-seguridad, usa **exportar** / **importar** JSON.
+Roadmaps guarda sus datos en uno de dos sitios, y se elige en **⧉ carpeta**:
 
-- El estado se guarda automáticamente (autosave con debounce) y se vuelca al cerrar
-  la pestaña.
+- **En el navegador** (por defecto): el `localStorage`, así que son **propios de cada
+  navegador y de cada perfil**. No se sincronizan entre máquinas y se pierden si se
+  borran los datos del sitio. Para moverlos o respaldarlos, **exportar** / **importar**
+  JSON.
+- **En una carpeta del dispositivo** (solo Chrome y Edge): la idea es que sea el clon
+  de un repo privado de GitHub. Roadmaps escribe en su propia subcarpeta `roadmaps/`,
+  así que en el mismo repo pueden convivir otras cosas.
+
+Conectar una carpeta vacía **copia en ella** los roadmaps del navegador: esa es la
+migración. Si la carpeta ya trae roadmaps (lo normal al clonar el repo de un
+compañero), **se ven los de la carpeta** y no se mezcla nada; los del navegador se
+quedan aparte. **Desconectar** vuelve a los del navegador tal como estaban, y lo hecho
+con la carpeta conectada se queda en la carpeta.
+
+```
+<repo>/roadmaps/
+├─ tech-lead-hub.json   marcador: de qué aplicación es y la versión del formato
+├─ order.json           el orden de los roadmaps
+├─ assignees.json       responsables
+├─ blockers.json        dependencias externas
+└─ rm-<id>.json         un fichero por roadmap
+```
+
+El formato está pensado para git: JSON con las claves siempre en el mismo orden, y
+solo se reescriben los ficheros que cambian. Mover una fecha es un diff de una
+línea. Lo que es de cada persona (el roadmap abierto, las fases plegadas, el zoom,
+los anchos, el tema) **no va a la carpeta**: sigue en el navegador.
+
+**La aplicación no hace git.** Commits, ramas y PR son cosa tuya y de GitHub; para
+que todo cambio pase por una PR, protege `main` en el repo. Ten en cuenta que:
+
+- La carpeta se lee al abrir la aplicación, al conectar y al pulsar «reintentar». Si
+  haces `git pull` o cambias de rama con la aplicación abierta, **recarga antes de
+  seguir editando**; si no, lo próximo que guardes se escribirá sobre lo que trajo
+  git (que te lo enseñará como cambio local, sin perderlo).
+- Si un fichero no se puede leer (por ejemplo, un conflicto de git sin resolver),
+  Roadmaps no enseña nada ni escribe nada: dice qué fichero es. Resuélvelo y pulsa
+  «reintentar».
+- Chrome puede volver a pedir permiso sobre la carpeta al abrir la aplicación. La
+  tarjeta de la landing lo dice y lo concede con un clic.
+
+Además:
+
+- El estado se guarda automáticamente (autosave con debounce). En el navegador se
+  vuelca al cerrar la pestaña; con carpeta, si al cerrar queda algo por escribir, el
+  navegador pide confirmar la salida mientras termina.
 - **Exportar**: genera un JSON autocontenido del roadmap activo (con sus responsables).
 - **Importar**: acepta el formato actual y el **formato heredado** del HTML original
   (índices de día relativos a `2026-01-01`), que se convierten a fechas absolutas.
@@ -99,7 +140,8 @@ public/                  Iconos y assets estáticos de la PWA
 src/                     Frontend Svelte
   lib/model/             Modelo de datos, derivaciones, restricciones (deps) y completitud
   lib/time/              Conversión día↔fecha, segmentos (sprints/trimestres/meses)
-  lib/store/             Estado reactivo + seam de persistencia (localStorage)
+  lib/store/             Estado reactivo + seam de persistencia (navegador o carpeta)
+  lib/folder/            Conectar una aplicación a una carpeta: marcador, permiso, handles
   lib/theme/             Temas: paletas, resolución de tokens, contraste
   lib/io/                Import/export JSON (formato actual y heredado)
   lib/hub/               Meta-app: contrato de aplicación, registro, rutas y landing

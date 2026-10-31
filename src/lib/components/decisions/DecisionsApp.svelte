@@ -7,6 +7,7 @@
    * empty list over real data invites writing over it, and there is no server to
    * recover from.
    */
+  import StoreUnavailable from '../StoreUnavailable.svelte';
   import { decisions } from '../../decisions/store.svelte';
   import { decisionsUi, FILTERS, matchesFilter } from '../../decisions/ui.svelte';
   import { byUrgency, daysToDeadline, phaseOf } from '../../decisions/model/state';
@@ -72,15 +73,11 @@
        failed. -->
   <div class="loading">Abriendo las decisiones…</div>
 {:else if decisions.unavailable}
-  <div class="unavailable">
-    <h2>Las decisiones no están disponibles</h2>
-    <p class="reason">{decisions.unavailable.reason}</p>
-    <p class="explain">
-      No se muestra una lista vacía a propósito: podría haber decisiones guardadas que no se han
-      podido leer, y escribir encima sería irreversible. Roadmaps y el hub siguen funcionando con
-      normalidad.
-    </p>
-  </div>
+  <StoreUnavailable
+    title="Las decisiones no están disponibles"
+    reason={decisions.unavailable.reason}
+    explain="No se muestra una lista vacía a propósito: podría haber decisiones guardadas que no se han podido leer, y escribir encima sería irreversible. Roadmaps y el hub siguen funcionando con normalidad."
+  />
 {:else}
   <div class="app">
     <div class="filters">
@@ -308,35 +305,5 @@
     text-align: center;
     color: var(--text-dim);
     font-size: 13.5px;
-  }
-  .unavailable {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 10px;
-    max-width: 560px;
-    margin: 48px auto;
-    padding: 24px;
-    background: var(--tint-danger);
-    border: var(--line-width) solid var(--line);
-    border-left: 2px solid var(--danger);
-    border-radius: 8px;
-  }
-  .unavailable h2 {
-    margin: 0;
-    font-size: 18px;
-    color: var(--text);
-  }
-  .reason {
-    margin: 0;
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 12.5px;
-    color: var(--danger);
-  }
-  .explain {
-    margin: 0;
-    font-size: 13.5px;
-    line-height: 1.5;
-    color: var(--text-dim);
   }
 </style>

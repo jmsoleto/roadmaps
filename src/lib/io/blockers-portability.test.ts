@@ -46,7 +46,6 @@ function roadmapWith(children: Item[]): Roadmap {
         id: 'p1',
         name: 'Fase A',
         colorSlot: 0,
-        expanded: true,
         assigneeId: null,
         notes: '',
         startDate: null,
@@ -189,7 +188,6 @@ describe('mergeBlockers', () => {
     roadmaps: [],
     assignees: [],
     blockers,
-    activeId: null,
   });
 
   it('añade los que no existen', () => {

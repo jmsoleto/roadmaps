@@ -41,7 +41,6 @@ function phase(name: string, children: Item[]): Phase {
     id: `ph-${name}`,
     name,
     colorSlot: 0,
-    expanded: true,
     assigneeId: null,
     notes: '',
     startDate: null,
@@ -67,7 +66,6 @@ function app(roadmaps: Roadmap[]): AppData {
     roadmaps,
     assignees: [],
     blockers: [{ id: 'bl-checkout', name: 'Checkout', owner: 'Enrique', email: 'a@a.com' }],
-    activeId: roadmaps[0]?.id ?? null,
   };
 }
 

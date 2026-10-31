@@ -38,7 +38,6 @@ function phase(o: { id: string; assigneeId?: string | null; children?: Item[] })
     id: o.id,
     name: o.id,
     colorSlot: 0,
-    expanded: true,
     assigneeId: o.assigneeId ?? null,
     notes: '',
     startDate: null,

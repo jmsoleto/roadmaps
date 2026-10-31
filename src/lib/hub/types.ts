@@ -75,6 +75,27 @@ export interface AppSummary {
   alerts: Alert[];
 }
 
+/**
+ * What a live application reports when its data has not been read: still
+ * opening, missing a permission, or unreadable (carpeta-roadmaps, D10).
+ *
+ * Its own shape and not an `AppSummary` with zeroes, because a zero there
+ * would say nothing is planned when the truth is that nobody could look
+ * (`hub-landing`, «Estado de la tarjeta según el estado de la aplicación»).
+ *
+ * `grant`, when present, is what the card's «conceder acceso» calls. The
+ * click on it is the gesture the browser requires before it shows its prompt.
+ */
+export interface AppUnreadable {
+  kind: 'unreadable';
+  reason: string;
+  grant?: () => Promise<unknown>;
+}
+
+export function isUnreadable(s: AppSummary | AppUnreadable): s is AppUnreadable {
+  return 'kind' in s && s.kind === 'unreadable';
+}
+
 export interface HubApp {
   id: string;
   name: string;
@@ -93,7 +114,7 @@ export interface HubApp {
    * truth for what the store already derives. `null` for anything not live —
    * a card that is not live shows no figures at all, never zeroes.
    */
-  summary: (() => AppSummary) | null;
+  summary: (() => AppSummary | AppUnreadable) | null;
   /**
    * What the shell paints when this application is entered.
    *
@@ -118,6 +139,14 @@ export interface HubApp {
    * second source of truth.
    */
   actions: (() => AppAction[]) | null;
+  /**
+   * Where the application's data is right now, as the topbar names it, or
+   * `null` for the browser (the topbar says «local»).
+   *
+   * A function for the same reason as `actions`: it follows a connection that
+   * can change while the app is open (carpeta-roadmaps).
+   */
+  scope: (() => string | null) | null;
   /** Enter the app. */
   open: (() => void) | null;
   /** Enter the app with its creation flow already started. */

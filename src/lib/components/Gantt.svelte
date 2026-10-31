@@ -66,7 +66,8 @@
   const dayW = $derived(store.dayW);
   const windowDays = $derived(rm.windowDays);
   const totalWidth = $derived(windowDays * dayW);
-  const visible = $derived(getVisibleRows(rm));
+  const isCollapsed = (phaseId: string) => store.isCollapsed(phaseId);
+  const visible = $derived(getVisibleRows(rm, isCollapsed));
   const totalHeight = $derived(Math.max(visible.length * ROW_H, 200));
 
   const months = $derived(getMonthSegments(rm.startDate, windowDays));
@@ -415,7 +416,7 @@
     // layout the gesture started from, never against the preview it produces,
     // or the two would feed each other and the held row would judder at every
     // boundary (see `dropBlockIndex`).
-    const blocks = getPhaseBlocks(rm);
+    const blocks = getPhaseBlocks(rm, isCollapsed);
     const phaseIdx = rm.rows.findIndex((p) => p.id === phase.id);
     if (phaseIdx === -1) return;
 
@@ -462,7 +463,7 @@
   const pending = $derived(
     reorder.gesture === null ? null : { ...reorder.gesture.payload, to: reorder.gesture.to },
   );
-  const preview = $derived(previewRows(rm, pending));
+  const preview = $derived(previewRows(rm, pending, isCollapsed));
   const previewIndex = $derived.by(() => {
     const m = new Map<string, number>();
     preview.forEach((v, i) => m.set(rowKey(v), i));
@@ -653,10 +654,11 @@
             <button
               type="button"
               class="chev"
-              class:expanded={v.phase.expanded}
+              class:expanded={!store.isCollapsed(v.phase.id)}
               class:hidden={v.phase.children.length === 0}
               onclick={() => store.togglePhaseExpanded(v.phase.id)}
-              aria-label={v.phase.expanded ? 'plegar fase' : 'desplegar fase'}>▸</button
+              aria-label={!store.isCollapsed(v.phase.id) ? 'plegar fase' : 'desplegar fase'}
+              >▸</button
             >
             <span class="dot" style:background={theme.slotColor(v.phase.colorSlot)}></span>
             <!-- El nombre completo al pasar por encima. Es el complemento del ancho

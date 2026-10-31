@@ -42,7 +42,6 @@ function phase(children: Item[]): Phase {
     id: 'p',
     name: 'p',
     colorSlot: 0,
-    expanded: true,
     assigneeId: null,
     notes: '',
     startDate: null,

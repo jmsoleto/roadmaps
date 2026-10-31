@@ -6,7 +6,7 @@
  * the storage interface did not have to change.
  */
 
-import { createStorage, type Storage } from '../store/storage';
+import { createPrefs, type Prefs } from '../store/storage';
 import { uid } from '../util/id';
 import { applyTheme, previewTheme } from './apply';
 import { inkOn, inkOnGradient } from './contrast';
@@ -29,7 +29,7 @@ function clone(theme: Theme): Theme {
 }
 
 class ThemeStore {
-  private storage: Storage;
+  private storage: Prefs;
 
   /** Themes the user has created. Presets are in code and never live here. */
   custom = $state<Theme[]>([]);
@@ -38,7 +38,7 @@ class ThemeStore {
   draft = $state<Theme | null>(null);
   ready = $state<boolean>(false);
 
-  constructor(storage: Storage = createStorage()) {
+  constructor(storage: Prefs = createPrefs()) {
     this.storage = storage;
   }
 

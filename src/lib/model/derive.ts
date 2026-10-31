@@ -10,12 +10,24 @@ export type VisibleRow =
   | { kind: 'item'; phase: Phase; item: Item }
   | { kind: 'add'; phase: Phase };
 
-/** Flatten a roadmap into the visible rows, expanding phases that are open. */
-export function getVisibleRows(rm: Roadmap): VisibleRow[] {
+/** Whether a phase is folded. Defaults to none: a view state, not part of the roadmap. */
+export type IsCollapsed = (phaseId: string) => boolean;
+const NONE_COLLAPSED: IsCollapsed = () => false;
+
+/**
+ * Flatten a roadmap into the visible rows, expanding phases that are open.
+ *
+ * Which phases are folded comes from outside, because it is how one person
+ * looks at the plan and not part of it (carpeta-roadmaps, D3).
+ */
+export function getVisibleRows(
+  rm: Roadmap,
+  isCollapsed: IsCollapsed = NONE_COLLAPSED,
+): VisibleRow[] {
   const out: VisibleRow[] = [];
   for (const phase of rm.rows) {
     out.push({ kind: 'phase', phase });
-    if (phase.expanded) {
+    if (!isCollapsed(phase.id)) {
       for (const item of phase.children) out.push({ kind: 'item', phase, item });
       out.push({ kind: 'add', phase });
     }
@@ -49,12 +61,15 @@ export interface PhaseBlock {
  * The visible-row span of each phase, read off the flattened list itself.
  *
  * Deliberately derived from `getVisibleRows` rather than recomputing
- * `expanded ? 1 + children + 1 : 1`: that rule would then live in two places and
+ * `collapsed ? 1 : 1 + children + 1`: that rule would then live in two places and
  * a third row kind would have to be remembered in both.
  */
-export function getPhaseBlocks(rm: Roadmap): PhaseBlock[] {
+export function getPhaseBlocks(
+  rm: Roadmap,
+  isCollapsed: IsCollapsed = NONE_COLLAPSED,
+): PhaseBlock[] {
   const out: PhaseBlock[] = [];
-  getVisibleRows(rm).forEach((v, i) => {
+  getVisibleRows(rm, isCollapsed).forEach((v, i) => {
     if (v.kind === 'phase') out.push({ phaseId: v.phase.id, start: i, len: 1 });
     else out[out.length - 1].len++;
   });
@@ -140,15 +155,19 @@ export type RowDrag =
  * rows it yields are only ever read for their position — `rowKey` is what pairs
  * them back to the real rows being rendered.
  */
-export function previewRows(rm: Roadmap, drag: RowDrag | null): VisibleRow[] {
-  if (!drag || drag.from === drag.to) return getVisibleRows(rm);
+export function previewRows(
+  rm: Roadmap,
+  drag: RowDrag | null,
+  isCollapsed: IsCollapsed = NONE_COLLAPSED,
+): VisibleRow[] {
+  if (!drag || drag.from === drag.to) return getVisibleRows(rm, isCollapsed);
   if (drag.kind === 'phase') {
-    return getVisibleRows({ ...rm, rows: moveInArray(rm.rows, drag.from, drag.to) });
+    return getVisibleRows({ ...rm, rows: moveInArray(rm.rows, drag.from, drag.to) }, isCollapsed);
   }
   const rows = rm.rows.map((p) =>
     p.id === drag.phaseId ? { ...p, children: moveInArray(p.children, drag.from, drag.to) } : p,
   );
-  return getVisibleRows({ ...rm, rows });
+  return getVisibleRows({ ...rm, rows }, isCollapsed);
 }
 
 const minIso = (a: IsoDate, b: IsoDate): IsoDate => (a < b ? a : b);

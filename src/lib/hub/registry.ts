@@ -9,6 +9,7 @@
  * shell; since D1 it holds for both.
  */
 
+import { roadmapsFolder } from '../store/roadmaps-folder.svelte';
 import { store } from '../store/app.svelte';
 import { ui } from '../store/ui.svelte';
 import { theme } from '../theme/theme.svelte';
@@ -29,7 +30,7 @@ import { location } from './location.svelte';
 import { roadmapsSummary } from './roadmaps-summary';
 import { usage } from './usage.svelte';
 import { downloadText } from './download';
-import type { AppAction, AppSummary, HubApp } from './types';
+import type { AppAction, AppSummary, AppUnreadable, HubApp } from './types';
 import RoadmapsApp from '../components/RoadmapsApp.svelte';
 import RoadmapSwitcher from '../components/RoadmapSwitcher.svelte';
 import DecisionsApp from '../components/decisions/DecisionsApp.svelte';
@@ -95,7 +96,24 @@ export function initHub(): void {
   location.onEnter(LINKS_ID, linksHome);
 }
 
-function roadmapsSummaryNow(): AppSummary {
+function roadmapsSummaryNow(): AppSummary | AppUnreadable {
+  // A folder still answering, or one that could not be read, has nothing to
+  // count yet: the card says so instead of showing zeroes.
+  if (!store.ready) return { kind: 'unreadable', reason: 'Abriendo la carpeta de los roadmaps…' };
+  if (store.unavailable) {
+    const folder = roadmapsFolder.folderName ?? 'la carpeta';
+    if (store.unavailable.why.cause === 'permiso') {
+      return {
+        kind: 'unreadable',
+        reason: `Falta el permiso sobre «${folder}». Concédelo para ver los roadmaps.`,
+        grant: () => roadmapsFolder.grant(),
+      };
+    }
+    return {
+      kind: 'unreadable',
+      reason: `No se puede leer «${folder}». Entra para ver por qué, reintentar o desconectarla.`,
+    };
+  }
   const roadmaps = store.data.roadmaps;
   return roadmapsSummary(
     roadmaps,
@@ -286,21 +304,34 @@ function exportActiveRoadmap(): void {
 }
 
 function roadmapsActions(): AppAction[] {
+  // The same rule as API Hub's, now that Roadmaps can wait on a folder: nothing
+  // is created over data that has not been read, or could not be.
+  const down = store.unavailable !== null || !store.ready;
   return [
-    { kind: 'button', label: '+ nuevo', run: () => ui.openNewRoadmap() },
+    { kind: 'button', label: '+ nuevo', disabled: down, run: () => ui.openNewRoadmap() },
     {
       kind: 'file',
       label: '↓ importar',
       title: 'importar JSON',
       accept: JSON_FILES,
+      disabled: down,
       run: (text) => store.importFromText(text),
     },
     {
       kind: 'button',
       label: '↑ exportar',
       title: 'exportar roadmap activo',
-      disabled: !store.activeRoadmap,
+      disabled: down || !store.activeRoadmap,
       run: exportActiveRoadmap,
+    },
+    // Never disabled: it is also the way out of a folder that cannot be read.
+    {
+      kind: 'button',
+      label: '⧉ carpeta',
+      title: roadmapsFolder.folderName
+        ? `conectado a «${roadmapsFolder.folderName}»`
+        : 'guardar los roadmaps en una carpeta (un repo de git)',
+      run: () => ui.openFolder(),
     },
   ];
 }
@@ -339,7 +370,7 @@ function decisionsActions(): AppAction[] {
 /** Behaviour for the apps that have any. Everything absent here is not live. */
 type Behaviour = Pick<
   HubApp,
-  'summary' | 'open' | 'create' | 'openRow' | 'root' | 'context' | 'actions'
+  'summary' | 'open' | 'create' | 'openRow' | 'root' | 'context' | 'actions' | 'scope'
 >;
 
 const BEHAVIOUR: Record<string, Partial<Behaviour>> = {
@@ -354,6 +385,7 @@ const BEHAVIOUR: Record<string, Partial<Behaviour>> = {
     root: RoadmapsApp,
     context: RoadmapSwitcher,
     actions: roadmapsActions,
+    scope: () => roadmapsFolder.folderName,
   },
   [DECISIONS_ID]: {
     summary: decisionsSummaryNow,
@@ -410,6 +442,7 @@ function compose(def: AppDefinition): HubApp {
     root: behaviour?.root ?? null,
     context: behaviour?.context ?? null,
     actions: behaviour?.actions ?? null,
+    scope: behaviour?.scope ?? null,
   };
 }
 

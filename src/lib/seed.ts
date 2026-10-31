@@ -39,7 +39,6 @@ export function seedAppData(): AppData {
         id: uid('ph'),
         name: 'Descubrimiento',
         colorSlot: 0,
-        expanded: true,
         assigneeId: null,
         notes: '',
         startDate: null,
@@ -81,7 +80,6 @@ export function seedAppData(): AppData {
         id: uid('ph'),
         name: 'Construcción',
         colorSlot: 5,
-        expanded: true,
         assigneeId: null,
         notes: '',
         startDate: null,
@@ -111,6 +109,5 @@ export function seedAppData(): AppData {
     roadmaps: [roadmap],
     assignees: [ana, beto],
     blockers: [],
-    activeId: roadmap.id,
   };
 }

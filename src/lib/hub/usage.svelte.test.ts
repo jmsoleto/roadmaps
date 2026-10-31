@@ -1,18 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import { UsageStore } from './usage.svelte';
-import type { Storage } from '../store/storage';
-import type { AppData } from '../model/types';
+import type { Prefs } from '../store/storage';
 
 /** In-memory preference backend; the data side is never touched here. */
-class FakePrefs implements Storage {
+class FakePrefs implements Prefs {
   prefs = new Map<string, string>();
   /** Every read/write in order, to assert that the read comes first. */
   calls: string[] = [];
 
-  async load(): Promise<AppData | null> {
-    return null;
-  }
-  async save(): Promise<void> {}
   async getPref(key: string): Promise<string | null> {
     this.calls.push(`get ${key}`);
     return this.prefs.get(key) ?? null;

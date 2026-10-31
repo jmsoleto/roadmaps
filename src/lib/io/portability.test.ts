@@ -19,7 +19,6 @@ const roadmap: Roadmap = {
       id: 'p1',
       name: 'Fase A',
       colorSlot: 0,
-      expanded: true,
       assigneeId: null,
       notes: '',
       startDate: null,
@@ -93,7 +92,6 @@ describe('legacy import (day-index format)', () => {
           id: 'p',
           label: 'Fase vieja', // legacy phases use `label`
           color: '#E879F9',
-          expanded: true,
           children: [
             { id: 'a', label: 'X', start: 4, end: 22, dependsOn: [], isMilestone: false },
             { id: 'm', label: 'Hito', start: 25, end: 25, dependsOn: ['a'], isMilestone: true },
@@ -153,7 +151,6 @@ describe('legacy import (ISO date format, schemaVersion 1)', () => {
         id: 'row-1',
         label: 'APP',
         color: '#FB923C',
-        expanded: true,
         assigneeId: null,
         notes: '',
         start: null,
@@ -291,7 +288,6 @@ describe('import of pre-theming exports (hex colors)', () => {
             id: 'p1',
             name: 'Fase',
             color: '#FACC15',
-            expanded: true,
             assigneeId: null,
             notes: '',
             startDate: null,
@@ -423,5 +419,28 @@ describe('a document from another application', () => {
 
   it('does not blame anyone for a JSON that is nobody’s', () => {
     expect(() => parseImport('{"hola":1}')).not.toThrow(/Decisions|API/);
+  });
+});
+
+describe('el plegado de las fases no viaja (carpeta-roadmaps, D3)', () => {
+  it('el documento exportado no dice qué fases están plegadas', () => {
+    expect(exportRoadmap(roadmap, assignees, [])).not.toContain('expanded');
+  });
+
+  it('un documento antiguo que sí lo dice se importa sin error y sin él', () => {
+    const doc = JSON.parse(exportRoadmap(roadmap, assignees, []));
+    doc.roadmap.rows[0].expanded = false;
+    const { roadmap: back } = parseImport(JSON.stringify(doc));
+    expect(back.rows.map((p) => p.name)).toEqual(['Fase A']);
+    expect('expanded' in back.rows[0]).toBe(false);
+  });
+
+  it('un documento heredado que lo dice se importa sin él', () => {
+    const legacy = JSON.stringify({
+      name: 'Heredado',
+      rows: [{ id: 'p', label: 'Fase', expanded: false, children: [] }],
+    });
+    const { roadmap: back } = parseImport(legacy);
+    expect('expanded' in back.rows[0]).toBe(false);
   });
 });

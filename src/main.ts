@@ -1,7 +1,7 @@
 import { mount } from 'svelte';
 import './app.css';
 import App from './App.svelte';
-import { store } from './lib/store/app.svelte';
+import { roadmapsFolder } from './lib/store/roadmaps-folder.svelte';
 import { theme } from './lib/theme/theme.svelte';
 import { initHub } from './lib/hub/registry';
 import { location } from './lib/hub/location.svelte';
@@ -18,7 +18,19 @@ import { links } from './lib/links/store.svelte';
 // The theme is loaded alongside it. The inline script in `index.html` has
 // already painted the mirrored copy, so this only reconciles the two.
 async function bootstrap() {
-  await Promise.all([store.init(), theme.init(), usage.init()]);
+  // Roadmaps is awaited only while it lives in the browser, where it answers at
+  // once and the app can open directly in its last state. Connected to a folder
+  // it can take a moment, or wait on a permission, and like the IndexedDB
+  // stores below it must not hold up the hub and the other applications
+  // (`local-persistence`, «Un almacén que no responde no impide arrancar»).
+  // Whether a folder is remembered is a synchronous read, so deciding costs
+  // nothing.
+  const roadmaps = roadmapsFolder.start();
+  await Promise.all([
+    roadmapsFolder.startsInBrowser ? roadmaps : Promise.resolve(),
+    theme.init(),
+    usage.init(),
+  ]);
 
   // Links Hub loads inside the boot and not beside it, unlike the two IndexedDB
   // stores below: `localStorage` is synchronous, so this cannot hang, and its
