@@ -23,6 +23,7 @@ import { uid } from '../util/id';
 import { foreignDocumentMessage } from '../hub/documents';
 import { API_ID } from '../hub/apps';
 import { reissueIds } from './model/identity';
+import { liftApiView } from './view-state';
 import { normalizeApiData } from './model/normalize';
 import type { Contract } from './model/types';
 
@@ -42,8 +43,9 @@ export class ImportError extends Error {}
 /**
  * Serialise one contract.
  *
- * `view` is stripped: what somebody was editing belongs to them, not to whoever
- * receives the file. Everything else travels, `colorSlot` included — it is the
+ * What somebody was looking at (the open endpoint, the folded fields) is not in
+ * the contract any more, so nothing has to be stripped: it belongs to them, not
+ * to whoever receives the file. Everything travels, `colorSlot` included — it is the
  * contract's identity, so re-importing your own export gives back the colour
  * you had.
  */
@@ -52,7 +54,7 @@ export function exportContract(contract: Contract): string {
     kind: KIND,
     version: VERSION,
     exportedAt: new Date().toISOString(),
-    contract: { ...contract, view: null },
+    contract,
   };
   return JSON.stringify(doc, null, 2);
 }
@@ -121,10 +123,14 @@ export function parseContractImport(text: string, fallbackSlot = 0): Contract {
   // the normaliser drops what has none, and here that would look like an
   // unreadable document rather than an id we are about to replace anyway.
   const raw = doc.contract as Record<string, unknown>;
-  const normalized = normalizeApiData({
+  // A file exported by an earlier version carries what its sender was looking
+  // at. It is dropped, and not lifted into the receiver's preferences: that is
+  // the sender's view, not theirs.
+  const fresh = {
     contracts: [{ ...raw, id: typeof raw.id === 'string' && raw.id ? raw.id : uid('api') }],
-    openId: null,
-  });
+  };
+  liftApiView(fresh);
+  const normalized = normalizeApiData(fresh);
   const contract = normalized?.contracts[0];
   if (!contract) throw new ImportError('El contrato del documento no se puede leer.');
 
@@ -133,8 +139,6 @@ export function parseContractImport(text: string, fallbackSlot = 0): Contract {
   if (typeof raw.colorSlot !== 'number' || !Number.isFinite(raw.colorSlot)) {
     contract.colorSlot = fallbackSlot % PALETTE_SLOTS;
   }
-  // Whoever exported it was editing something; the receiver was not.
-  contract.view = null;
   reissueIds(contract);
   return contract;
 }

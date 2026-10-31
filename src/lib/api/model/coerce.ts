@@ -16,8 +16,13 @@ import type { ApiNode, ItemType, NodeType } from './types';
  *
  * In place because the caller is the store, holding the reactive document, and
  * returning a new node would break the identity every `{#each}` key depends on.
+ *
+ * Returns whether it gave the node a first child, in which case the caller
+ * unfolds it: folding is a preference now, not part of the node
+ * (carpeta-api-hub, D4).
  */
-export function applyType(node: ApiNode, type: NodeType): void {
+export function applyType(node: ApiNode, type: NodeType): boolean {
+  let opened = false;
   node.type = type;
 
   // An array has to declare what it holds; without this a fresh array is a
@@ -33,7 +38,7 @@ export function applyType(node: ApiNode, type: NodeType): void {
   // possible moment, which is while somebody is waiting for you to type.
   if (isContainer(node) && node.children.length === 0) {
     node.children = [newNode('campo', 'string')];
-    node.open = true;
+    opened = true;
   }
 
   // The example of an object is its tree, not a piece of text. Same for a
@@ -54,17 +59,20 @@ export function applyType(node: ApiNode, type: NodeType): void {
   // `required`. They are true of the field whatever shape it turns out to have,
   // and losing the comment because you realised the field was an object would
   // punish exactly the correction this tool exists to make easy.
+  return opened;
 }
 
-/** Apply a change of element type to an array, in place. */
-export function applyItemType(node: ApiNode, itemType: ItemType): void {
+/** Apply a change of element type to an array, in place. Returns whether it gave the node a first child. */
+export function applyItemType(node: ApiNode, itemType: ItemType): boolean {
   node.itemType = itemType;
   if (itemType !== 'ref') node.itemRef = '';
+  let opened = false;
   if (isContainer(node) && node.children.length === 0) {
     node.children = [newNode('campo', 'string')];
-    node.open = true;
+    opened = true;
   }
   // Leaving an array of objects for an array of scalars keeps the children in
   // place rather than deleting them: it is a common mis-click, and the fields
   // are still there if the type goes back. They are simply not exported.
+  return opened;
 }

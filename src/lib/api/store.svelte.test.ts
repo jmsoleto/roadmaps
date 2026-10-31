@@ -40,7 +40,6 @@ const node = (key: string, over: Partial<ApiNode> = {}): ApiNode => ({
   enums: [],
   nullable: false,
   children: [],
-  open: true,
   ...over,
 });
 
@@ -97,7 +96,6 @@ function wired(): Contract {
         ],
       },
     ],
-    view: { kind: 'endpoint', id: 'ep-1' },
   };
 }
 
@@ -148,7 +146,7 @@ describe('duplicating a contract', () => {
   it('produces a copy that is independent in both directions', async () => {
     const { store } = await storeWith({
       kind: 'loaded',
-      data: { contracts: [wired()], openId: null },
+      data: { contracts: [wired()] },
     });
     const copy = store.duplicateContract('api-1')!;
 
@@ -162,7 +160,7 @@ describe('duplicating a contract', () => {
   it('reissues every identifier inside the copy', async () => {
     const { store } = await storeWith({
       kind: 'loaded',
-      data: { contracts: [wired()], openId: null },
+      data: { contracts: [wired()] },
     });
     const copy = store.duplicateContract('api-1')!;
 
@@ -181,7 +179,7 @@ describe('duplicating a contract', () => {
   it('repoints the copy’s references at the copy’s own models', async () => {
     const { store } = await storeWith({
       kind: 'loaded',
-      data: { contracts: [wired()], openId: null },
+      data: { contracts: [wired()] },
     });
     const copy = store.duplicateContract('api-1')!;
     const body = copy.endpoints[0].responses[0].body!;
@@ -194,10 +192,12 @@ describe('duplicating a contract', () => {
   it('carries the open view over to the copy’s own endpoint', async () => {
     const { store } = await storeWith({
       kind: 'loaded',
-      data: { contracts: [wired()], openId: null },
+      data: { contracts: [wired()] },
     });
+    store.setOpen('api-1');
+    store.setView({ kind: 'endpoint', id: 'ep-1' });
     const copy = store.duplicateContract('api-1')!;
-    expect(copy.view).toEqual({ kind: 'endpoint', id: copy.endpoints[0].id });
+    expect(store.viewOf(copy)).toEqual({ kind: 'endpoint', id: copy.endpoints[0].id });
   });
 
   it('places the copy right after the original and opens it', async () => {
@@ -217,7 +217,7 @@ describe('deleting, ordering and opening', () => {
     const c = store.addContract('uno')!;
     store.deleteContract(c.id);
     expect(store.open).toBeNull();
-    expect(store.data.openId).toBeNull();
+    expect(store.openId).toBeNull();
   });
 
   it('keeps the open contract when a different one is deleted', async () => {
@@ -280,7 +280,7 @@ describe('loading', () => {
       kind: 'loaded',
       data: { contracts: [wired()], openId: 'api-borrado' } as ApiData,
     });
-    expect(store.data.openId).toBeNull();
+    expect(store.openId).toBeNull();
     expect(store.contracts).toHaveLength(1);
   });
 
@@ -359,7 +359,7 @@ describe('endpoints', () => {
     store.deleteEndpoint(ep.id);
 
     expect(store.openEndpoint).toBeNull();
-    expect(store.open!.view).toBeNull();
+    expect(store.viewOf(store.open!)).toBeNull();
   });
 
   it('keeps the open view when a different endpoint is deleted', async () => {
@@ -497,9 +497,11 @@ describe('fields', () => {
 
   it('folds and unfolds', async () => {
     const { store, root } = await withBody();
-    expect(root.open).toBe(true);
+    expect(store.isCollapsed(root.id)).toBe(false);
     store.toggleOpen(root.id);
-    expect(root.open).toBe(false);
+    expect(store.isCollapsed(root.id)).toBe(true);
+    store.toggleOpen(root.id);
+    expect(store.isCollapsed(root.id)).toBe(false);
   });
 });
 
@@ -906,7 +908,7 @@ describe('opening a contract written before the enumeration was a type', () => {
         asWrittenBefore('nombre', 'string', []),
       ],
     });
-    return { contracts: [contract], openId: contract.id };
+    return { contracts: [contract], openId: contract.id } as ApiData;
   };
 
   const fieldsOf = (store: { data: ApiData }) =>

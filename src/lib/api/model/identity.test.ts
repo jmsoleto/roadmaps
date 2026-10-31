@@ -40,7 +40,6 @@ function wired(): Contract {
     colorSlot: 0,
     models: [model('mod-pag', 'Paginacion', [newNode('pagina', 'integer')])],
     endpoints: [endpoint],
-    view: { kind: 'endpoint', id: endpoint.id },
   };
 }
 
@@ -86,26 +85,6 @@ describe('reissuing a whole contract', () => {
     expect(body.children[0].ref).toBe(contract.models[0].id);
     expect(body.children[1].itemRef).toBe(contract.models[0].id);
     expect(body.children[0].ref).not.toBe('mod-pag');
-  });
-
-  it('carries the remembered view over to the new ids', () => {
-    const contract = wired();
-    reissueIds(contract);
-    expect(contract.view).toEqual({ kind: 'endpoint', id: contract.endpoints[0].id });
-  });
-
-  it('carries a view that names a model', () => {
-    const contract = wired();
-    contract.view = { kind: 'model', id: 'mod-pag' };
-    reissueIds(contract);
-    expect(contract.view).toEqual({ kind: 'model', id: contract.models[0].id });
-  });
-
-  it('drops a view naming something that is not there', () => {
-    const contract = wired();
-    contract.view = { kind: 'model', id: 'mod-fantasma' };
-    reissueIds(contract);
-    expect(contract.view).toBeNull();
   });
 
   /** Already broken; blanking it would throw away what it used to be. */

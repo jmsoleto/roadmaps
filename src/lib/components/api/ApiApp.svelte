@@ -13,6 +13,7 @@
    * mistake the whole seam exists to prevent.
    */
   import StoreUnavailable from '../StoreUnavailable.svelte';
+  import { unavailableActions } from '../../hub/folders';
   import { apiContracts } from '../../api/store.svelte';
   import { apiUi } from '../../api/ui.svelte';
   import { usage } from '../../hub/usage.svelte';
@@ -61,6 +62,7 @@
     title="Los contratos no están disponibles"
     reason={apiContracts.unavailable.reason}
     explain="No se muestra una lista vacía a propósito: podría haber contratos guardados que no se han podido leer, y escribir encima sería irreversible. El resto del hub sigue funcionando con normalidad."
+    actions={unavailableActions(API_ID, apiContracts.unavailable.why, apiContracts.source)}
   />
 {:else if open}
   <div class="contract">

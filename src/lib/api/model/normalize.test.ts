@@ -11,39 +11,19 @@ const contract = (over: Record<string, unknown> = {}) => ({
   colorSlot: 0,
   models: [],
   endpoints: [{ id: 'ep-1' }],
-  view: null,
   ...over,
 });
 
-describe('the remembered view', () => {
-  it('survives when it names an endpoint that is still there', () => {
+describe('the remembered view (carpeta-api-hub, D4)', () => {
+  // The view is a preference now; the store checks it against the contract on
+  // every read (see `viewOf` in store.svelte.test.ts). The normaliser drops it.
+  it('is not kept in the document', () => {
     const data = normalizeApiData({
-      contracts: [contract({ view: { kind: 'endpoint', id: 'ep-1' } })],
-      openId: null,
+      contracts: [contract({ view: { kind: 'endpoint', id: 'ep-1' } } as never)],
+      openId: 'api-1',
     } as unknown as ApiData);
-    expect(data?.contracts[0].view).toEqual({ kind: 'endpoint', id: 'ep-1' });
-  });
-
-  /** A blank editor over a list that still has entries is the failure to avoid. */
-  it('is dropped when it names an endpoint that was deleted', () => {
-    const data = normalizeApiData({
-      contracts: [contract({ view: { kind: 'endpoint', id: 'ep-borrado' } })],
-      openId: null,
-    } as unknown as ApiData);
-    expect(data?.contracts[0].view).toBeNull();
-  });
-
-  it('is dropped when it names a model that is not there', () => {
-    const data = normalizeApiData({
-      contracts: [contract({ view: { kind: 'model', id: 'mod-1' } })],
-      openId: null,
-    } as unknown as ApiData);
-    expect(data?.contracts[0].view).toBeNull();
-  });
-
-  it('leaves an absent view absent', () => {
-    const data = normalizeApiData({ contracts: [contract()], openId: null } as unknown as ApiData);
-    expect(data?.contracts[0].view).toBeNull();
+    expect(data && 'view' in data.contracts[0]).toBe(false);
+    expect(data && 'openId' in data).toBe(false);
   });
 });
 

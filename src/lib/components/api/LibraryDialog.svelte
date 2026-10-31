@@ -12,6 +12,7 @@
    * change what the brought block described. Neither can be chosen on the
    * user's behalf — but only when it actually happens.
    */
+  import { apiFolder } from '../../api/folder.svelte';
   import { apiContracts } from '../../api/store.svelte';
   import { apiLibrary } from '../../api/library.svelte';
   import { apiUi } from '../../api/ui.svelte';
@@ -195,6 +196,10 @@
           <p class="error">
             La biblioteca no está disponible: {apiLibrary.unavailable.reason}
           </p>
+          {#if apiLibrary.source === 'folder'}
+            <!-- Rereads the three documents: they share the folder. -->
+            <button type="button" class="btn" onclick={() => apiFolder.retry()}>reintentar</button>
+          {/if}
         {:else if entries.length === 0}
           <p class="hint">
             Está vacía. Se llena guardando un modelo desde su editor, y lo que se guarde aquí sirve

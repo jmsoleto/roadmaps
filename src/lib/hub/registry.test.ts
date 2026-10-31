@@ -4,6 +4,7 @@ import { API_ID, DECISIONS_ID, LINKS_ID, ROADMAPS_ID } from './apps';
 import { links } from '../links/store.svelte';
 import { isUnreadable, type AppAction } from './types';
 import { store } from '../store/app.svelte';
+import { apiContracts } from '../api/store.svelte';
 
 /**
  * The contract the shell consumes, exercised the way the shell consumes it.
@@ -195,5 +196,73 @@ describe('la tarjeta de Roadmaps con la carpeta sin leer (carpeta-roadmaps, D10)
       expect(isUnreadable(s)).toBe(false);
       expect('stats' in s && s.stats).toHaveLength(3);
     });
+  });
+});
+
+describe('la tarjeta de API Hub con la carpeta sin leer (carpeta-api-hub, 5.5)', () => {
+  async function withApi(
+    state: {
+      source: 'browser' | 'folder';
+      ready: boolean;
+      unavailable: (typeof apiContracts)['unavailable'];
+    },
+    fn: () => void,
+  ) {
+    const before = { ready: apiContracts.ready, unavailable: apiContracts.unavailable };
+    const backendBefore = (apiContracts as unknown as { backend: unknown }).backend;
+    (apiContracts as unknown as { backend: unknown }).backend = {
+      source: state.source,
+      load: async () => ({ kind: 'empty' }),
+      save: async () => {},
+    };
+    apiContracts.ready = state.ready;
+    apiContracts.unavailable = state.unavailable;
+    try {
+      fn();
+    } finally {
+      apiContracts.ready = before.ready;
+      apiContracts.unavailable = before.unavailable;
+      (apiContracts as unknown as { backend: unknown }).backend = backendBefore;
+    }
+  }
+  const summary = () => hubApp(API_ID)!.summary!();
+
+  it('sin permiso ofrece concederlo y no da cifras', async () => {
+    await withApi(
+      { source: 'folder', ready: true, unavailable: { reason: 'x', why: { cause: 'permiso' } } },
+      () => {
+        const s = summary();
+        expect(isUnreadable(s) && typeof s.grant).toBe('function');
+      },
+    );
+  });
+
+  it('abriendo la carpeta no da cifras', async () => {
+    await withApi({ source: 'folder', ready: false, unavailable: null }, () => {
+      expect(isUnreadable(summary())).toBe(true);
+    });
+  });
+
+  it('con los contratos leídos da sus cifras aunque la biblioteca no se pueda leer', async () => {
+    await withApi({ source: 'folder', ready: true, unavailable: null }, () => {
+      expect(isUnreadable(summary())).toBe(false);
+    });
+  });
+
+  it('en el navegador sigue como siempre', async () => {
+    await withApi({ source: 'browser', ready: true, unavailable: null }, () => {
+      expect(isUnreadable(summary())).toBe(false);
+    });
+  });
+
+  it('la acción de carpeta está siempre y crear no mientras no se pueda leer', async () => {
+    await withApi(
+      { source: 'folder', ready: true, unavailable: { reason: 'x', why: { cause: 'permiso' } } },
+      () => {
+        const actions = hubApp(API_ID)!.actions!();
+        expect(actions.find((a) => a.label.includes('carpeta'))?.disabled).toBeFalsy();
+        expect(actions.find((a) => a.label.includes('nuevo'))?.disabled).toBe(true);
+      },
+    );
   });
 });

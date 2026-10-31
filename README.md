@@ -31,7 +31,7 @@ Roadmaps es la evolución de la miniaplicación original de un solo HTML
 ## Stack
 
 - **Frontend:** Svelte 5 + Vite + TypeScript
-- **Persistencia:** `localStorage` (Roadmaps, Links) e IndexedDB (Decisions, API Hub), con export/import JSON como backup; Roadmaps puede guardar además en una carpeta del dispositivo (File System Access API, Chrome y Edge)
+- **Persistencia:** `localStorage` (Roadmaps, Links) e IndexedDB (Decisions, API Hub), con export/import JSON como backup; Roadmaps y API Hub pueden guardar además en una carpeta del dispositivo (File System Access API, Chrome y Edge)
 - **Distribución:** PWA en GitHub Pages
 - **Navegación:** rutas por hash a nivel de aplicación (`#/` el hub, `#/roadmaps`, `#/decisions`, `#/api`, `#/links`)
 - **Fechas:** ISO absolutas (`YYYY-MM-DD`); la ventana temporal es configurable por roadmap
@@ -72,15 +72,17 @@ del hub.
 
 ## Datos
 
-Roadmaps guarda sus datos en uno de dos sitios, y se elige en **⧉ carpeta**:
+Roadmaps y API Hub guardan sus datos en uno de dos sitios, y cada uno lo elige por su
+cuenta en **⧉ carpeta**: pueden ir al mismo repo, a repos distintos o quedarse en el
+navegador. Decisions y Links Hub siguen solo en el navegador.
 
-- **En el navegador** (por defecto): el `localStorage`, así que son **propios de cada
-  navegador y de cada perfil**. No se sincronizan entre máquinas y se pierden si se
+- **En el navegador** (por defecto): `localStorage` (Roadmaps) o IndexedDB (API Hub), así
+  que son **propios de cada navegador y de cada perfil**. No se sincronizan entre máquinas y se pierden si se
   borran los datos del sitio. Para moverlos o respaldarlos, **exportar** / **importar**
   JSON.
 - **En una carpeta del dispositivo** (solo Chrome y Edge): la idea es que sea el clon
-  de un repo privado de GitHub. Roadmaps escribe en su propia subcarpeta `roadmaps/`,
-  así que en el mismo repo pueden convivir otras cosas.
+  de un repo privado de GitHub. Cada aplicación escribe en su propia subcarpeta
+  (`roadmaps/`, `api/`), así que en el mismo repo pueden convivir.
 
 Conectar una carpeta vacía **copia en ella** los roadmaps del navegador: esa es la
 migración. Si la carpeta ya trae roadmaps (lo normal al clonar el repo de un
@@ -97,10 +99,23 @@ con la carpeta conectada se queda en la carpeta.
 └─ rm-<id>.json         un fichero por roadmap
 ```
 
+```
+<repo>/api/
+├─ tech-lead-hub.json   marcador
+├─ order.json           el orden de los contratos
+├─ c-<id>.json          un fichero por contrato
+├─ lib-<id>.json        un fichero por entrada de la biblioteca de modelos
+└─ value-sources.json   las fuentes de valores del mock
+```
+
+En API Hub, contratos, biblioteca y fuentes se conectan y desconectan juntos, pero se
+leen por separado: un conflicto en la biblioteca no te deja sin contratos.
+
 El formato está pensado para git: JSON con las claves siempre en el mismo orden, y
 solo se reescriben los ficheros que cambian. Mover una fecha es un diff de una
 línea. Lo que es de cada persona (el roadmap abierto, las fases plegadas, el zoom,
-los anchos, el tema) **no va a la carpeta**: sigue en el navegador.
+los anchos, el tema; en API Hub, el contrato abierto, lo que ves en cada uno y los
+campos plegados) **no va a la carpeta**: sigue en el navegador.
 
 **La aplicación no hace git.** Commits, ramas y PR son cosa tuya y de GitHub; para
 que todo cambio pase por una PR, protege `main` en el repo. Ten en cuenta que:
@@ -113,7 +128,8 @@ que todo cambio pase por una PR, protege `main` en el repo. Ten en cuenta que:
   Roadmaps no enseña nada ni escribe nada: dice qué fichero es. Resuélvelo y pulsa
   «reintentar».
 - Chrome puede volver a pedir permiso sobre la carpeta al abrir la aplicación. La
-  tarjeta de la landing lo dice y lo concede con un clic.
+  tarjeta de la landing lo dice y lo concede con un clic (en API Hub, para sus tres
+  documentos a la vez).
 
 Además:
 
@@ -141,7 +157,8 @@ src/                     Frontend Svelte
   lib/model/             Modelo de datos, derivaciones, restricciones (deps) y completitud
   lib/time/              Conversión día↔fecha, segmentos (sprints/trimestres/meses)
   lib/store/             Estado reactivo + seam de persistencia (navegador o carpeta)
-  lib/folder/            Conectar una aplicación a una carpeta: marcador, permiso, handles
+  lib/folder/            Conectar una aplicación a una carpeta: marcador, permiso, handles,
+                         escritura de lo que cambia (FileSync) y la conexión con sus flujos
   lib/theme/             Temas: paletas, resolución de tokens, contraste
   lib/io/                Import/export JSON (formato actual y heredado)
   lib/hub/               Meta-app: contrato de aplicación, registro, rutas y landing

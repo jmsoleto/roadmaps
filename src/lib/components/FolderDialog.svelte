@@ -1,18 +1,22 @@
 <script lang="ts">
   /**
-   * Connect Roadmaps to a folder, or disconnect it (carpeta-roadmaps, D7).
+   * Connect an application to a folder, or disconnect it (carpeta-roadmaps, D7).
+   *
+   * One dialog for every application that can keep a folder: which one opened
+   * it is `ui.folder`, and its connection and its words come from
+   * `hub/folders.ts` (carpeta-api-hub, task 1.4).
    *
    * Nothing happens on choosing a folder: the dialog first says what
-   * connecting would do (copy the browser's roadmaps into an empty folder, or
-   * switch to the roadmaps a folder already has), and only «conectar» does it.
+   * connecting would do (copy the browser's data into an empty folder, or
+   * switch to the data a folder already has), and only «conectar» does it.
    * The spec asks for that warning before what the user sees changes.
    *
    * The dialog obligations are the ones `NewRoadmapDialog` handles: initial
    * focus, focus trap, Escape, click on the overlay, focus handed back.
    */
-  import { store } from '../store/app.svelte';
   import { ui } from '../store/ui.svelte';
-  import { roadmapsFolder, type ConnectPlan } from '../store/roadmaps-folder.svelte';
+  import { folderUi } from '../hub/folders';
+  import type { ConnectPlan } from '../folder/connection.svelte';
 
   let plan = $state<ConnectPlan | null>(null);
   let failure = $state<string | null>(null);
@@ -20,8 +24,12 @@
   let panelEl = $state<HTMLDivElement | null>(null);
   let opener: HTMLElement | null = null;
 
-  const connected = $derived(roadmapsFolder.folderName !== null);
-  const count = $derived(store.source === 'browser' ? store.data.roadmaps.length : 0);
+  const app = $derived(folderUi(ui.folder));
+  const connection = $derived(app?.connection ?? null);
+  const connected = $derived(connection?.folderName != null);
+  const browser = $derived(app?.inBrowser() ?? { count: 0, phrase: '' });
+  const count = $derived(browser.count);
+  const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
   function reset() {
     plan = null;
@@ -41,7 +49,8 @@
     failure = null;
     busy = true;
     try {
-      const next = await roadmapsFolder.choose();
+      if (!connection) return;
+      const next = await connection.choose();
       plan = next.kind === 'cancelled' ? null : next;
     } catch (e) {
       failure = e instanceof Error ? e.message : String(e);
@@ -51,9 +60,9 @@
   }
 
   async function connect() {
-    if (!plan) return;
+    if (!plan || !connection) return;
     busy = true;
-    const out = await roadmapsFolder.confirm(plan);
+    const out = await connection.confirm(plan);
     busy = false;
     if (out.ok) close();
     else {
@@ -63,8 +72,9 @@
   }
 
   async function disconnect() {
+    if (!connection) return;
     busy = true;
-    await roadmapsFolder.disconnect();
+    await connection.disconnect();
     busy = false;
     close();
   }
@@ -97,7 +107,7 @@
   });
 </script>
 
-{#if ui.folder}
+{#if app && connection}
   <div
     class="overlay"
     role="dialog"
@@ -110,16 +120,16 @@
     ></button>
 
     <div class="panel" bind:this={panelEl}>
-      <h2 class="title" id="fd-title">Carpeta de Roadmaps</h2>
+      <h2 class="title" id="fd-title">{app.title}</h2>
 
       {#if connected}
         <p class="text">
-          Conectado a <strong>{roadmapsFolder.folderName}</strong>. Los roadmaps se guardan ahí;
-          para compartirlos, haz commit y abre una PR con git.
+          Conectado a <strong>{connection.folderName}</strong>. Los datos se guardan ahí; para
+          compartirlos, haz commit y abre una PR con git.
         </p>
         <p class="text dim">
-          Al desconectar vuelves a los roadmaps de este navegador, tal como estaban. Lo que hayas
-          hecho con la carpeta conectada se queda en la carpeta.
+          Al desconectar vuelves a los datos de este navegador, tal como estaban. Lo que hayas hecho
+          con la carpeta conectada se queda en la carpeta.
         </p>
         <div class="actions">
           <button type="button" class="btn" onclick={close} disabled={busy}>cerrar</button>
@@ -127,20 +137,19 @@
             desconectar
           </button>
         </div>
-      {:else if !roadmapsFolder.supported}
+      {:else if !connection.supported}
         <p class="text">
-          Guardar los roadmaps en una carpeta necesita Chrome o Edge: este navegador no deja a una
-          web escribir en las carpetas del dispositivo. Aquí siguen guardándose en el navegador.
+          Guardar en una carpeta necesita Chrome o Edge: este navegador no deja a una web escribir
+          en las carpetas del dispositivo. Aquí siguen guardándose en el navegador.
         </p>
         <div class="actions">
           <button type="button" class="btn primary" onclick={close}>cerrar</button>
         </div>
       {:else if plan?.kind === 'dump'}
         <p class="text">
-          <strong>{plan.folder}</strong> no tiene roadmaps. Se creará dentro la carpeta
-          <code>roadmaps</code> y se copiará en ella {count === 1
-            ? 'el roadmap de este navegador, que también se queda aquí'
-            : `los ${count} roadmaps de este navegador, que también se quedan aquí`}.
+          <strong>{plan.folder}</strong> no tiene {app.has}. Se creará dentro la carpeta
+          <code>{connection.config.appId}</code> y se copiará en ella {browser.phrase} de este navegador,
+          que también {count === 1 ? 'se queda' : 'se quedan'} aquí.
         </p>
         <div class="actions">
           <button type="button" class="btn" onclick={reset} disabled={busy}>otra carpeta</button>
@@ -150,14 +159,15 @@
         </div>
       {:else if plan?.kind === 'adopt'}
         <p class="text">
-          <strong>{plan.folder}</strong> ya tiene roadmaps. Pasarás a ver los de la carpeta; nada se mezcla.
+          <strong>{plan.folder}</strong> ya tiene {app.has}. Pasarás a ver los de la carpeta; nada
+          se mezcla.
         </p>
         {#if count > 0}
           <p class="text dim">
-            {count === 1
-              ? 'El roadmap de este navegador se queda guardado aquí y vuelve al desconectar.'
-              : `Los ${count} roadmaps de este navegador se quedan guardados aquí y vuelven al desconectar.`}
-            Para llevar alguno al repo, expórtalo ahora e impórtalo después de conectar.
+            {capital(browser.phrase)} de este navegador {count === 1
+              ? 'se queda guardado aquí y vuelve'
+              : 'se quedan guardados aquí y vuelven'} al desconectar. Para llevar alguno al repo, expórtalo
+            ahora e impórtalo después de conectar.
           </p>
         {/if}
         <div class="actions">
@@ -174,12 +184,12 @@
           <p class="text error">{failure}</p>
         {/if}
         <p class="text">
-          Elige la carpeta de un repo de git. Roadmaps guardará ahí sus datos, en su propia carpeta
-          <code>roadmaps</code>, y podrás compartirlos con quien tenga acceso al repo.
+          Elige la carpeta de un repo de git. {connection.config.appName} guardará ahí sus datos, en su
+          propia carpeta <code>{connection.config.appId}</code>, y podrás compartirlos con quien
+          tenga acceso al repo.
         </p>
         <p class="text dim">
-          Tu vista (el roadmap abierto, las fases plegadas, el zoom) sigue siendo tuya y no va a la
-          carpeta.
+          {app.viewNote}
         </p>
         <div class="actions">
           <button type="button" class="btn" onclick={close} disabled={busy}>cancelar</button>

@@ -45,7 +45,6 @@ const contract = (over: Partial<Contract> = {}): Contract => ({
   colorSlot: 0,
   models: [],
   endpoints: [],
-  view: null,
   ...over,
 });
 

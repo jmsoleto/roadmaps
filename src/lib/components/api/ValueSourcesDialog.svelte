@@ -12,6 +12,7 @@
    * can afford to: nothing is stored that could diverge, because the mock is
    * derived every time it is looked at.
    */
+  import { apiFolder } from '../../api/folder.svelte';
   import { apiUi } from '../../api/ui.svelte';
   import { valueSources } from '../../api/sources/store.svelte';
   import {
@@ -174,6 +175,9 @@
           No se pudieron abrir las fuentes: {valueSources.unavailable.reason}. No se guardará nada
           mientras siga así.
         </p>
+        {#if valueSources.source === 'folder'}
+          <button type="button" class="btn" onclick={() => apiFolder.retry()}>reintentar</button>
+        {/if}
       {/if}
 
       <div class="cols">

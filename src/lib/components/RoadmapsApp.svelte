@@ -16,17 +16,8 @@
   import Gantt from './Gantt.svelte';
   import MetaView from './MetaView.svelte';
   import StoreUnavailable from './StoreUnavailable.svelte';
-  import { roadmapsFolder } from '../store/roadmaps-folder.svelte';
-
-  let acting = $state(false);
-  async function act(fn: () => Promise<unknown>) {
-    acting = true;
-    try {
-      await fn();
-    } finally {
-      acting = false;
-    }
-  }
+  import { unavailableActions } from '../hub/folders';
+  import { ROADMAPS_ID } from '../hub/apps';
 
   let gantt = $state<Gantt | undefined>(undefined);
   let meta = $state<MetaView | undefined>(undefined);
@@ -47,32 +38,8 @@
     title="Los roadmaps no están disponibles"
     reason={store.unavailable.reason}
     explain="No se muestra un plan vacío a propósito: podría haber roadmaps guardados que no se han podido leer, y escribir encima sería irreversible. El resto del hub sigue funcionando con normalidad."
-  >
-    {#if store.unavailable.why.cause === 'permiso'}
-      <!-- The click is the gesture the browser requires to show its prompt. -->
-      <button
-        type="button"
-        class="btn primary"
-        disabled={acting}
-        onclick={() => act(() => roadmapsFolder.grant())}>conceder acceso</button
-      >
-    {:else}
-      <button
-        type="button"
-        class="btn primary"
-        disabled={acting}
-        onclick={() => act(() => roadmapsFolder.retry())}>reintentar</button
-      >
-    {/if}
-    {#if store.source === 'folder'}
-      <button
-        type="button"
-        class="btn"
-        disabled={acting}
-        onclick={() => act(() => roadmapsFolder.disconnect())}>desconectar</button
-      >
-    {/if}
-  </StoreUnavailable>
+    actions={unavailableActions(ROADMAPS_ID, store.unavailable.why, store.source)}
+  />
 {:else}
   <!-- Both views mark today, so "ir a hoy" goes to whichever one is mounted.
        The two branches are exclusive, so only one reference is ever live. -->
@@ -97,29 +64,6 @@
     flex: 1;
     overflow: hidden;
     position: relative;
-  }
-  .btn {
-    height: 32px;
-    padding: 0 14px;
-    border: 1px solid var(--line);
-    border-radius: 6px;
-    background: none;
-    color: var(--text-dim);
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 13px;
-    cursor: pointer;
-  }
-  .btn:hover:not(:disabled) {
-    color: var(--accent);
-    border-color: var(--accent);
-  }
-  .btn.primary {
-    color: var(--accent);
-    border-color: var(--accent);
-  }
-  .btn:disabled {
-    opacity: 0.45;
-    cursor: not-allowed;
   }
   /* The same as Decisions' and API Hub's opening line. */
   .loading {

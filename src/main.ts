@@ -7,9 +7,7 @@ import { initHub } from './lib/hub/registry';
 import { location } from './lib/hub/location.svelte';
 import { usage } from './lib/hub/usage.svelte';
 import { decisions } from './lib/decisions/store.svelte';
-import { apiContracts } from './lib/api/store.svelte';
-import { apiLibrary } from './lib/api/library.svelte';
-import { valueSources } from './lib/api/sources/store.svelte';
+import { apiFolder } from './lib/api/folder.svelte';
 import { links } from './lib/links/store.svelte';
 
 // Load persisted state from the browser's local storage before the first
@@ -44,9 +42,10 @@ async function bootstrap() {
   // hub and Roadmaps unmounted over stores neither of them uses. Their state is
   // reactive, so each card fills in its figures when its answer arrives.
   void decisions.init();
-  void apiContracts.init();
-  void apiLibrary.init();
-  void valueSources.init();
+  // API Hub's three stores start through their folder connection: IndexedDB
+  // when nothing is remembered, as before, or the folder, with one question
+  // about its permission for the three (carpeta-api-hub, D6).
+  void apiFolder.start();
 
   // Register what each application does when it is entered, then adopt the
   // location in the URL. The order matters: a session restored straight into

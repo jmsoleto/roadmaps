@@ -44,7 +44,6 @@ const contract = (models: ApiModel[]): Contract => ({
   colorSlot: 0,
   models,
   endpoints: [],
-  view: null,
 });
 
 describe('saving', () => {

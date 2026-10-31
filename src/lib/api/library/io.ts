@@ -16,6 +16,7 @@ import { foreignDocumentMessage } from '../../hub/documents';
 import { API_ID } from '../../hub/apps';
 import { ImportError } from '../io';
 import type { LibraryEntry } from './types';
+import { stripNodeOpen } from '../view-state';
 
 const KIND = 'tech-lead-hub/api-library';
 const VERSION = 1;
@@ -95,6 +96,8 @@ export function parseLibraryImport(text: string): LibraryEntry[] {
   }
 
   const entries = doc.entries.map(readableEntry).filter((e): e is LibraryEntry => e !== null);
+  // A file from a version that kept the folding inside the nodes.
+  for (const entry of entries) stripNodeOpen(entry.models);
   if (entries.length === 0) {
     throw new ImportError('El documento no contiene ninguna entrada legible.');
   }

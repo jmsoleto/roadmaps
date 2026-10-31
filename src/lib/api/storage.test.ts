@@ -22,9 +22,7 @@ const doc = (n: number): ApiData => ({
     colorSlot: i,
     models: [],
     endpoints: [],
-    view: null,
   })),
-  openId: null,
 });
 
 // A fresh database per test, so one test's document never leaks into the next.

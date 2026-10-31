@@ -45,6 +45,8 @@ Ver `proposal.md` para el porqué y `specs/` para los requisitos.
 - **Biblioteca por entrada y fuentes en un fichero.** Una entrada es un árbol de modelos que se guarda entero cada vez que alguien lo actualiza, y dos personas pueden estar guardando entradas distintas a la vez. Las fuentes son listas cortas: un fichero basta y se lee de un vistazo.
 - **La biblioteca no lleva orden propio.** Se ordena por nombre, que es su clave (D6 de la biblioteca), así que no hay `order.json` que pueda desalinearse con un merge.
 
+**Canónico, pero sin listas cerradas.** Roadmaps escribe cada tipo con una lista cerrada de campos (D2 de `carpeta-roadmaps`). En API Hub eso es peligroso: sus tipos son profundos y siguen ganando partes opcionales (el `source` de un nodo, los ajustes del mock, las recetas), y una lista cerrada perdería **en silencio** lo que olvidara o lo que se añada mañana. Cada objeto conocido escribe primero sus campos conocidos, en el orden en que se leen, y después cualquier otro campo en orden alfabético. Los objetos sin forma listada (ajustes del mock, recetas, mapas por id) se escriben con las claves ordenadas. Sigue siendo determinista y ningún campo se queda fuera. Lo único que se excluye a propósito es el estado de vista (`open`, `view`, `openId`).
+
 ### D2: `FileSync`, lo genérico de un backend de carpeta
 
 `lib/folder/file-sync.ts`:
@@ -95,6 +97,14 @@ Mismo criterio que D3 de `carpeta-roadmaps`, en preferencias de API Hub:
 - `ApiNode.open` → `api:collapsed-nodes`, el conjunto de nodos **plegados**. Los nodos nacen abiertos (`factories.ts`), así que es el conjunto pequeño y un nodo nuevo no escribe nada. Sirve igual para los nodos de la biblioteca, porque los ids de nodo son únicos en toda la aplicación (`model/identity.ts`).
 
 La subida de datos antiguos es una función pura como `liftViewState`, que borra los campos en el sitio, y escribe las preferencias solo cuando no existían. Export e import de contrato y de biblioteca dejan de llevar y de leer esos campos.
+
+**Lo que encontró la tarea 2.1:** los ids de nodo sí se repiten entre un contrato y la biblioteca. Guardar en la biblioteca (`library/bundle.ts`) copia los modelos con sus ids; traer uno a un contrato (`library/bring.ts`) sí los reemite. No importa, porque **en la biblioteca nadie pliega nada**: solo se pliega el árbol de los contratos (`TreeNode` → `apiContracts.toggleOpen`). El plegado se queda en la clave por id de nodo, y en la biblioteca `open` simplemente se quita al cargar y al importar (`stripNodeOpen`), sin subirlo a ninguna preferencia.
+
+**Lo que conservan las reglas que vivían en el modelo:**
+
+- La vista que seguía a los ids al duplicar un contrato (`identity.ts`) ahora sigue por posición en el store (`followView`).
+- La vista que se descartaba al normalizar si apuntaba a algo borrado ahora se comprueba en cada lectura (`viewOf`), también contra cambios que lleguen de otra persona por la carpeta.
+- El `openId` que apuntaba a un contrato borrado se sigue descartando al arrancar.
 
 **Riesgo de tamaño:** `ApiNode.open` se lee en unos diez sitios entre el store y los componentes del árbol. Es mecánico, pero toca el editor de árboles, que es la parte con más lógica de interacción de API Hub. Va en su propio grupo de tareas con su punto de verificación.
 

@@ -13,15 +13,17 @@
  */
 
 import { uid } from '../util/id';
-import { createLibraryBackend, type LibraryBackend } from './storage';
+import { createLibraryBackend, type LibraryBackend, type Unavailability } from './storage';
+import type { DataSource } from '../store/storage';
 import { bundleOf } from './library/bundle';
 import { bringBundle, type Resolution } from './library/bring';
 import { emptyLibrary, type LibraryData, type LibraryEntry } from './library/types';
 import type { Contract } from './model/types';
+import { stripNodeOpen } from './view-state';
 
 const SAVE_DEBOUNCE_MS = 250;
 
-export type Unavailable = { reason: string } | null;
+export type Unavailable = { reason: string; why?: Unavailability } | null;
 
 export class ApiLibraryStore {
   private backend: LibraryBackend;
@@ -31,17 +33,54 @@ export class ApiLibraryStore {
   unavailable = $state<Unavailable>(null);
   ready = $state<boolean>(false);
 
+  /** Why the last save to a folder failed, or `null`. A failed save in the browser still makes the store unavailable. */
+  saveError = $state<string | null>(null);
+
+  /** Where the document lives right now. */
+  get source(): DataSource {
+    return this.backend.source ?? 'browser';
+  }
+
+  /** True while a change is waiting for the debounce or a write is still running. */
+  get pending(): boolean {
+    return this.saveTimer !== null || !!this.backend.pending;
+  }
+
+  /** Resolve once nothing is being written. */
+  settled(): Promise<void> {
+    return this.backend.settled?.() ?? Promise.resolve();
+  }
+
+  /**
+   * Point the store at another backend: the folder on connecting, the browser
+   * on disconnecting. The caller runs `init()` afterwards, having flushed first.
+   */
+  useBackend(backend: LibraryBackend): void {
+    if (this.saveTimer) {
+      clearTimeout(this.saveTimer);
+      this.saveTimer = null;
+    }
+    this.backend = backend;
+  }
+
   constructor(backend: LibraryBackend = createLibraryBackend()) {
     this.backend = backend;
   }
 
   async init(): Promise<void> {
+    this.ready = false;
+    this.saveError = null;
     const out = await this.backend.load();
     if (out.kind === 'unavailable') {
-      this.unavailable = { reason: out.reason };
+      this.unavailable = { reason: out.reason, why: out.why };
+      // Nothing of what another backend held may stay on screen as if it were this one's.
+      this.data = emptyLibrary();
     } else {
       this.data =
         out.kind === 'loaded' && Array.isArray(out.data?.entries) ? out.data : emptyLibrary();
+      // Saved by a version that kept the folding inside the nodes. Nobody folds
+      // a library entry, so it is dropped rather than lifted (carpeta-api-hub, D4).
+      for (const entry of this.data.entries) stripNodeOpen(entry.models ?? []);
       this.unavailable = null;
     }
     this.ready = true;
@@ -137,8 +176,15 @@ export class ApiLibraryStore {
     if (this.unavailable) return;
     try {
       await this.backend.save($state.snapshot(this.data) as LibraryData);
+      await this.settled();
+      this.saveError = null;
     } catch (e) {
-      this.unavailable = { reason: e instanceof Error ? e.message : String(e) };
+      const reason = e instanceof Error ? e.message : String(e);
+      // In a folder a failed write can be passing, and the backend retries what it
+      // could not write on the next save: say so without locking the document. In
+      // the browser it means the store went away underneath us, as it always did.
+      if (this.source === 'folder') this.saveError = reason;
+      else this.unavailable = { reason };
     }
   }
 }

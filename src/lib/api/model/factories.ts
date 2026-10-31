@@ -59,7 +59,6 @@ export function newNode(key = 'campo', type: NodeType = 'string'): ApiNode {
     enums: [],
     nullable: false,
     children: [],
-    open: true,
   };
 }
 

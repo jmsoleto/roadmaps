@@ -30,7 +30,6 @@ import {
   type ApiData,
   type ApiNode,
   type Contract,
-  type ContractView,
   type MockSettings,
   type NodeSource,
   type PagingOverride,
@@ -231,7 +230,6 @@ function normalizeContract(raw: unknown, index: number): Contract | null {
   if (typeof c.id !== 'string' || c.id === '') return null;
 
   const endpoints = Array.isArray(c.endpoints) ? c.endpoints : [];
-  const models = Array.isArray(c.models) ? c.models : [];
 
   repairContractNodes(c);
   const mock = normalizeMock(c.mock);
@@ -250,26 +248,11 @@ function normalizeContract(raw: unknown, index: number): Contract | null {
         : index % PALETTE_SLOTS,
     models: Array.isArray(c.models) ? c.models : [],
     endpoints,
-    // A view naming something that is no longer there would open the contract
-    // on a blank editor over a list that still has entries. Same treatment
-    // `openId` already gets when it names a contract that is not there (D10).
-    view: resolvableView(c.view ?? null, endpoints, models),
     // Spread rather than assigned, so a contract with no mock comes back with no
     // `mock` key at all instead of one holding `undefined` — which is what
     // `structuredClone` and the JSON export would each render differently.
     ...(mock === undefined ? {} : { mock }),
   };
-}
-
-/** The remembered view, or `null` when what it names has been deleted. */
-function resolvableView(
-  view: ContractView,
-  endpoints: readonly { id?: unknown }[],
-  models: readonly { id?: unknown }[],
-): ContractView {
-  if (view === null) return null;
-  const pool = view.kind === 'endpoint' ? endpoints : models;
-  return pool.some((x) => x.id === view.id) ? view : null;
 }
 
 /**
@@ -289,10 +272,8 @@ export function normalizeApiData(raw: unknown): ApiData | null {
     .map((c, i) => normalizeContract(c, i))
     .filter((c): c is Contract => c !== null);
 
-  // An open id naming a contract that is no longer there would leave the app
-  // showing nothing over a list that has entries.
-  const openId =
-    typeof d.openId === 'string' && contracts.some((c) => c.id === d.openId) ? d.openId : null;
-
-  return { contracts, openId };
+  // Which contract is open, and what each one shows, are preferences now
+  // (carpeta-api-hub, D4). The store checks them against these contracts when
+  // it reads them, which is where a view naming something deleted is dropped.
+  return { contracts };
 }

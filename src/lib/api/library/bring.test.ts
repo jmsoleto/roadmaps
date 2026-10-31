@@ -26,7 +26,6 @@ const contract = (models: ApiModel[] = []): Contract => ({
   colorSlot: 0,
   models,
   endpoints: [],
-  view: null,
 });
 
 /** ItemProducto → Paginacion → Moneda, as it would sit in the library. */

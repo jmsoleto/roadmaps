@@ -16,8 +16,9 @@
 
   let { contract }: Props = $props();
 
-  const openEndpointId = $derived(contract.view?.kind === 'endpoint' ? contract.view.id : null);
-  const openModelId = $derived(contract.view?.kind === 'model' ? contract.view.id : null);
+  const view = $derived(apiContracts.viewOf(contract));
+  const openEndpointId = $derived(view?.kind === 'endpoint' ? view.id : null);
+  const openModelId = $derived(view?.kind === 'model' ? view.id : null);
 </script>
 
 <aside class="rail">

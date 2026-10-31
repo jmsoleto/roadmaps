@@ -12,19 +12,10 @@
  */
 
 import type { AppData } from '../model/types';
+import type { Unavailability } from '../folder/file-sync';
 
-/**
- * Why the data cannot be read, as a closed value rather than a sentence.
- *
- * Closed because the hub card has to decide from it whether to offer
- * «Conceder acceso» (carpeta-roadmaps, D5), and a decision taken by parsing a
- * message breaks the first time somebody rewords the message.
- */
-export type Unavailability =
-  | { cause: 'permiso' }
-  | { cause: 'carpeta-ausente' }
-  | { cause: 'fichero-ilegible'; file: string }
-  | { cause: 'error'; detail: string };
+/** Why the data cannot be read. Shared with every folder backend (`../folder/file-sync.ts`). */
+export type { Unavailability };
 
 /**
  * The three ways a load can end, as in `indexeddb.ts`, with the cause added.

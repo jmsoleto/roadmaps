@@ -47,6 +47,8 @@
   let { node, depth, canMoveUp, canMoveDown }: Props = $props();
 
   const container = $derived(isContainer(node));
+  // Folding is a preference of whoever is looking (carpeta-api-hub, D4).
+  const open = $derived(!apiContracts.isCollapsed(node.id));
   const scalar = $derived(isScalar(node));
   const advanced = $derived(apiUi.isAdvancedOpen(node.id));
 
@@ -133,9 +135,9 @@
     {#if container}
       <button
         class="twist"
-        title={node.open ? 'plegar' : 'desplegar'}
-        aria-expanded={node.open}
-        onclick={() => apiContracts.toggleOpen(node.id)}>{node.open ? '▾' : '▸'}</button
+        title={open ? 'plegar' : 'desplegar'}
+        aria-expanded={open}
+        onclick={() => apiContracts.toggleOpen(node.id)}>{open ? '▾' : '▸'}</button
       >
     {:else}
       <span class="twist leaf" aria-hidden="true">·</span>
@@ -404,7 +406,7 @@
     </div>
   {/if}
 
-  {#if container && node.open}
+  {#if container && open}
     <div class="children">
       {#if node.children.length === 0}
         <div class="empty" style:padding-left="{(depth + 1) * 14}px">

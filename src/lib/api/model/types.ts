@@ -172,8 +172,6 @@ export interface ApiNode {
   enums: string[];
   nullable: boolean;
   children: ApiNode[];
-  /** Whether the tree shows this node expanded. Session state, persisted. */
-  open: boolean;
   /**
    * Where this field's value comes from in a **mock**, when somebody said.
    *
@@ -312,7 +310,6 @@ export interface Contract {
   colorSlot: number;
   models: ApiModel[];
   endpoints: ApiEndpoint[];
-  view: ContractView;
   /**
    * The mock's **settings**, and never the mock.
    *
@@ -391,14 +388,20 @@ export interface RelationOverride {
   foreignKey: string;
 }
 
+/**
+ * The contracts, and nothing about how anyone is looking at them.
+ *
+ * Which contract is open, what each one shows and which nodes are folded are
+ * preferences of each person (`../view-state.ts`, carpeta-api-hub D4): in a
+ * folder shared through git they would otherwise be lines in somebody's pull
+ * request.
+ */
 export interface ApiData {
   contracts: Contract[];
-  /** Which contract is open, or `null` on the application's home. */
-  openId: string | null;
 }
 
 export function emptyApiData(): ApiData {
-  return { contracts: [], openId: null };
+  return { contracts: [] };
 }
 
 /** A contract with nothing in it yet, which is what "+ nuevo contrato" makes. */
@@ -411,6 +414,5 @@ export function newContract(title: string, colorSlot: number): Omit<Contract, 'i
     colorSlot,
     models: [],
     endpoints: [],
-    view: null,
   };
 }

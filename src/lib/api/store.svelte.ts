@@ -16,7 +16,7 @@
 import { uid } from '../util/id';
 import { moveInArray } from '../model/derive';
 import { PALETTE_SLOTS } from '../theme/tokens';
-import { createApiBackend, type ApiBackend } from './storage';
+import { createApiBackend, type ApiBackend, type Unavailability } from './storage';
 import { normalizeApiData } from './model/normalize';
 import {
   emptyApiData,
@@ -74,10 +74,25 @@ import {
   contractBodies,
 } from './model/models';
 
+import { createPrefs, type DataSource, type Prefs } from '../store/storage';
+import {
+  PREF_COLLAPSED,
+  PREF_OPEN,
+  PREF_VIEWS,
+  followView,
+  liftApiView,
+  parseIds,
+  parseOpen,
+  parseViews,
+  serializeIds,
+  type LegacyApiView,
+  type Views,
+} from './view-state';
+
 const SAVE_DEBOUNCE_MS = 250;
 
 /** Why the app cannot be used right now, or `null` when it can. */
-export type Unavailable = { reason: string } | null;
+export type Unavailable = { reason: string; why?: Unavailability } | null;
 
 export class ApiContractsStore {
   private backend: ApiBackend;
@@ -85,28 +100,152 @@ export class ApiContractsStore {
 
   data = $state<ApiData>(emptyApiData());
   /**
+   * Which contract is open, or `null` on the application's home.
+   *
+   * This, `views` and `collapsed` are how one person looks at the contracts,
+   * kept as preferences and never in the documents (carpeta-api-hub, D4).
+   */
+  openId = $state<string | null>(null);
+  /** What each contract shows, by contract id. A contract with no entry opens on its overview. */
+  views = $state<Views>({});
+  /** Ids of the folded nodes. Nodes are born open, so a new one writes nothing. */
+  collapsed = $state<string[]>([]);
+  private prefs: Prefs;
+  /**
    * Set when the store could not be opened.
    *
    * While this is set the app refuses to create or change anything.
    */
   unavailable = $state<Unavailable>(null);
   ready = $state<boolean>(false);
+
+  /** Why the last save to a folder failed, or `null`. A failed save in the browser still makes the store unavailable. */
+  saveError = $state<string | null>(null);
+
+  /** Where the document lives right now. */
+  get source(): DataSource {
+    return this.backend.source ?? 'browser';
+  }
+
+  /** True while a change is waiting for the debounce or a write is still running. */
+  get pending(): boolean {
+    return this.saveTimer !== null || !!this.backend.pending;
+  }
+
+  /** Resolve once nothing is being written. */
+  settled(): Promise<void> {
+    return this.backend.settled?.() ?? Promise.resolve();
+  }
+
+  /**
+   * Point the store at another backend: the folder on connecting, the browser
+   * on disconnecting. The caller runs `init()` afterwards, having flushed first.
+   */
+  useBackend(backend: ApiBackend): void {
+    if (this.saveTimer) {
+      clearTimeout(this.saveTimer);
+      this.saveTimer = null;
+    }
+    this.backend = backend;
+  }
   justSaved = $state<boolean>(false);
 
-  constructor(backend: ApiBackend = createApiBackend()) {
+  constructor(backend: ApiBackend = createApiBackend(), prefs: Prefs = createPrefs()) {
     this.backend = backend;
+    this.prefs = prefs;
   }
 
   async init(): Promise<void> {
+    this.ready = false;
+    this.saveError = null;
     const out = await this.backend.load();
+    let legacy: LegacyApiView = { openId: undefined, views: undefined, collapsed: undefined };
     if (out.kind === 'unavailable') {
-      this.unavailable = { reason: out.reason };
+      this.unavailable = { reason: out.reason, why: out.why };
+      // Nothing of what another backend held may stay on screen as if it were this one's.
+      this.data = emptyApiData();
     } else {
+      // Before normalizing: the normaliser rebuilds each contract and would
+      // drop the view without anyone keeping it.
+      if (out.kind === 'loaded')
+        legacy = liftApiView(out.data as Parameters<typeof liftApiView>[0]);
       this.data =
         out.kind === 'loaded' ? (normalizeApiData(out.data) ?? emptyApiData()) : emptyApiData();
       this.unavailable = null;
     }
+    await this.hydrateView(legacy);
     this.ready = true;
+  }
+
+  /**
+   * Read the view state from preferences, falling back on what older documents
+   * carried. A preference that exists wins; when only the document said
+   * something, it is written to the preference here, because the next save of
+   * the document no longer carries it.
+   */
+  private async hydrateView(legacy: LegacyApiView): Promise<void> {
+    const open = parseOpen(await this.prefs.getPref(PREF_OPEN));
+    const views = parseViews(await this.prefs.getPref(PREF_VIEWS));
+    const collapsed = parseIds(await this.prefs.getPref(PREF_COLLAPSED));
+
+    this.openId = open !== undefined ? open : (legacy.openId ?? null);
+    if (open === undefined && legacy.openId !== undefined) {
+      void this.prefs.setPref(PREF_OPEN, this.openId ?? '');
+    }
+    // An open id naming a contract that is no longer there would leave the app
+    // showing nothing over a list that has entries.
+    if (this.openId !== null && !this.data.contracts.some((c) => c.id === this.openId)) {
+      this.openId = null;
+    }
+    this.views = views ?? legacy.views ?? {};
+    if (views === undefined && legacy.views !== undefined) {
+      void this.prefs.setPref(PREF_VIEWS, JSON.stringify(this.views));
+    }
+    this.collapsed = collapsed ?? legacy.collapsed ?? [];
+    if (collapsed === undefined && legacy.collapsed !== undefined) {
+      void this.prefs.setPref(PREF_COLLAPSED, serializeIds(this.collapsed));
+    }
+  }
+
+  // ---- how this person is looking at them ----
+
+  private setOpenId(id: string | null): void {
+    this.openId = id;
+    void this.prefs.setPref(PREF_OPEN, id ?? '');
+  }
+
+  /**
+   * What a contract shows, or `null` for its overview.
+   *
+   * Checked against the contract on every read: a view naming something that
+   * has been deleted, here or by someone else in a shared folder, would open a
+   * blank editor over a list that still has entries.
+   */
+  viewOf(contract: Contract): ContractView {
+    const view = this.views[contract.id];
+    if (!view) return null;
+    const pool = view.kind === 'endpoint' ? contract.endpoints : contract.models;
+    return pool.some((x) => x.id === view.id) ? view : null;
+  }
+
+  private setViewOf(contractId: string, view: ContractView): void {
+    const next = { ...this.views };
+    if (view) next[contractId] = view;
+    else delete next[contractId];
+    this.views = next;
+    void this.prefs.setPref(PREF_VIEWS, JSON.stringify(next));
+  }
+
+  isCollapsed(nodeId: string): boolean {
+    return this.collapsed.includes(nodeId);
+  }
+
+  private setCollapsed(nodeId: string, folded: boolean): void {
+    if (folded === this.isCollapsed(nodeId)) return;
+    this.collapsed = folded
+      ? [...this.collapsed, nodeId]
+      : this.collapsed.filter((id) => id !== nodeId);
+    void this.prefs.setPref(PREF_COLLAPSED, serializeIds(this.collapsed));
   }
 
   // ---- reading ----
@@ -117,7 +256,7 @@ export class ApiContractsStore {
 
   /** The contract being edited, or `null` on the application's home. */
   get open(): Contract | null {
-    return this.data.contracts.find((c) => c.id === this.data.openId) ?? null;
+    return this.data.contracts.find((c) => c.id === this.openId) ?? null;
   }
 
   /** How many endpoints and models there are across every contract. */
@@ -229,7 +368,7 @@ export class ApiContractsStore {
       ...newContract(title.trim() || 'API sin nombre', this.data.contracts.length % PALETTE_SLOTS),
     };
     this.data.contracts.push(contract);
-    this.data.openId = contract.id;
+    this.setOpenId(contract.id);
     this.scheduleSave();
     return contract;
   }
@@ -253,7 +392,9 @@ export class ApiContractsStore {
     reissueIds(copy);
 
     this.data.contracts.splice(this.data.contracts.indexOf(source) + 1, 0, copy);
-    this.data.openId = copy.id;
+    // The copy opens on the copy of what the original was showing.
+    this.setViewOf(copy.id, followView(source, copy, this.viewOf(source)));
+    this.setOpenId(copy.id);
     this.scheduleSave();
     return copy;
   }
@@ -273,7 +414,7 @@ export class ApiContractsStore {
     if (this.unavailable) return null;
     const contract = parseContractImport(text, this.data.contracts.length % PALETTE_SLOTS);
     this.data.contracts.push(contract);
-    this.data.openId = contract.id;
+    this.setOpenId(contract.id);
     this.scheduleSave();
     return contract;
   }
@@ -298,7 +439,7 @@ export class ApiContractsStore {
     this.data.contracts.splice(i, 1);
     // Deleting the open one lands on the application's home rather than on a
     // contract nobody chose.
-    if (this.data.openId === id) this.data.openId = null;
+    if (this.openId === id) this.setOpenId(null);
     this.scheduleSave();
   }
 
@@ -314,8 +455,7 @@ export class ApiContractsStore {
   /** Open a contract, or return to the application's home with `null`. */
   setOpen(id: string | null): void {
     if (id !== null && !this.data.contracts.some((c) => c.id === id)) return;
-    this.data.openId = id;
-    this.scheduleSave();
+    this.setOpenId(id);
   }
 
   // ---- the API's own data ----
@@ -410,7 +550,7 @@ export class ApiContractsStore {
       if (!parent || !isContainer(parent)) return null;
       const child = newNode(uniqueKey(parent.children), 'string');
       parent.children.push(child);
-      parent.open = true;
+      this.setCollapsed(parent.id, false);
       return child;
     });
   }
@@ -490,7 +630,7 @@ export class ApiContractsStore {
   setNodeType(nodeId: string, type: NodeType): void {
     this.structural(() => {
       const node = this.locate(nodeId)?.node;
-      if (node) applyType(node, type);
+      if (node && applyType(node, type)) this.setCollapsed(node.id, false);
       return null;
     });
   }
@@ -498,17 +638,14 @@ export class ApiContractsStore {
   setNodeItemType(nodeId: string, itemType: ItemType): void {
     this.structural(() => {
       const node = this.locate(nodeId)?.node;
-      if (node) applyItemType(node, itemType);
+      if (node && applyItemType(node, itemType)) this.setCollapsed(node.id, false);
       return null;
     });
   }
 
+  /** Fold or unfold a node. A preference: the contract does not change, nothing is saved. */
   toggleOpen(nodeId: string): void {
-    this.structural(() => {
-      const node = this.locate(nodeId)?.node;
-      if (node) node.open = !node.open;
-      return null;
-    });
+    if (this.locate(nodeId)) this.setCollapsed(nodeId, !this.isCollapsed(nodeId));
   }
 
   /**
@@ -532,7 +669,7 @@ export class ApiContractsStore {
     node.ref = '';
     node.itemRef = '';
     node.example = '';
-    node.open = true;
+    this.setCollapsed(node.id, false);
     this.scheduleSave();
     return null;
   }
@@ -543,7 +680,7 @@ export class ApiContractsStore {
     return this.structural((contract) => {
       const endpoint = newEndpoint();
       contract.endpoints.push(endpoint);
-      contract.view = { kind: 'endpoint', id: endpoint.id };
+      this.setViewOf(contract.id, { kind: 'endpoint', id: endpoint.id });
       return endpoint;
     });
   }
@@ -564,7 +701,7 @@ export class ApiContractsStore {
       }
 
       contract.endpoints.splice(contract.endpoints.indexOf(source) + 1, 0, copy);
-      contract.view = { kind: 'endpoint', id: copy.id };
+      this.setViewOf(contract.id, { kind: 'endpoint', id: copy.id });
       return copy;
     });
   }
@@ -576,9 +713,8 @@ export class ApiContractsStore {
       contract.endpoints.splice(i, 1);
       // Leaving the view pointing at what was just deleted would show a blank
       // editor over a list that still has entries.
-      if (contract.view?.kind === 'endpoint' && contract.view.id === endpointId) {
-        contract.view = null;
-      }
+      const view = this.views[contract.id];
+      if (view?.kind === 'endpoint' && view.id === endpointId) this.setViewOf(contract.id, null);
       return null;
     });
   }
@@ -696,8 +832,9 @@ export class ApiContractsStore {
   /** The model being edited, or `null` when it is an endpoint or nothing. */
   get openModel(): ApiModel | null {
     const contract = this.open;
-    if (contract?.view?.kind !== 'model') return null;
-    return contract.models.find((m) => m.id === contract.view!.id) ?? null;
+    const view = contract ? this.viewOf(contract) : null;
+    if (!contract || view?.kind !== 'model') return null;
+    return contract.models.find((m) => m.id === view.id) ?? null;
   }
 
   /** Where a model is used, named. Computed on read, never stored (D8). */
@@ -717,7 +854,7 @@ export class ApiContractsStore {
         node,
       };
       contract.models.push(model);
-      contract.view = { kind: 'model', id: model.id };
+      this.setViewOf(contract.id, { kind: 'model', id: model.id });
       return model;
     });
   }
@@ -747,7 +884,7 @@ export class ApiContractsStore {
       copy.name = uniqueModelName(contract.models, `${source.name} copia`);
       reissueNodeIds(copy.node);
       contract.models.splice(contract.models.indexOf(source) + 1, 0, copy);
-      contract.view = { kind: 'model', id: copy.id };
+      this.setViewOf(contract.id, { kind: 'model', id: copy.id });
       return copy;
     });
   }
@@ -766,7 +903,8 @@ export class ApiContractsStore {
       const i = contract.models.findIndex((m) => m.id === modelId);
       if (i === -1) return null;
       contract.models.splice(i, 1);
-      if (contract.view?.kind === 'model' && contract.view.id === modelId) contract.view = null;
+      const view = this.views[contract.id];
+      if (view?.kind === 'model' && view.id === modelId) this.setViewOf(contract.id, null);
       return null;
     });
   }
@@ -845,7 +983,7 @@ export class ApiContractsStore {
         node.type = 'object';
         node.ref = '';
       }
-      node.open = true;
+      this.setCollapsed(node.id, false);
       return null;
     });
   }
@@ -861,7 +999,7 @@ export class ApiContractsStore {
     this.structural((contract) => {
       contract.models.push(...(models as ApiModel[]));
       if (models.some((m) => m.id === broughtId)) {
-        contract.view = { kind: 'model', id: broughtId };
+        this.setViewOf(contract.id, { kind: 'model', id: broughtId });
       }
       return null;
     });
@@ -887,18 +1025,18 @@ export class ApiContractsStore {
 
   // ---- what is being edited inside the contract ----
 
+  /** What the open contract shows. A preference: nothing is saved. */
   setView(view: ContractView): void {
-    this.structural((contract) => {
-      contract.view = view;
-      return null;
-    });
+    const contract = this.open;
+    if (contract) this.setViewOf(contract.id, view);
   }
 
   /** The endpoint being edited, or `null` on the contract's own overview. */
   get openEndpoint(): ApiEndpoint | null {
     const contract = this.open;
-    if (contract?.view?.kind !== 'endpoint') return null;
-    return contract.endpoints.find((e) => e.id === contract.view!.id) ?? null;
+    const view = contract ? this.viewOf(contract) : null;
+    if (!contract || view?.kind !== 'endpoint') return null;
+    return contract.endpoints.find((e) => e.id === view.id) ?? null;
   }
 
   /**
@@ -933,13 +1071,19 @@ export class ApiContractsStore {
     if (this.unavailable) return;
     try {
       await this.backend.save($state.snapshot(this.data) as ApiData);
+      // The indicator waits for the folder to have nothing pending, not just
+      // for this write to start (`local-persistence`, «Autosave»).
+      await this.settled();
+      this.saveError = null;
       this.justSaved = true;
       setTimeout(() => (this.justSaved = false), 1200);
     } catch (e) {
-      // Worth showing, unlike Roadmaps' localStorage backend: it means the
-      // store went away underneath us, and further edits would be lost
-      // silently.
-      this.unavailable = { reason: e instanceof Error ? e.message : String(e) };
+      const reason = e instanceof Error ? e.message : String(e);
+      // In a folder a failed write can be passing, and the backend retries what it
+      // could not write on the next save: say so without locking the document. In
+      // the browser it means the store went away underneath us, as it always did.
+      if (this.source === 'folder') this.saveError = reason;
+      else this.unavailable = { reason };
     }
   }
 }

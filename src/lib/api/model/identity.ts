@@ -70,10 +70,6 @@ export function reissueIds(contract: Contract): void {
     const old = endpoint.id;
     endpoint.id = uid('ep');
     endpointIds.set(old, endpoint.id);
-    // The remembered view names an endpoint by id, so it has to follow.
-    if (contract.view?.kind === 'endpoint' && contract.view.id === old) {
-      contract.view = { kind: 'endpoint', id: endpoint.id };
-    }
     for (const param of endpoint.params ?? []) param.id = uid('par');
     if (endpoint.body) reissueNode(endpoint.body, models);
     for (const response of endpoint.responses ?? []) {
@@ -82,11 +78,6 @@ export function reissueIds(contract: Contract): void {
       responseIds.set(oldResponse, response.id);
       if (response.body) reissueNode(response.body, models);
     }
-  }
-
-  if (contract.view?.kind === 'model') {
-    const next = models.get(contract.view.id);
-    contract.view = next ? { kind: 'model', id: next } : null;
   }
 
   if (contract.mock !== undefined) {

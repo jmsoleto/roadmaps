@@ -69,7 +69,6 @@ function bigContract(): { contract: Contract; ms: number } {
     endpoints: ['clientes', 'pedidos', 'productos', 'facturas'].map((k, i) =>
       ep(`ep-${k}`, `/${k}`, envelope(`mod-${i}`)),
     ),
-    view: null,
     mock: { ...newMockSettings(4821), size: 45, pageSize: 20, sizes: { pedidos: 225 } },
   };
   return { contract, ms: 0 };

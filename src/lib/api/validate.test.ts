@@ -13,7 +13,6 @@ function contract(endpoints: ApiEndpoint[] = []): Contract {
     colorSlot: 0,
     models: [],
     endpoints,
-    view: null,
   };
 }
 

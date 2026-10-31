@@ -79,7 +79,6 @@ function contract(settings: Partial<MockSettings> = {}): {
       endpoint('GET', '/clientes/{id}', detalle),
       endpoint('GET', '/clientes/{id}/pedidos', envelope('mod-pedido')),
     ],
-    view: null,
   };
   // The contract already says which parent the nested endpoint shows.
   c.endpoints[2].params = [

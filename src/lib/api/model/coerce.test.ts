@@ -5,9 +5,9 @@ import { newNode } from './factories';
 describe('changing a field to a container', () => {
   it('gives it a first editable child', () => {
     const node = newNode('cliente', 'string');
-    applyType(node, 'object');
+    // Reports that it opened the node; unfolding it is the store's (carpeta-api-hub, D4).
+    expect(applyType(node, 'object')).toBe(true);
     expect(node.children).toHaveLength(1);
-    expect(node.open).toBe(true);
   });
 
   it('stops asking it for an example', () => {

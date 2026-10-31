@@ -86,7 +86,6 @@ describe('a document that is not this one', () => {
       colorSlot: 0,
       models: [],
       endpoints: [],
-      view: null,
     });
   const library = () =>
     exportLibrary([

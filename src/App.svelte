@@ -48,7 +48,9 @@
     const flush = (e: BeforeUnloadEvent) => {
       // Read before flushing: the flush itself starts a write, and asking after
       // it would ask every time, even with everything already on disk.
-      const unwritten = store.source === 'folder' && store.pending;
+      const unwritten = [store, apiContracts, apiLibrary, valueSources].some(
+        (s) => s.source === 'folder' && s.pending,
+      );
       void store.flush();
       void apiContracts.flush();
       void apiLibrary.flush();

@@ -10,6 +10,7 @@
  */
 
 import { roadmapsFolder } from '../store/roadmaps-folder.svelte';
+import { apiFolder } from '../api/folder.svelte';
 import { store } from '../store/app.svelte';
 import { ui } from '../store/ui.svelte';
 import { theme } from '../theme/theme.svelte';
@@ -130,7 +131,29 @@ function decisionsSummaryNow(): AppSummary {
   return decisionsSummary(decisions.all, todayIso());
 }
 
-function apiSummaryNow(): AppSummary {
+function apiSummaryNow(): AppSummary | AppUnreadable {
+  // With a folder, the same rule as Roadmaps: nothing to count until the
+  // contracts have been read. The library does not count here: the figures
+  // come from the contracts, so a library that cannot be read leaves them.
+  if (apiContracts.source === 'folder') {
+    if (!apiContracts.ready) {
+      return { kind: 'unreadable', reason: 'Abriendo la carpeta de los contratos…' };
+    }
+    if (apiContracts.unavailable) {
+      const folder = apiFolder.folderName ?? 'la carpeta';
+      if (apiContracts.unavailable.why?.cause === 'permiso') {
+        return {
+          kind: 'unreadable',
+          reason: `Falta el permiso sobre «${folder}». Concédelo para ver los contratos.`,
+          grant: () => apiFolder.grant(),
+        };
+      }
+      return {
+        kind: 'unreadable',
+        reason: `No se puede leer «${folder}». Entra para ver por qué, reintentar o desconectarla.`,
+      };
+    }
+  }
   const contracts = apiContracts.contracts;
   return apiSummary(
     contracts,
@@ -275,6 +298,15 @@ function apiActions(): AppAction[] {
       disabled: down || apiContracts.open === null,
       run: () => apiUi.openExport(),
     },
+    // Never disabled: it is also the way out of a folder that cannot be read.
+    {
+      kind: 'button',
+      label: '⧉ carpeta',
+      title: apiFolder.folderName
+        ? `conectado a «${apiFolder.folderName}»`
+        : 'guardar los contratos en una carpeta (un repo de git)',
+      run: () => ui.openFolder(API_ID),
+    },
   ];
 }
 
@@ -331,7 +363,7 @@ function roadmapsActions(): AppAction[] {
       title: roadmapsFolder.folderName
         ? `conectado a «${roadmapsFolder.folderName}»`
         : 'guardar los roadmaps en una carpeta (un repo de git)',
-      run: () => ui.openFolder(),
+      run: () => ui.openFolder(ROADMAPS_ID),
     },
   ];
 }
@@ -414,6 +446,7 @@ const BEHAVIOUR: Record<string, Partial<Behaviour>> = {
     root: ApiApp,
     context: ContractSwitcher,
     actions: apiActions,
+    scope: () => apiFolder.folderName,
   },
   [LINKS_ID]: {
     summary: linksSummaryNow,

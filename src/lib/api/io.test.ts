@@ -33,7 +33,6 @@ function wired(over: Partial<Contract> = {}): Contract {
     colorSlot: 3,
     models: [model('mod-pag', 'Paginacion', [newNode('pagina', 'integer')])],
     endpoints: [endpoint],
-    view: { kind: 'endpoint', id: endpoint.id },
     ...over,
   };
 }
@@ -55,7 +54,9 @@ describe('exporting', () => {
   /** What somebody was editing belongs to them, not to whoever receives it. */
   it('does not carry what was being edited', () => {
     const doc = JSON.parse(exportContract(wired()));
-    expect(doc.contract.view).toBeNull();
+    // Not even as `null`: the view is not part of a contract any more
+    // (carpeta-api-hub, D4). Earlier versions read its absence as `null`.
+    expect('view' in doc.contract).toBe(false);
   });
 
   it('names the file after the API and its version', () => {
@@ -109,7 +110,17 @@ describe('importing', () => {
   });
 
   it('opens clean, not on whatever the exporter was editing', () => {
-    expect(parseContractImport(exportContract(wired())).view).toBeNull();
+    // A file from a version that still carried the view and the folding.
+    const doc = JSON.parse(exportContract(wired()));
+    doc.contract.view = { kind: 'endpoint', id: doc.contract.endpoints[0].id };
+    doc.contract.models[0].node.open = false;
+    const back = parseContractImport(JSON.stringify(doc));
+    expect('view' in back).toBe(false);
+    expect('open' in back.models[0].node).toBe(false);
+  });
+
+  it('exports no view and no folding', () => {
+    expect(exportContract(wired())).not.toMatch(/"view"|"open"/);
   });
 
   it('keeps the palette slot the document brings', () => {
