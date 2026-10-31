@@ -12,7 +12,9 @@ import type { Unavailability } from '../folder/file-sync';
 import type { UnavailableAction } from '../components/StoreUnavailable.svelte';
 import { roadmapsFolder } from '../store/roadmaps-folder.svelte';
 import { store } from '../store/app.svelte';
-import { API_ID, ROADMAPS_ID } from './apps';
+import { API_ID, LINKS_ID, ROADMAPS_ID } from './apps';
+import { linksFolder } from '../links/folder.svelte';
+import { links } from '../links/store.svelte';
 import { apiFolder } from '../api/folder.svelte';
 import { apiContracts } from '../api/store.svelte';
 
@@ -55,6 +57,17 @@ const FOLDERS: Record<string, FolderUi> = {
     },
     viewNote:
       'Tu vista (el contrato abierto, lo que ves de cada uno, los campos plegados) sigue siendo tuya y no va a la carpeta.',
+  },
+  [LINKS_ID]: {
+    connection: linksFolder,
+    title: 'Carpeta de Links Hub',
+    has: 'enlaces',
+    inBrowser: () => {
+      const n = links.source === 'browser' ? links.areas.length : 0;
+      return { count: n, phrase: n === 1 ? 'el área' : `las ${n} áreas` };
+    },
+    viewNote:
+      'Ojo: con una carpeta conectada, Links puede tener que esperar a la carpeta o pedir permiso al abrirse, también en mitad de una guardia. Sin carpeta abre al instante.',
   },
 };
 

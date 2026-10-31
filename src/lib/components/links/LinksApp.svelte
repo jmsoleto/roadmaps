@@ -2,11 +2,14 @@
   /**
    * Links Hub's screen: the areas on the left, their grid on the right.
    *
-   * No loading state, and that is deliberate (D7). `localStorage` is
-   * synchronous, so there is never a moment where we do not yet know what the
-   * links are — which is the whole reason this application does not live in
-   * IndexedDB like the other two. "Abriendo los enlaces…" in the middle of an
+   * No loading state in the browser, and that is deliberate (D7).
+   * `localStorage` is synchronous, so there is never a moment where we do not
+   * yet know what the links are. "Abriendo los enlaces…" in the middle of an
    * outage is precisely the second this thing exists to remove.
+   *
+   * Connected to a folder, that moment exists, and showing an empty panel over
+   * it would be worse than saying so: the opening line and the unavailable
+   * screen appear only then (carpeta-links, D3).
    *
    * The window-level key handler is what makes the keyboard the primary way in
    * (D5). It is always armed, which is safe because `ownsKey` stands in front
@@ -29,6 +32,8 @@
     type GridMetrics,
   } from '../../links/grid';
   import AreaRail from './AreaRail.svelte';
+  import StoreUnavailable from '../StoreUnavailable.svelte';
+  import { unavailableActions } from '../../hub/folders';
   import LinkTile from './LinkTile.svelte';
   import LinkForm from './LinkForm.svelte';
   import type { Link } from '../../links/model';
@@ -219,6 +224,8 @@
   function onKeydown(event: KeyboardEvent) {
     // A form is a conversation of its own; the grid's shortcuts stay out of it.
     if (linksUi.editing !== null) return;
+    // Nothing to move through over a folder that has not been read.
+    if (!links.ready || links.unavailable) return;
     const action = actionFor(event, ownsKey(event.target, event.key));
     if (action === null) return;
 
@@ -254,7 +261,16 @@
 
 <svelte:window onkeydown={onKeydown} />
 
-{#if links.areas.length === 0}
+{#if !links.ready}
+  <div class="loading">Abriendo los enlaces…</div>
+{:else if links.unavailable}
+  <StoreUnavailable
+    title="Los enlaces no están disponibles"
+    reason={links.unavailable.reason}
+    explain="No se muestra un panel vacío a propósito: podría haber enlaces guardados que no se han podido leer, y escribir encima sería irreversible. El resto del hub sigue funcionando con normalidad."
+    actions={unavailableActions(LINKS_ID, links.unavailable.why, links.source)}
+  />
+{:else if links.areas.length === 0}
   <div class="empty-app">
     <h2>Todavía no hay ningún área</h2>
     <p>
@@ -345,6 +361,13 @@
 {/if}
 
 <style>
+  /* The same as the other applications' opening line. */
+  .loading {
+    padding: 48px 16px;
+    text-align: center;
+    color: var(--text-dim);
+    font-size: 13.5px;
+  }
   /* Not `.app`: `app.css` owns that class globally, as a column, and a screen
      that borrowed the name would silently be laid out top-to-bottom. */
   .screen {

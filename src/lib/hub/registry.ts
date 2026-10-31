@@ -11,6 +11,7 @@
 
 import { roadmapsFolder } from '../store/roadmaps-folder.svelte';
 import { apiFolder } from '../api/folder.svelte';
+import { linksFolder } from '../links/folder.svelte';
 import { store } from '../store/app.svelte';
 import { ui } from '../store/ui.svelte';
 import { theme } from '../theme/theme.svelte';
@@ -165,7 +166,26 @@ function apiSummaryNow(): AppSummary | AppUnreadable {
   );
 }
 
-function linksSummaryNow(): AppSummary {
+function linksSummaryNow(): AppSummary | AppUnreadable {
+  // In the browser Links is always ready. Only with a folder is there nothing
+  // to count yet, or a folder that could not be read.
+  if (links.source === 'folder') {
+    if (!links.ready) return { kind: 'unreadable', reason: 'Abriendo la carpeta de los enlaces…' };
+    if (links.unavailable) {
+      const folder = linksFolder.folderName ?? 'la carpeta';
+      if (links.unavailable.why?.cause === 'permiso') {
+        return {
+          kind: 'unreadable',
+          reason: `Falta el permiso sobre «${folder}». Concédelo para ver los enlaces.`,
+          grant: () => linksFolder.grant(),
+        };
+      }
+      return {
+        kind: 'unreadable',
+        reason: `No se puede leer «${folder}». Entra para ver por qué, reintentar o desconectarla.`,
+      };
+    }
+  }
   const data = links.data;
   return linksSummary(
     data,
@@ -230,11 +250,14 @@ function importAreaFile(text: string): string {
 }
 
 function linksActions(): AppAction[] {
+  // Only a folder can make this true: in the browser Links is always ready.
+  const down = !links.ready || links.unavailable !== null;
   return [
     {
       kind: 'button',
       label: '+ nuevo enlace',
       title: 'añadir un enlace al área abierta',
+      disabled: down,
       // Nothing to hang a link from until there is an area; the action then
       // opens the area field instead of a form that could not be saved.
       run: startLinkCreation,
@@ -243,6 +266,7 @@ function linksActions(): AppAction[] {
       kind: 'file',
       label: '↓ importar',
       title: 'traer un área de enlaces desde un JSON',
+      disabled: down,
       accept: JSON_FILES,
       run: importAreaFile,
     },
@@ -252,8 +276,17 @@ function linksActions(): AppAction[] {
       title: 'exportar el área abierta',
       // Nothing to export without an area open, and the export reads the open
       // one. Same treatment as the roadmap export without an active roadmap.
-      disabled: links.activeArea === null,
+      disabled: down || links.activeArea === null,
       run: exportActiveArea,
+    },
+    // Never disabled: it is also the way out of a folder that cannot be read.
+    {
+      kind: 'button',
+      label: '⧉ carpeta',
+      title: linksFolder.folderName
+        ? `conectado a «${linksFolder.folderName}»`
+        : 'guardar los enlaces en una carpeta (un repo de git)',
+      run: () => ui.openFolder(LINKS_ID),
     },
   ];
 }
@@ -461,6 +494,7 @@ const BEHAVIOUR: Record<string, Partial<Behaviour>> = {
     // switcher in the bar. The topbar fills the gap itself.
     context: null,
     actions: linksActions,
+    scope: () => linksFolder.folderName,
   },
 };
 

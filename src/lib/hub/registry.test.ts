@@ -266,3 +266,55 @@ describe('la tarjeta de API Hub con la carpeta sin leer (carpeta-api-hub, 5.5)',
     );
   });
 });
+
+describe('la tarjeta de Links con la carpeta sin leer (carpeta-links, 3.4)', () => {
+  async function withLinks(
+    state: { folder: boolean; ready: boolean; unavailable: (typeof links)['unavailable'] },
+    fn: () => void,
+  ) {
+    const before = { ready: links.ready, unavailable: links.unavailable };
+    const backendBefore = (links as unknown as { backend: unknown }).backend;
+    if (state.folder) {
+      (links as unknown as { backend: unknown }).backend = {
+        source: 'folder',
+        load: async () => ({ kind: 'empty' }),
+        save: async () => {},
+      };
+    }
+    links.ready = state.ready;
+    links.unavailable = state.unavailable;
+    try {
+      fn();
+    } finally {
+      links.ready = before.ready;
+      links.unavailable = before.unavailable;
+      (links as unknown as { backend: unknown }).backend = backendBefore;
+    }
+  }
+  const summary = () => hubApp(LINKS_ID)!.summary!();
+
+  it('sin carpeta da sus cifras como siempre', async () => {
+    await withLinks({ folder: false, ready: true, unavailable: null }, () => {
+      expect(isUnreadable(summary())).toBe(false);
+    });
+  });
+
+  it('con carpeta abriendo no da cifras', async () => {
+    await withLinks({ folder: true, ready: false, unavailable: null }, () => {
+      expect(isUnreadable(summary())).toBe(true);
+    });
+  });
+
+  it('sin permiso ofrece concederlo, y crear queda desactivado', async () => {
+    await withLinks(
+      { folder: true, ready: true, unavailable: { reason: 'x', why: { cause: 'permiso' } } },
+      () => {
+        const s = summary();
+        expect(isUnreadable(s) && typeof s.grant).toBe('function');
+        const actions = hubApp(LINKS_ID)!.actions!();
+        expect(actions.find((a) => a.label.includes('nuevo'))?.disabled).toBe(true);
+        expect(actions.find((a) => a.label.includes('carpeta'))?.disabled).toBeFalsy();
+      },
+    );
+  });
+});

@@ -27,7 +27,19 @@
  * Pure: names and texts in, names and texts out.
  */
 
-import type { FileFormat, FileMap, FormatParse } from '../folder/file-sync';
+import type { FileFormat, FileMap } from '../folder/file-sync';
+import {
+  attempt,
+  canonicalizer,
+  fileFor,
+  inOrder,
+  isFile,
+  isObject,
+  json,
+  layout,
+  units,
+  Unreadable,
+} from '../folder/canonical';
 import { MARKER_FILE, markerText } from '../folder/marker';
 import type { ApiData, Contract } from './model/types';
 import type { LibraryData, LibraryEntry } from './library/types';
@@ -102,85 +114,16 @@ const HOLDS: Partial<Record<Kind, Record<string, Kind>>> = {
 };
 
 /** Each person's, never the document's (D4). */
-const VIEW_KEYS = new Set(['open', 'view', 'openId']);
-
-function canon(value: unknown, kind?: Kind): unknown {
-  if (Array.isArray(value)) return value.map((v) => canon(v, kind));
-  if (!value || typeof value !== 'object') return value;
-  const obj = value as Record<string, unknown>;
-  const keys = Object.keys(obj).filter((k) => obj[k] !== undefined && !(kind && VIEW_KEYS.has(k)));
-  const known = kind ? ORDER[kind].filter((k) => keys.includes(k)) : [];
-  const rest = keys.filter((k) => !known.includes(k)).sort();
-  const out: Record<string, unknown> = {};
-  for (const k of [...known, ...rest]) out[k] = canon(obj[k], kind ? HOLDS[kind]?.[k] : undefined);
-  return out;
-}
-
-/** Two-space indentation and a final newline, as in every folder file. */
-const text = (value: unknown, kind?: Kind): string =>
-  JSON.stringify(canon(value, kind), null, 2) + '\n';
-
-/** A file name for an id: used as it is when it is safe, spelled in hex behind `x` otherwise. */
-function fileFor(prefix: string, id: string): string {
-  if (/^[A-Za-z0-9_-]+$/.test(id) && !id.startsWith('x')) return `${prefix}${id}.json`;
-  const hex = [...new TextEncoder().encode(id)].map((b) => b.toString(16).padStart(2, '0'));
-  return `${prefix}x${hex.join('')}.json`;
-}
-
-const isFile = (prefix: string) => (name: string) =>
-  name.startsWith(prefix) && /^[A-Za-z0-9_-]+\.json$/.test(name.slice(prefix.length));
+const { canon, text } = canonicalizer<Kind>({
+  order: ORDER,
+  holds: HOLDS,
+  viewKeys: new Set(['open', 'view', 'openId']),
+});
 
 export const fileForContract = (id: string) => fileFor(CONTRACT_PREFIX, id);
 export const fileForEntry = (id: string) => fileFor(ENTRY_PREFIX, id);
 export const isContractFile = isFile(CONTRACT_PREFIX);
 export const isEntryFile = isFile(ENTRY_PREFIX);
-
-// ---- reading ----
-
-class Unreadable extends Error {
-  constructor(readonly file: string) {
-    super(file);
-  }
-}
-
-const isObject = (v: unknown): v is Record<string, unknown> =>
-  !!v && typeof v === 'object' && !Array.isArray(v);
-
-function json(files: FileMap, name: string): unknown {
-  const raw = files.get(name);
-  if (raw === undefined) return undefined;
-  try {
-    return JSON.parse(raw);
-  } catch {
-    throw new Unreadable(name);
-  }
-}
-
-/** The units of one kind, by id, refusing a second file with an id already seen. */
-function units<T extends { id: string }>(
-  files: FileMap,
-  is: (name: string) => boolean,
-  shapeOk: (v: Record<string, unknown>) => boolean,
-): Map<string, T> {
-  const byId = new Map<string, T>();
-  for (const name of [...files.keys()].filter(is).sort()) {
-    const v = json(files, name);
-    if (!isObject(v) || typeof v.id !== 'string' || !shapeOk(v)) throw new Unreadable(name);
-    // One would hide the other, and the next save would delete the hidden one.
-    if (byId.has(v.id)) throw new Unreadable(name);
-    byId.set(v.id, v as unknown as T);
-  }
-  return byId;
-}
-
-function attempt<T>(fn: () => T): FormatParse<T> {
-  try {
-    return { kind: 'ok', data: fn() };
-  } catch (e) {
-    if (e instanceof Unreadable) return { kind: 'unreadable', file: e.file };
-    throw e;
-  }
-}
 
 // ---- the three documents ----
 
@@ -210,15 +153,8 @@ export const CONTRACTS_FORMAT: FileFormat<ApiData> = {
         isContractFile,
         (v) => Array.isArray(v.models) && Array.isArray(v.endpoints),
       );
-      // Tolerant of what a merge leaves: unlisted contracts go last, in file
-      // order; listed ids without a file are ignored. The next save agrees.
       const listed = order ? (order.contracts as unknown[]) : [];
-      const contracts: Contract[] = [];
-      for (const id of new Set(listed)) {
-        const c = typeof id === 'string' ? byId.get(id) : undefined;
-        if (c) contracts.push(c);
-      }
-      for (const c of byId.values()) if (!contracts.includes(c)) contracts.push(c);
+      const contracts = inOrder(listed, byId);
       return { contracts };
     }),
   isEmpty: (d) => d.contracts.length === 0,
@@ -254,7 +190,7 @@ export const SOURCES_FORMAT: FileFormat<ValueSourcesData> = {
     // Built by hand rather than through `text`, which would canonicalize the
     // wrapper again without knowing what a source is and sort its fields.
     const body = { sources: canon(data.sources, 'source') };
-    return new Map([[SOURCES_FILE, JSON.stringify(body, null, 2) + '\n']]);
+    return new Map([[SOURCES_FILE, layout(body)]]);
   },
   parse: (files) =>
     attempt(() => {

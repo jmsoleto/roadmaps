@@ -9,6 +9,7 @@ import { usage } from './lib/hub/usage.svelte';
 import { decisions } from './lib/decisions/store.svelte';
 import { apiFolder } from './lib/api/folder.svelte';
 import { links } from './lib/links/store.svelte';
+import { linksFolder } from './lib/links/folder.svelte';
 
 // Load persisted state from the browser's local storage before the first
 // render, so the app opens directly in its last state.
@@ -33,7 +34,15 @@ async function bootstrap() {
   // Links Hub loads inside the boot and not beside it, unlike the two IndexedDB
   // stores below: `localStorage` is synchronous, so this cannot hang, and its
   // screen is the one that must never show "still opening" (D7).
-  links.init();
+  //
+  // That holds while Links lives in the browser. Connected to a folder it can
+  // wait, which is a choice made by whoever connected it (carpeta-links, D3):
+  // then it starts beside the boot, like API Hub, and says it is opening.
+  if (linksFolder.startsInBrowser) links.init();
+  else {
+    links.expectFolder();
+    void linksFolder.start();
+  }
 
   // The IndexedDB stores load **beside** the boot, not inside it.
   //

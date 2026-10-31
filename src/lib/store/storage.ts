@@ -29,7 +29,8 @@ export type RoadmapsLoad =
   | { kind: 'empty' }
   | { kind: 'unavailable'; reason: string; why: Unavailability };
 
-export type DataSource = 'browser' | 'folder';
+export type { DataSource } from '../folder/doc-backend';
+import type { DataSource } from '../folder/doc-backend';
 
 export interface RoadmapsBackend {
   /** Where the data lives. Only the browser gets the example roadmap on an empty start. */

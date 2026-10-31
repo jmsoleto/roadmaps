@@ -12,9 +12,12 @@
  */
 
 import { createLinksBackend, type LinksBackend } from './storage';
+import type { DocBackend, DataSource } from '../folder/doc-backend';
+import type { Unavailability } from '../folder/file-sync';
 import {
   EMPTY,
   linksOf,
+  normalize,
   newArea,
   newLink,
   type Area,
@@ -25,8 +28,14 @@ import {
 
 const SAVE_DEBOUNCE_MS = 300;
 
+/** A backend that lives in a folder: asynchronous, and the only kind that can make Links wait. */
+type FolderBackend = DocBackend<LinksData> & { source: 'folder' };
+
+const inFolder = (b: LinksBackend | DocBackend<LinksData>): b is FolderBackend =>
+  (b as DocBackend<LinksData>).source === 'folder';
+
 export class LinksStore {
-  private backend: LinksBackend;
+  private backend: LinksBackend | DocBackend<LinksData>;
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
 
   data = $state<LinksData>(EMPTY);
@@ -43,14 +52,92 @@ export class LinksStore {
   activeAreaId = $state<string | null>(null);
   focusedLinkId = $state<string | null>(null);
 
-  constructor(backend: LinksBackend = createLinksBackend()) {
+  /**
+   * Whether the data has been read, and why it could not be.
+   *
+   * Only a folder can make these anything but «ready, available»: in the
+   * browser Links Hub is synchronous on purpose (D7), and that does not change
+   * for anyone who does not connect a folder (carpeta-links, D3).
+   */
+  ready = $state<boolean>(true);
+  unavailable = $state<{ reason: string; why?: Unavailability } | null>(null);
+  /** Why the last save to the folder failed, or `null`. */
+  saveError = $state<string | null>(null);
+
+  constructor(backend: LinksBackend | DocBackend<LinksData> = createLinksBackend()) {
     this.backend = backend;
   }
 
-  init(): void {
-    this.data = this.backend.load();
-    this.activeAreaId = this.data.areas[0]?.id ?? null;
-    this.focusedLinkId = null;
+  get source(): DataSource {
+    return inFolder(this.backend) ? 'folder' : 'browser';
+  }
+
+  /** True while a change is waiting for the debounce or a write is still running. */
+  get pending(): boolean {
+    return this.saveTimer !== null || (inFolder(this.backend) && !!this.backend.pending);
+  }
+
+  settled(): Promise<void> {
+    return inFolder(this.backend)
+      ? (this.backend.settled?.() ?? Promise.resolve())
+      : Promise.resolve();
+  }
+
+  /** Point the store at another backend. The caller flushes first and runs `init()` after. */
+  useBackend(backend: LinksBackend | DocBackend<LinksData>): void {
+    if (this.saveTimer) {
+      clearTimeout(this.saveTimer);
+      this.saveTimer = null;
+    }
+    this.backend = backend;
+  }
+
+  /**
+   * Load the links.
+   *
+   * In the browser, synchronously and in the same tick, as it always was: the
+   * links are there before the first frame. Only from a folder is there a
+   * moment of not knowing yet, and then the screen says so.
+   */
+  init(): void | Promise<void> {
+    this.saveError = null;
+    if (!inFolder(this.backend)) {
+      this.data = (this.backend as LinksBackend).load();
+      this.unavailable = null;
+      this.ready = true;
+      this.home();
+      return;
+    }
+    return this.initFromFolder(this.backend);
+  }
+
+  private async initFromFolder(backend: FolderBackend): Promise<void> {
+    this.ready = false;
+    const out = await backend.load();
+    if (out.kind === 'unavailable') {
+      this.data = EMPTY;
+      this.unavailable = { reason: out.reason, why: out.why };
+    } else {
+      this.data = normalize(out.kind === 'loaded' ? out.data : null);
+      this.unavailable = null;
+    }
+    this.ready = true;
+    this.home();
+  }
+
+  /**
+   * Say «opening» before a folder connection has even found its handle.
+   *
+   * The store starts ready, because in the browser it is; with a remembered
+   * folder, the moments before the folder answers must not show an empty panel.
+   */
+  expectFolder(): void {
+    this.ready = false;
+  }
+
+  /** Nothing may be created or written over data that has not been read. */
+  private get down(): boolean {
+    return !this.ready || this.unavailable !== null;
   }
 
   // ---- reading ----
@@ -79,6 +166,7 @@ export class LinksStore {
   // ---- areas ----
 
   addArea(name: string): Area | null {
+    if (this.down) return null;
     const trimmed = name.trim();
     if (trimmed === '') return null;
     const area = newArea(trimmed);
@@ -105,6 +193,7 @@ export class LinksStore {
    * importing the same file twice give two independent areas.
    */
   importArea(area: Area, links: Link[]): void {
+    if (this.down) return;
     this.data.areas.push(area);
     this.data.links.push(...links);
     this.activeAreaId = area.id;
@@ -156,6 +245,7 @@ export class LinksStore {
   // ---- links ----
 
   addLink(draft: LinkDraft, areaId: string | null = this.activeAreaId): Link | null {
+    if (this.down) return null;
     if (areaId === null || !this.data.areas.some((a) => a.id === areaId)) return null;
     const link = newLink(areaId, draft, this.data.links.length);
     this.data.links.push(link);
@@ -240,18 +330,41 @@ export class LinksStore {
   // ---- persistence ----
 
   private schedule(): void {
+    if (this.down) return;
     if (this.saveTimer) clearTimeout(this.saveTimer);
     this.saveTimer = setTimeout(() => this.flush(), SAVE_DEBOUNCE_MS);
   }
 
-  flush(): void {
+  /**
+   * Write now. In the browser, synchronously, which is what lets the close
+   * handler land it before the page unloads. In a folder the write is
+   * asynchronous, and a failure is said rather than thrown.
+   */
+  flush(): void | Promise<void> {
     if (this.saveTimer) {
       clearTimeout(this.saveTimer);
       this.saveTimer = null;
     }
+    if (this.down) return;
     // `$state.snapshot` and not the proxy: `JSON.stringify` would read through
     // it, but the backend is a seam and the next one behind it may not.
-    this.backend.save($state.snapshot(this.data) as LinksData);
+    const data = $state.snapshot(this.data) as LinksData;
+    if (!inFolder(this.backend)) {
+      (this.backend as LinksBackend).save(data);
+      return;
+    }
+    return this.flushToFolder(this.backend, data);
+  }
+
+  private async flushToFolder(backend: FolderBackend, data: LinksData): Promise<void> {
+    try {
+      await backend.save(data);
+      await backend.settled?.();
+      this.saveError = null;
+    } catch (e) {
+      // The backend retries what it could not write on the next save.
+      this.saveError = e instanceof Error ? e.message : String(e);
+    }
   }
 }
 
