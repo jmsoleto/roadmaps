@@ -28,3 +28,13 @@ Fuera de alcance, salvo que la respuesta a la pregunta anterior lo exija:
 - `src/lib/links/io.ts`: un segundo par de funciones, o un fichero hermano si el sobre acaba siendo bastante distinto.
 - `src/lib/hub/documents.ts`: quinta entrada en `ownerOf`, y el reconocedor pasa a tener que distinguir dos documentos de la misma aplicación, como ya hace con contrato y biblioteca.
 - `src/lib/hub/registry.ts`: cómo se ofrecen cuatro acciones sin que la barra de Links Hub deje de leerse. Puede que la respuesta sea un diálogo como el de API Hub y no dos botones más.
+
+## Desenlace
+
+**Archivado sin hacer** (2026-10-31). No se escribió código ni se tocó ninguna spec.
+
+Lo dejó sin objeto la iniciativa de conectar cada aplicación a una carpeta local, que es donde cae el clon de un repo de GitHub privado. Con Links Hub conectado, la carpeta *es* el respaldo completo, y además versionado y compartible. Un documento de conjunto exportado a mano sería un segundo respaldo de algo que ya lo tiene.
+
+Quien no conecte Links Hub sigue respaldando por áreas, como hoy. `local-persistence` lo dice así y no se corrige: esa promesa con matiz sigue siendo verdad.
+
+La pregunta que este change dejó abierta, reemplazar o añadir al traer un conjunto sobre otro que ya tiene datos, no se pierde: reaparece al conectar una aplicación a una carpeta que ya contiene datos suyos. Allí la respuesta inicial es que manda la carpeta, que los datos del navegador se conservan intactos y que nada se fusiona automáticamente.
