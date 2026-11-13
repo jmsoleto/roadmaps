@@ -31,11 +31,12 @@ export const ROADMAPS_ID = 'roadmaps';
 export const DECISIONS_ID = 'decisions';
 export const API_ID = 'api';
 export const LINKS_ID = 'links';
+export const HEALTH_ID = 'health';
 
 /**
  * The registry.
  *
- * The four applications are live. The grid still shows a further state — the
+ * The five applications are live. The grid still shows a further state — the
  * anonymous marker the landing appends — so "more fit here" stays visible
  * without an app having to pretend to be a placeholder.
  */
@@ -83,6 +84,16 @@ export const APPS: readonly AppDefinition[] = [
     state: 'live',
     createLabel: '+ nuevo enlace',
     route: '#/links',
+  },
+  {
+    id: HEALTH_ID,
+    name: 'Health Hub',
+    tagline:
+      'La evolución de los errores de cada aplicación, más allá de lo que duran sus logs, y si crecen tras una subida.',
+    identity: APP_IDENTITIES.health,
+    state: 'live',
+    createLabel: '+ nueva aplicación',
+    route: '#/health',
   },
 ];
 

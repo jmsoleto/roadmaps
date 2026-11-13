@@ -24,6 +24,14 @@ describe('the app registry', () => {
     expect(IDENTITY_CATALOG).toContain(api?.identity);
   });
 
+  it('registers Health Hub as the fifth live application', () => {
+    const health = findApp('health');
+    expect(health?.state).toBe('live');
+    expect(health?.route).toBe('#/health');
+    expect(IDENTITY_CATALOG).toContain(health?.identity);
+    expect(shortName(findApp('health')!)).toBe('Health');
+  });
+
   it('registers Links Hub as the fourth live application', () => {
     const links = findApp('links');
     expect(links?.state).toBe('live');

@@ -12,7 +12,8 @@ import type { Unavailability } from '../folder/file-sync';
 import type { UnavailableAction } from '../components/StoreUnavailable.svelte';
 import { roadmapsFolder } from '../store/roadmaps-folder.svelte';
 import { store } from '../store/app.svelte';
-import { API_ID, LINKS_ID, ROADMAPS_ID } from './apps';
+import { API_ID, HEALTH_ID, LINKS_ID, ROADMAPS_ID } from './apps';
+import { healthFolder } from '../health/folder.svelte';
 import { linksFolder } from '../links/folder.svelte';
 import { links } from '../links/store.svelte';
 import { apiFolder } from '../api/folder.svelte';
@@ -31,6 +32,19 @@ export interface FolderUi {
   inBrowser(): { count: number; phrase: string };
   /** What stays personal and does not go to the folder. */
   viewNote: string;
+  /**
+   * Set for an application with nothing in the browser (health-hub, D7): the
+   * dialog's sentences about copying, and about going back to the browser's
+   * data, would be false. These say what happens instead.
+   */
+  onlyFolder?: {
+    /** What connecting to an empty folder creates. */
+    creates: string;
+    /** What disconnecting leaves. */
+    disconnecting: string;
+    /** Where it stands in a browser without folders. */
+    unsupported: string;
+  };
 }
 
 const FOLDERS: Record<string, FolderUi> = {
@@ -68,6 +82,21 @@ const FOLDERS: Record<string, FolderUi> = {
     },
     viewNote:
       'Ojo: con una carpeta conectada, Links puede tener que esperar a la carpeta o pedir permiso al abrirse, también en mitad de una guardia. Sin carpeta abre al instante.',
+  },
+  [HEALTH_ID]: {
+    connection: healthFolder,
+    title: 'Carpeta de Health Hub',
+    has: 'datos de salud',
+    inBrowser: () => ({ count: 0, phrase: '' }),
+    viewNote:
+      'Health Hub solo guarda en una carpeta: elige la de un repo privado, porque estos datos son internos. Tu vista (el panel abierto, el periodo) sigue siendo tuya y no va a la carpeta.',
+    onlyFolder: {
+      creates: 'el catálogo de métricas con el que empezar',
+      disconnecting:
+        'Al desconectar, Health Hub vuelve a pedir una carpeta y en este navegador no queda ningún dato. Todo se queda en la carpeta.',
+      unsupported:
+        'Health Hub solo funciona con una carpeta y hace falta Chrome o Edge: este navegador no deja a una web escribir en las carpetas del dispositivo.',
+    },
   },
 };
 

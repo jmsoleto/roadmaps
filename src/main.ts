@@ -10,6 +10,8 @@ import { decisions } from './lib/decisions/store.svelte';
 import { apiFolder } from './lib/api/folder.svelte';
 import { links } from './lib/links/store.svelte';
 import { linksFolder } from './lib/links/folder.svelte';
+import { health } from './lib/health/store.svelte';
+import { healthFolder } from './lib/health/folder.svelte';
 
 // Load persisted state from the browser's local storage before the first
 // render, so the app opens directly in its last state.
@@ -55,6 +57,10 @@ async function bootstrap() {
   // when nothing is remembered, as before, or the folder, with one question
   // about its permission for the three (carpeta-api-hub, D6).
   void apiFolder.start();
+  // Health Hub only ever lives in a folder, so it always starts beside the boot:
+  // a folder may take a while, and nothing else here depends on it.
+  if (!healthFolder.startsInBrowser) health.expectFolder();
+  void healthFolder.start();
 
   // Register what each application does when it is entered, then adopt the
   // location in the URL. The order matters: a session restored straight into

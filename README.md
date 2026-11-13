@@ -11,12 +11,13 @@ pedir en qué aplicación entrar: cifras y avisos agregados de cada una.
 
 ## Aplicaciones
 
-|                   | Estado | Qué hace                                                                                            |
-| ----------------- | ------ | --------------------------------------------------------------------------------------------------- |
-| **Roadmaps Hub**  | viva   | Planificación tipo Gantt por proyecto: fases, dependencias externas, plan fijado y desviación.      |
-| **Decisions Hub** | viva   | Las decisiones de proyecto que hay que hablar con negocio, y dónde queda escrita su resolución.     |
-| **API Hub**       | viva   | El contrato de una API acordado mientras se habla, y exportado como OpenAPI sin escribir YAML.      |
-| **Links Hub**     | viva   | Los paneles a los que hay que llegar en una guardia, en botones grandes y a un número de distancia. |
+|                   | Estado | Qué hace                                                                                                        |
+| ----------------- | ------ | --------------------------------------------------------------------------------------------------------------- |
+| **Roadmaps Hub**  | viva   | Planificación tipo Gantt por proyecto: fases, dependencias externas, plan fijado y desviación.                  |
+| **Decisions Hub** | viva   | Las decisiones de proyecto que hay que hablar con negocio, y dónde queda escrita su resolución.                 |
+| **API Hub**       | viva   | El contrato de una API acordado mientras se habla, y exportado como OpenAPI sin escribir YAML.                  |
+| **Links Hub**     | viva   | Los paneles a los que hay que llegar en una guardia, en botones grandes y a un número de distancia.             |
+| **Health Hub**    | viva   | La evolución de los errores de cada aplicación, más allá de lo que duran sus logs, y si crecen tras una subida. |
 
 La rejilla de la landing termina siempre en un hueco: cada frente recurrente puede
 entrar como una aplicación más. Añadir una es registrar una definición en
@@ -31,7 +32,7 @@ Roadmaps es la evolución de la miniaplicación original de un solo HTML
 ## Stack
 
 - **Frontend:** Svelte 5 + Vite + TypeScript
-- **Persistencia:** `localStorage` (Roadmaps, Links) e IndexedDB (Decisions, API Hub), con export/import JSON como backup; Roadmaps, API Hub y Links Hub pueden guardar además en una carpeta del dispositivo (File System Access API, Chrome y Edge)
+- **Persistencia:** `localStorage` (Roadmaps, Links) e IndexedDB (Decisions, API Hub), con export/import JSON como backup; Roadmaps, API Hub y Links Hub pueden guardar además en una carpeta del dispositivo, y Health Hub solo guarda ahí (File System Access API, Chrome y Edge)
 - **Distribución:** PWA en GitHub Pages
 - **Navegación:** rutas por hash a nivel de aplicación (`#/` el hub, `#/roadmaps`, `#/decisions`, `#/api`, `#/links`)
 - **Fechas:** ISO absolutas (`YYYY-MM-DD`); la ventana temporal es configurable por roadmap
@@ -122,6 +123,62 @@ leen por separado: un conflicto en la biblioteca no te deja sin contratos.
 en pantalla: es lo que se le pide en mitad de una caída. Con carpeta conectada puede
 tener que esperar a leerla o pedir permiso al abrirse, también a las 4 de la mañana.
 Es el precio de compartir los enlaces por el repo; decide con eso en mente.
+
+### Health Hub
+
+Health Hub **solo guarda en una carpeta**: sin conectarla no hay datos, ni en el
+navegador ni en ningún servicio. Como lo que guarda es información interna, esa carpeta
+debe ser la de un **repo privado**. La aplicación no llama a Kibana ni a nada: lee y
+escribe ficheros.
+
+```
+<repo>/health/
+├─ tech-lead-hub.json        marcador
+├─ catalogo.json             la zona horaria y las métricas, con su clase
+├─ order.json                el orden de las aplicaciones
+├─ app-<id>.json             una aplicación: su nombre, consultas y versiones
+├─ obs-<id>-<AAAA-MM>.json   sus observaciones de ese mes, una por línea
+└─ entrada-*.json            la bandeja de entrada
+```
+
+**La bandeja es el contrato con quien captura.** Cualquier agente, o tú a mano, deja un
+fichero `entrada-*.json` en esa carpeta. Solo la aplicación escribe los datos
+consolidados, al abrirse o al pulsar «↻ recargar»:
+
+```json
+{
+  "format": 1,
+  "fuente": "kibana",
+  "capturado": "2026-11-07",
+  "zona": "Europe/Madrid",
+  "filas": [
+    { "app": "pedidos", "metrica": "500", "dia": "2026-11-05", "valor": 340 },
+    { "app": "pedidos", "metrica": "peticiones", "dia": "2026-11-05", "valor": 1204000 }
+  ]
+}
+```
+
+- `fuente` es `kibana` o `pantallazo`. `capturado` es el día de la captura y `zona` debe
+  coincidir con la de `catalogo.json`. `app` es el identificador de la aplicación, que
+  enseña su panel, y `metrica` el de `catalogo.json` (al empezar: `no-controlados`,
+  `500`, `400`, `403` y `peticiones`). `valor` es un entero; una fila puede llevar
+  `"estimado": true`.
+- **Lo exacto entra solo:** una entrada de `kibana` sin estimados y con aplicaciones y
+  métricas conocidas se consolida y se borra. El resto espera a que la revises en el
+  panel. Una aplicación desconocida nunca se crea sola.
+- **Un fichero mal formado** queda rechazado, con el motivo, y no afecta al resto.
+- **Días:** el día de la captura no entra, porque no ha terminado. De `kibana` solo valen
+  los 6 días anteriores a la captura, porque el séptimo puede estar parcialmente
+  caducado. Por eso hay que **capturar como máximo cada 6 días**, y el panel y la landing
+  avisan de cuántos quedan.
+- **Si dos valores compiten por un día:** lo exacto gana a lo estimado, y entre iguales
+  la captura más reciente. Repetir una captura no cambia ningún fichero.
+
+**La salud** es un estado derivado de reglas que el panel global explica: compara los 7
+últimos días con datos con los 7 anteriores. Sus umbrales son una decisión inicial, y
+están en `src/lib/health/trends.ts`.
+
+### Formato y git
 
 El formato está pensado para git: JSON con las claves siempre en el mismo orden, y
 solo se reescriben los ficheros que cambian. Mover una fecha es un diff de una

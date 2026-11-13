@@ -128,8 +128,12 @@
           compartirlos, haz commit y abre una PR con git.
         </p>
         <p class="text dim">
-          Al desconectar vuelves a los datos de este navegador, tal como estaban. Lo que hayas hecho
-          con la carpeta conectada se queda en la carpeta.
+          {#if app.onlyFolder}
+            {app.onlyFolder.disconnecting}
+          {:else}
+            Al desconectar vuelves a los datos de este navegador, tal como estaban. Lo que hayas
+            hecho con la carpeta conectada se queda en la carpeta.
+          {/if}
         </p>
         <div class="actions">
           <button type="button" class="btn" onclick={close} disabled={busy}>cerrar</button>
@@ -139,8 +143,12 @@
         </div>
       {:else if !connection.supported}
         <p class="text">
-          Guardar en una carpeta necesita Chrome o Edge: este navegador no deja a una web escribir
-          en las carpetas del dispositivo. Aquí siguen guardándose en el navegador.
+          {#if app.onlyFolder}
+            {app.onlyFolder.unsupported}
+          {:else}
+            Guardar en una carpeta necesita Chrome o Edge: este navegador no deja a una web escribir
+            en las carpetas del dispositivo. Aquí siguen guardándose en el navegador.
+          {/if}
         </p>
         <div class="actions">
           <button type="button" class="btn primary" onclick={close}>cerrar</button>
@@ -148,8 +156,14 @@
       {:else if plan?.kind === 'dump'}
         <p class="text">
           <strong>{plan.folder}</strong> no tiene {app.has}. Se creará dentro la carpeta
-          <code>{connection.config.appId}</code> y se copiará en ella {browser.phrase} de este navegador,
-          que también {count === 1 ? 'se queda' : 'se quedan'} aquí.
+          <code>{connection.config.appId}</code>
+          {#if app.onlyFolder}
+            con {app.onlyFolder.creates}.
+          {:else}
+            y se copiará en ella {browser.phrase} de este navegador, que también {count === 1
+              ? 'se queda'
+              : 'se quedan'} aquí.
+          {/if}
         </p>
         <div class="actions">
           <button type="button" class="btn" onclick={reset} disabled={busy}>otra carpeta</button>

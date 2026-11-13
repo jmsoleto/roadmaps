@@ -99,6 +99,17 @@
         stroke-linejoin="round"
         opacity="0.72"
       />
+    {:else if identity.glyph === 'health'}
+      <!-- A pulse: flat, one tall spike, flat. Thick and with few angles, because
+           a detailed trace is what goes first at 18px. -->
+      <path
+        d="M2 13 H7 L10 5 L14 19 L17 13 H22"
+        fill="none"
+        stroke={GLYPH_INK}
+        stroke-width="3"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      />
     {:else}
       <path d="M12 4 V20 M4 12 H20" stroke={GLYPH_INK} stroke-width="2.6" stroke-linecap="round" />
     {/if}

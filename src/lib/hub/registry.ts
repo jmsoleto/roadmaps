@@ -16,7 +16,19 @@ import { store } from '../store/app.svelte';
 import { ui } from '../store/ui.svelte';
 import { theme } from '../theme/theme.svelte';
 import { todayIso } from '../time/timeline';
-import { API_ID, APPS, DECISIONS_ID, LINKS_ID, ROADMAPS_ID, type AppDefinition } from './apps';
+import {
+  API_ID,
+  APPS,
+  DECISIONS_ID,
+  HEALTH_ID,
+  LINKS_ID,
+  ROADMAPS_ID,
+  type AppDefinition,
+} from './apps';
+import { health } from '../health/store.svelte';
+import { healthFolder } from '../health/folder.svelte';
+import { healthSummary } from '../health/summary';
+import { healthUi } from '../health/ui.svelte';
 import { decisions } from '../decisions/store.svelte';
 import { decisionsUi } from '../decisions/ui.svelte';
 import { decisionsSummary } from '../decisions/summary';
@@ -39,6 +51,8 @@ import DecisionsApp from '../components/decisions/DecisionsApp.svelte';
 import ApiApp from '../components/api/ApiApp.svelte';
 import ContractSwitcher from '../components/api/ContractSwitcher.svelte';
 import LinksApp from '../components/links/LinksApp.svelte';
+import HealthApp from '../components/health/HealthApp.svelte';
+import HealthSwitcher from '../components/health/HealthSwitcher.svelte';
 
 /** Roadmaps' own home, run whenever the app is entered by any route. */
 function roadmapsHome(): void {
@@ -85,6 +99,12 @@ function decisionsHome(): void {
   decisions.select(null);
 }
 
+/** Health Hub's own home: all of them at a glance, with today's figures. */
+function healthHome(): void {
+  health.home();
+  healthUi.reset();
+}
+
 /**
  * Wire the entry hooks.
  *
@@ -96,6 +116,7 @@ export function initHub(): void {
   location.onEnter(DECISIONS_ID, decisionsHome);
   location.onEnter(API_ID, apiHome);
   location.onEnter(LINKS_ID, linksHome);
+  location.onEnter(HEALTH_ID, healthHome);
 }
 
 function roadmapsSummaryNow(): AppSummary | AppUnreadable {
@@ -196,6 +217,83 @@ function linksSummaryNow(): AppSummary | AppUnreadable {
     Date.now(),
     (slot) => theme.slotColor(slot),
   );
+}
+
+function healthSummaryNow(): AppSummary | AppUnreadable {
+  // No folder is not a broken folder: there is simply nothing to count, and the
+  // card says what it needs. Unlike the other applications, this is its start.
+  if (health.sinCarpeta) {
+    if (!health.ready) return { kind: 'unreadable', reason: 'Abriendo la carpeta de salud…' };
+    return {
+      kind: 'unreadable',
+      reason:
+        'Necesita una carpeta de un repo privado, donde viven sus datos. Entra para conectarla.',
+    };
+  }
+  if (!health.ready) return { kind: 'unreadable', reason: 'Abriendo la carpeta de salud…' };
+  if (health.unavailable) {
+    const folder = healthFolder.folderName ?? 'la carpeta';
+    if (health.unavailable.why?.cause === 'permiso') {
+      return {
+        kind: 'unreadable',
+        reason: `Falta el permiso sobre «${folder}». Concédelo para ver la salud de las aplicaciones.`,
+        grant: () => healthFolder.grant(),
+      };
+    }
+    return {
+      kind: 'unreadable',
+      reason: `No se puede leer «${folder}». Entra para ver por qué, reintentar o desconectarla.`,
+    };
+  }
+  return healthSummary(health.filas, health.bandeja.length);
+}
+
+function openVigilada(id: string): void {
+  // Same ordering as the others: entering lands on the global panel first.
+  location.goApp(HEALTH_ID);
+  health.abrir(id);
+}
+
+function healthActions(): AppAction[] {
+  const down = health.sinCarpeta || !health.ready || health.unavailable !== null;
+  const abierta = health.abierta;
+  return [
+    {
+      kind: 'button',
+      label: '+ aplicación',
+      title: 'vigilar otra aplicación',
+      disabled: down,
+      run: () => healthUi.abrir({ kind: 'crear' }),
+    },
+    ...(abierta !== null
+      ? [
+          {
+            kind: 'button' as const,
+            label: '+ versión',
+            title: 'marcar una subida de versión',
+            disabled: down,
+            run: () => healthUi.abrir({ kind: 'version', appId: abierta, versionId: null }),
+          },
+        ]
+      : []),
+    {
+      kind: 'button',
+      label: '↻ recargar',
+      title: 'leer la carpeta otra vez y procesar la bandeja',
+      disabled: down || health.recargando,
+      run: () => void health.recargar(),
+    },
+    // Never disabled: it is the way in, and the way out of a folder that cannot be read.
+    {
+      kind: 'button',
+      label: '⧉ carpeta',
+      title: healthFolder.folderName
+        ? `conectado a «${healthFolder.folderName}»`
+        : 'conectar la carpeta de un repo privado',
+      pilot: folderPilot(healthFolder.folderName, health.unavailable !== null),
+      run: () => ui.openFolder(HEALTH_ID),
+    },
+  ];
 }
 
 /**
@@ -508,6 +606,19 @@ const BEHAVIOUR: Record<string, Partial<Behaviour>> = {
     context: null,
     actions: linksActions,
     scope: () => linksFolder.folderName,
+  },
+  [HEALTH_ID]: {
+    summary: healthSummaryNow,
+    open: () => location.goApp(HEALTH_ID),
+    create: () => {
+      location.goApp(HEALTH_ID);
+      healthUi.abrir({ kind: 'crear' });
+    },
+    openRow: openVigilada,
+    root: HealthApp,
+    context: HealthSwitcher,
+    actions: healthActions,
+    scope: () => healthFolder.folderName,
   },
 };
 
