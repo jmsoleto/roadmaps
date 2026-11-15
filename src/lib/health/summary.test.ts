@@ -27,7 +27,10 @@ const aviso = (restantes: number, tono: 'warn' | 'danger') => ({
 describe('la tarjeta de Health Hub', () => {
   it('cuenta las que empeoran, las que tienen captura pendiente y lo que hay por revisar', () => {
     const s = healthSummary(
-      [fila('Pedidos', 'empeora', null, ['500']), fila('Pagos', 'estable', aviso(2, 'warn'))],
+      [
+        fila('Pedidos', 'empeora', null, ['errores-50x']),
+        fila('Pagos', 'estable', aviso(2, 'warn')),
+      ],
       3,
     );
     expect(s.stats.map((x) => [x.label, x.value, x.tone])).toEqual([
@@ -52,10 +55,10 @@ describe('la tarjeta de Health Hub', () => {
   });
 
   it('avisa por cada aplicación que empeora, diciendo qué métrica', () => {
-    const s = healthSummary([fila('Pedidos', 'empeora', null, ['500', 'No controlados'])], 0);
+    const s = healthSummary([fila('Pedidos', 'empeora', null, ['50x', 'No controlados'])], 0);
     expect(s.alerts[0]).toMatchObject({
       tone: 'danger',
-      text: 'Pedidos empeora: 500, No controlados',
+      text: 'Pedidos empeora: 50x, No controlados',
     });
   });
 

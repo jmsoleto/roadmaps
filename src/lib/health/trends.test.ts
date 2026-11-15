@@ -39,75 +39,83 @@ const tend = (filas: Observacion[], id: string, peticiones: string | null = 'pet
 
 describe('la tendencia de una métrica', () => {
   it('sube o baja al superar el umbral de su clase', () => {
-    expect(tend(semanas('500', 100, 125), '500').estado).toBe('sube');
-    expect(tend(semanas('500', 100, 75), '500').estado).toBe('baja');
-    expect(tend(semanas('500', 100, 110), '500').estado).toBe('estable');
+    expect(tend(semanas('errores-50x', 100, 125), 'errores-50x').estado).toBe('sube');
+    expect(tend(semanas('errores-50x', 100, 75), 'errores-50x').estado).toBe('baja');
+    expect(tend(semanas('errores-50x', 100, 110), 'errores-50x').estado).toBe('estable');
   });
 
   it('exige más a los errores de cliente', () => {
-    expect(tend(semanas('403', 100, 140), '403').estado).toBe('estable');
-    expect(tend(semanas('403', 100, 150), '403').estado).toBe('sube');
+    expect(tend(semanas('errores-40x', 100, 140), 'errores-40x').estado).toBe('estable');
+    expect(tend(semanas('errores-40x', 100, 150), 'errores-40x').estado).toBe('sube');
   });
 
   it('un cambio pequeño en cifras pequeñas está estable, aunque sea un 100 %', () => {
-    const filas = semanas('500', 0, 0).map((o, i) => ({
+    const filas = semanas('errores-50x', 0, 0).map((o, i) => ({
       ...o,
       valor: i === 0 ? 8 : i === 7 ? 4 : 0,
     }));
-    const t = tend(filas, '500');
+    const t = tend(filas, 'errores-50x');
     expect(t.variacion).toBe(1);
     expect(t.estado).toBe('estable');
   });
 
   it('más errores con más tráfico: la tasa no cambia y está estable', () => {
-    const filas = [...semanas('500', 100, 200), ...semanas('peticiones', 1000, 2000)];
-    const t = tend(filas, '500');
+    const filas = [...semanas('errores-50x', 100, 200), ...semanas('peticiones', 1000, 2000)];
+    const t = tend(filas, 'errores-50x');
     expect(t.base).toBe('tasa');
     expect(t.estado).toBe('estable');
   });
 
   it('sin peticiones compara el recuento, y lo dice', () => {
-    expect(tend(semanas('500', 100, 200), '500').base).toBe('recuento');
+    expect(tend(semanas('errores-50x', 100, 200), 'errores-50x').base).toBe('recuento');
   });
 
   it('con peticiones incompletas también compara el recuento', () => {
     const peticiones = semanas('peticiones', 1000, 2000).slice(1);
-    const t = tend([...semanas('500', 100, 200), ...peticiones], '500');
+    const t = tend([...semanas('errores-50x', 100, 200), ...peticiones], 'errores-50x');
     expect(t.base).toBe('recuento');
     expect(t.estado).toBe('sube');
   });
 
+  it('con peticiones a 0 no hay tasa: compara el recuento', () => {
+    const t = tend(
+      [...semanas('errores-50x', 100, 200), ...semanas('peticiones', 0, 1000)],
+      'errores-50x',
+    );
+    expect(t.base).toBe('recuento');
+  });
+
   it('pasar de 0 a un valor que cumple el mínimo es una subida sin porcentaje', () => {
-    const t = tend(semanas('500', 0, 10), '500');
+    const t = tend(semanas('errores-50x', 0, 10), 'errores-50x');
     expect(t.estado).toBe('sube');
     expect(t.variacion).toBeNull();
   });
 
   it('si falta un día da «sin datos», no un porcentaje', () => {
-    const t = tend(semanas('500', 100, 200).slice(1), '500');
+    const t = tend(semanas('errores-50x', 100, 200).slice(1), 'errores-50x');
     expect(t.estado).toBe('sin-datos');
     expect(t.variacion).toBeNull();
   });
 
   it('un cero medido no es un día que falta', () => {
-    expect(tend(semanas('500', 0, 0), '500').estado).toBe('estable');
+    expect(tend(semanas('errores-50x', 0, 0), 'errores-50x').estado).toBe('estable');
   });
 
   it('avisa si alguno de los valores es estimado', () => {
-    const filas = semanas('500', 100, 100);
+    const filas = semanas('errores-50x', 100, 100);
     filas[3] = { ...filas[3], estimado: true };
-    expect(tend(filas, '500').estimado).toBe(true);
+    expect(tend(filas, 'errores-50x').estimado).toBe(true);
   });
 });
 
 describe('la salud de una aplicación vigilada', () => {
   const HOY = '2026-11-07';
-  const estable = [...semanas('500', 100, 100), ...semanas('no-controlados', 100, 100)];
+  const estable = [...semanas('errores-50x', 100, 100), ...semanas('no-controlados', 100, 100)];
   const sal = (filas: Observacion[], hoy = HOY) => salud(filas, catalogo, hoy);
 
   it('sin datos si ninguna métrica propia tiene tendencia', () => {
     expect(sal([]).estado).toBe('sin-datos');
-    expect(sal(semanas('403', 100, 900)).estado).toBe('sin-datos');
+    expect(sal(semanas('errores-40x', 100, 900)).estado).toBe('sin-datos');
   });
 
   it('sin captura si ya se han perdido días', () => {
@@ -115,25 +123,25 @@ describe('la salud de una aplicación vigilada', () => {
   });
 
   it('empeora si sube un error propio, y dice cuál', () => {
-    const filas = [...semanas('500', 100, 140), ...semanas('no-controlados', 100, 100)];
+    const filas = [...semanas('errores-50x', 100, 140), ...semanas('no-controlados', 100, 100)];
     const s = sal(filas);
     expect(s.estado).toBe('empeora');
-    expect(s.motivo).toEqual(['500']);
+    expect(s.motivo).toEqual(['50x']);
   });
 
   it('vigilar, y no empeora, si solo sube un error de cliente', () => {
-    const s = sal([...estable, ...semanas('403', 100, 200)]);
+    const s = sal([...estable, ...semanas('errores-40x', 100, 200)]);
     expect(s.estado).toBe('vigilar');
-    expect(s.motivo).toEqual(['403']);
+    expect(s.motivo).toEqual(['40x (sin 404)']);
   });
 
   it('empeora gana a vigilar', () => {
-    const filas = [...semanas('500', 100, 140), ...semanas('403', 100, 200)];
+    const filas = [...semanas('errores-50x', 100, 140), ...semanas('errores-40x', 100, 200)];
     expect(sal(filas).estado).toBe('empeora');
   });
 
   it('mejora si baja un error propio y no sube ninguno', () => {
-    expect(sal(semanas('500', 100, 50)).estado).toBe('mejora');
+    expect(sal(semanas('errores-50x', 100, 50)).estado).toBe('mejora');
   });
 
   it('estable en cualquier otro caso', () => {
@@ -142,7 +150,7 @@ describe('la salud de una aplicación vigilada', () => {
 
   it('una captura de hace días no impide calcular la tendencia', () => {
     const fin = '2026-11-02';
-    const s = sal(semanas('500', 100, 140, fin));
+    const s = sal(semanas('errores-50x', 100, 140, fin));
     expect(s.estado).toBe('empeora');
     expect(s.captura?.restantes).toBe(2);
   });
@@ -230,20 +238,20 @@ describe('la comparación antes y después de una subida', () => {
     c.metricas.find((x) => x.metrica.id === id)!;
 
   it('con 7 días a cada lado da las medias y la variación, sin contar el día de la subida', () => {
-    const c = compararVersion(version, app(), alrededor('500', 100, 130), catalogo, HOY);
-    expect(de(c, '500')).toMatchObject({
+    const c = compararVersion(version, app(), alrededor('errores-50x', 100, 130), catalogo, HOY);
+    expect(de(c, 'errores-50x')).toMatchObject({
       kind: 'completa',
       mediaAntes: 100,
       mediaDespues: 130,
       base: 'recuento',
     });
-    const r = de(c, '500');
+    const r = de(c, 'errores-50x');
     if (r.kind === 'completa') expect(r.variacion).toBeCloseTo(0.3);
   });
 
   it('usa la tasa si hay peticiones', () => {
-    const filas = [...alrededor('500', 100, 200), ...alrededor('peticiones', 1000, 2000)];
-    const r = de(compararVersion(version, app(), filas, catalogo, HOY), '500');
+    const filas = [...alrededor('errores-50x', 100, 200), ...alrededor('peticiones', 1000, 2000)];
+    const r = de(compararVersion(version, app(), filas, catalogo, HOY), 'errores-50x');
     expect(r).toMatchObject({ kind: 'completa', base: 'tasa', variacion: 0 });
   });
 
@@ -251,27 +259,27 @@ describe('la comparación antes y después de una subida', () => {
     const c = compararVersion(
       version,
       app(),
-      alrededor('500', 100, 130),
+      alrededor('errores-50x', 100, 130),
       catalogo,
       addDays(DIA, 3),
     );
-    expect(de(c, '500')).toMatchObject({ kind: 'pendiente', quedan: 5 });
+    expect(de(c, 'errores-50x')).toMatchObject({ kind: 'pendiente', quedan: 5 });
   });
 
   it('el día después de cerrar la ventana ya compara', () => {
     const c = compararVersion(
       version,
       app(),
-      alrededor('500', 100, 130),
+      alrededor('errores-50x', 100, 130),
       catalogo,
       addDays(DIA, 8),
     );
-    expect(de(c, '500').kind).toBe('completa');
+    expect(de(c, 'errores-50x').kind).toBe('completa');
   });
 
   it('si falta un día que ya no llegará, dice que no hay datos suficientes', () => {
-    const filas = alrededor('500', 100, 130).filter((o) => o.dia !== addDays(DIA, -3));
-    expect(de(compararVersion(version, app(), filas, catalogo, HOY), '500')).toMatchObject({
+    const filas = alrededor('errores-50x', 100, 130).filter((o) => o.dia !== addDays(DIA, -3));
+    expect(de(compararVersion(version, app(), filas, catalogo, HOY), 'errores-50x')).toMatchObject({
       kind: 'insuficiente',
       faltan: 1,
     });
@@ -285,9 +293,9 @@ describe('la comparación antes y después de una subida', () => {
   });
 
   it('indica si usa valores estimados', () => {
-    const filas = alrededor('500', 100, 130);
+    const filas = alrededor('errores-50x', 100, 130);
     filas[1] = { ...filas[1], estimado: true };
-    expect(de(compararVersion(version, app(), filas, catalogo, HOY), '500')).toMatchObject({
+    expect(de(compararVersion(version, app(), filas, catalogo, HOY), 'errores-50x')).toMatchObject({
       estimado: true,
     });
   });

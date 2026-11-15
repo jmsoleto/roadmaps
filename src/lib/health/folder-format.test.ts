@@ -21,16 +21,16 @@ function ejemplo(): HealthData {
       {
         id: 'pedidos',
         nombre: 'Pedidos',
-        consultas: { '500': 'status:500' },
+        consultas: { 'errores-50x': 'status:500' },
         versiones: [{ id: 'v-1', version: '4.2.0', dia: '2026-11-03' }],
       },
       { id: 'pagos', nombre: 'Pagos', consultas: {}, versiones: [] },
     ],
     observaciones: {
       pedidos: [
-        fila('2026-11-05', '500', 340),
-        fila('2026-11-05', '403', 2),
-        fila('2026-10-31', '500', 12),
+        fila('2026-11-05', 'errores-50x', 340),
+        fila('2026-11-05', 'errores-40x', 2),
+        fila('2026-10-31', 'errores-50x', 12),
       ],
       pagos: [],
     },
@@ -69,7 +69,7 @@ describe('el formato de Health Hub', () => {
     expect(data.catalogo.zona).toBe('Europe/Madrid');
     expect(data.aplicaciones.map((a) => a.id)).toEqual(['pedidos', 'pagos']);
     expect(data.observaciones.pedidos).toHaveLength(3);
-    expect(data.aplicaciones[0].consultas['500']).toBe('status:500');
+    expect(data.aplicaciones[0].consultas['errores-50x']).toBe('status:500');
   });
 
   it('da los mismos bytes con el mismo estado, venga en el orden que venga', () => {
@@ -86,14 +86,14 @@ describe('el formato de Health Hub', () => {
     const texto = HEALTH_FORMAT.serialize(ejemplo()).get('obs-pedidos-2026-11.json')!;
     const lineas = texto.split('\n').filter((l) => l.includes('"dia"'));
     expect(lineas).toHaveLength(2);
-    expect(lineas[0]).toContain('"metrica":"403"');
-    expect(lineas[1]).toContain('"metrica":"500"');
+    expect(lineas[0]).toContain('"metrica":"errores-40x"');
+    expect(lineas[1]).toContain('"metrica":"errores-50x"');
   });
 
   it('un día corregido cambia una sola línea', () => {
     const antes = HEALTH_FORMAT.serialize(ejemplo()).get('obs-pedidos-2026-11.json')!.split('\n');
     const data = ejemplo();
-    data.observaciones.pedidos[0] = fila('2026-11-05', '500', 341);
+    data.observaciones.pedidos[0] = fila('2026-11-05', 'errores-50x', 341);
     const despues = HEALTH_FORMAT.serialize(data).get('obs-pedidos-2026-11.json')!.split('\n');
     expect(antes.filter((l, i) => l !== despues[i])).toHaveLength(1);
   });
@@ -104,6 +104,31 @@ describe('el formato de Health Hub', () => {
     files.set('app-pagos.json', JSON.stringify({ ...app, equipo: 'core' }));
     const vuelta = HEALTH_FORMAT.serialize(parsed(files));
     expect(JSON.parse(vuelta.get('app-pagos.json')!).equipo).toBe('core');
+  });
+
+  it('sin vínculo ni nota, el fichero de aplicación no cambia de bytes', () => {
+    const texto = HEALTH_FORMAT.serialize(ejemplo()).get('app-pagos.json')!;
+    expect(texto).toBe(
+      '{\n  "id": "pagos",\n  "nombre": "Pagos",\n  "consultas": {},\n  "versiones": []\n}\n',
+    );
+  });
+
+  it('guarda el vínculo y la nota tras el nombre, y los lee igual', () => {
+    const data = ejemplo();
+    data.aplicaciones[1] = { ...data.aplicaciones[1], fuente: 'cex-es', nota: 'Tasa aproximada' };
+    const files = HEALTH_FORMAT.serialize(data);
+    expect(Object.keys(JSON.parse(files.get('app-pagos.json')!))).toEqual([
+      'id',
+      'nombre',
+      'fuente',
+      'nota',
+      'consultas',
+      'versiones',
+    ]);
+    expect(parsed(files).aplicaciones[1]).toMatchObject({
+      fuente: 'cex-es',
+      nota: 'Tasa aproximada',
+    });
   });
 
   it('no reclama la bandeja ni un fichero ajeno', () => {
@@ -156,6 +181,15 @@ describe('lo que deja Health Hub no disponible', () => {
     expect(unreadable(files)).toBe('app-otra.json');
   });
 
+  it('un vínculo que no es un id de la fuente', () => {
+    const files = HEALTH_FORMAT.serialize(ejemplo());
+    const app = JSON.parse(files.get('app-pagos.json')!);
+    files.set('app-pagos.json', JSON.stringify({ ...app, fuente: 'CEX ES' }));
+    expect(unreadable(files)).toBe('app-pagos.json');
+    files.set('app-pagos.json', JSON.stringify({ ...app, nota: 3 }));
+    expect(unreadable(files)).toBe('app-pagos.json');
+  });
+
   it('un valor negativo', () => {
     const files = HEALTH_FORMAT.serialize(ejemplo());
     const obs = JSON.parse(files.get('obs-pedidos-2026-11.json')!);
@@ -173,7 +207,7 @@ describe('en una carpeta', () => {
     const antes = await readAll(dir);
 
     const data = ejemplo();
-    data.observaciones.pedidos.push(fila('2026-11-06', '500', 1));
+    data.observaciones.pedidos.push(fila('2026-11-06', 'errores-50x', 1));
     await sync.save(data);
     const despues = await readAll(dir);
 

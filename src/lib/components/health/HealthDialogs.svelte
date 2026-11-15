@@ -6,6 +6,7 @@
    * `FolderDialog`: initial focus, focus trap, Escape, click on the overlay, and
    * the focus handed back to whatever opened it.
    */
+  import { healthFuente } from '../../health/fuente/connection.svelte';
   import { health } from '../../health/store.svelte';
   import { healthUi } from '../../health/ui.svelte';
   import { idParaNombre } from '../../health/model';
@@ -18,6 +19,7 @@
   let dia = $state('');
   let nota = $state('');
   let consulta = $state('');
+  let fuente = $state('');
   let confirmaBorrado = $state(false);
   let panelEl = $state<HTMLDivElement | null>(null);
   let opener: HTMLElement | null = null;
@@ -31,7 +33,7 @@
     const d = dialogo;
     return d?.kind === 'consulta' ? health.metricas.find((m) => m.id === d.metrica) : undefined;
   });
-  const datos = $derived(vigilada ? health.observacionesDe(vigilada.id).length : 0);
+  const datos = $derived(vigilada ? health.consolidadasDe(vigilada.id).length : 0);
   const nuevoId = $derived(
     idParaNombre(
       nombre,
@@ -52,6 +54,8 @@
         return dialogo.versionId ? 'Editar subida de versión' : 'Marcar subida de versión';
       case 'consulta':
         return `Consulta de ${metrica?.nombre ?? ''}`;
+      case 'fuente':
+        return 'Fuente y nota';
       default:
         return '';
     }
@@ -68,7 +72,12 @@
     nota = '';
     consulta = '';
     confirmaBorrado = false;
+    fuente = '';
     if (d.kind === 'renombrar') nombre = health.vigilada(d.id)?.nombre ?? '';
+    if (d.kind === 'fuente') {
+      fuente = health.vigilada(d.id)?.fuente ?? '';
+      nota = health.vigilada(d.id)?.nota ?? '';
+    }
     if (d.kind === 'consulta') consulta = health.vigilada(d.appId)?.consultas[d.metrica] ?? '';
     if (d.kind === 'version' && d.versionId) {
       const v = health.vigilada(d.appId)?.versiones.find((x) => x.id === d.versionId);
@@ -79,7 +88,7 @@
       }
     }
     queueMicrotask(() =>
-      panelEl?.querySelector<HTMLElement>('input, textarea, button.primary')?.focus(),
+      panelEl?.querySelector<HTMLElement>('input, select, textarea, button.primary')?.focus(),
     );
   });
 
@@ -112,6 +121,10 @@
       case 'consulta':
         health.setConsulta(d.appId, d.metrica, consulta);
         break;
+      case 'fuente':
+        health.vincular(d.id, fuente === '' ? null : fuente);
+        health.setNota(d.id, nota);
+        break;
     }
     cerrar();
   }
@@ -136,7 +149,7 @@
     }
     if (e.key !== 'Tab' || !panelEl) return;
     const focusables = [
-      ...panelEl.querySelectorAll<HTMLElement>('input, textarea, button:not(:disabled)'),
+      ...panelEl.querySelectorAll<HTMLElement>('input, select, textarea, button:not(:disabled)'),
     ];
     if (focusables.length === 0) return;
     const first = focusables[0];
@@ -212,6 +225,41 @@
           <p class="text dim">
             Solo se guarda como referencia: Health Hub no la interpreta ni la ejecuta. Vacía, se
             quita.
+          </p>
+        {:else if dialogo.kind === 'fuente'}
+          {@const apps = healthFuente.lectura?.apps ?? []}
+          <label>
+            Aplicación de la fuente
+            <select bind:value={fuente}>
+              <option value="">sin vincular: solo los datos de la carpeta</option>
+              {#each apps as a (a.app.id)}
+                {@const otra = health.data.aplicaciones.find(
+                  (x) => x.fuente === a.app.id && x.id !== vigilada?.id,
+                )}
+                <option value={a.app.id} disabled={!!otra}>
+                  {a.app.nombre} ({a.app.id}){otra ? ` · ya la usa ${otra.nombre}` : ''}
+                </option>
+              {/each}
+              {#if fuente !== '' && !apps.some((a) => a.app.id === fuente)}
+                <option value={fuente}>{fuente} (no está en la fuente conectada)</option>
+              {/if}
+            </select>
+          </label>
+          {#if apps.length === 0}
+            <p class="text dim">
+              Conecta la fuente desde el panel global para elegir entre sus aplicaciones.
+            </p>
+          {/if}
+          <label>
+            Nota <span class="opcional">(opcional)</span>
+            <textarea
+              bind:value={nota}
+              rows="3"
+              placeholder="Salvedades de sus datos: qué cuenta cada métrica, desde cuándo vale una consulta…"
+            ></textarea>
+          </label>
+          <p class="text dim">
+            La nota se muestra junto a sus tasas y tendencias. Vacía, se quita.
           </p>
         {/if}
 
@@ -292,6 +340,7 @@
     color: var(--text-dim);
   }
   input,
+  select,
   textarea {
     display: block;
     width: 100%;
@@ -308,6 +357,7 @@
     color-scheme: inherit;
   }
   input:focus,
+  select:focus,
   textarea:focus {
     border-color: var(--accent);
   }

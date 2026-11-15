@@ -136,7 +136,7 @@ escribe ficheros.
 ├─ tech-lead-hub.json        marcador
 ├─ catalogo.json             la zona horaria y las métricas, con su clase
 ├─ order.json                el orden de las aplicaciones
-├─ app-<id>.json             una aplicación: su nombre, consultas y versiones
+├─ app-<id>.json             una aplicación: su nombre, su fuente y su nota, consultas y versiones
 ├─ obs-<id>-<AAAA-MM>.json   sus observaciones de ese mes, una por línea
 └─ entrada-*.json            la bandeja de entrada
 ```
@@ -152,7 +152,7 @@ consolidados, al abrirse o al pulsar «↻ recargar»:
   "capturado": "2026-11-07",
   "zona": "Europe/Madrid",
   "filas": [
-    { "app": "pedidos", "metrica": "500", "dia": "2026-11-05", "valor": 340 },
+    { "app": "pedidos", "metrica": "errores-50x", "dia": "2026-11-05", "valor": 340 },
     { "app": "pedidos", "metrica": "peticiones", "dia": "2026-11-05", "valor": 1204000 }
   ]
 }
@@ -161,8 +161,8 @@ consolidados, al abrirse o al pulsar «↻ recargar»:
 - `fuente` es `kibana` o `pantallazo`. `capturado` es el día de la captura y `zona` debe
   coincidir con la de `catalogo.json`. `app` es el identificador de la aplicación, que
   enseña su panel, y `metrica` el de `catalogo.json` (al empezar: `no-controlados`,
-  `500`, `400`, `403` y `peticiones`). `valor` es un entero; una fila puede llevar
-  `"estimado": true`.
+  `errores-50x`, `errores-404`, `errores-40x` y `peticiones`). `valor` es un entero; una
+  fila puede llevar `"estimado": true`.
 - **Lo exacto entra solo:** una entrada de `kibana` sin estimados y con aplicaciones y
   métricas conocidas se consolida y se borra. El resto espera a que la revises en el
   panel. Una aplicación desconocida nunca se crea sola.
@@ -173,6 +173,50 @@ consolidados, al abrirse o al pulsar «↻ recargar»:
   avisan de cuántos quedan.
 - **Si dos valores compiten por un día:** lo exacto gana a lo estimado, y entre iguales
   la captura más reciente. Repetir una captura no cambia ningún fichero.
+
+**La fuente: el colector de Kibana.** Health Hub puede conectar una segunda carpeta, la
+de datos del colector (en su repo, la copia de la rama `data`). La lee **sin escribir
+nunca en ella**, con permiso solo de lectura, y no guarda sus datos en ningún sitio:
+
+```
+<colector>/data/                     la carpeta que se elige: la que tiene index.json
+├─ index.json                        lo que existe: apps, métricas, consulta efectiva, «to», meses
+├─ series/<app>/<métrica>/<AAAA-MM>.jsonl   recuentos por hora, una línea por ejecución
+└─ kibana/, README.md, .git          se ignoran, igual que la sección dashboards de index.json
+```
+
+- **Conectar:** «⧉ fuente», o el recuadro «Fuente» del panel global. Si la carpeta no
+  tiene `index.json` con `formatVersion: 1` en su raíz (por ejemplo, `series/` o una
+  carpeta por encima), se rechaza con un mensaje y no se recuerda.
+- **Vincular:** las aplicaciones de la fuente que nadie vigila aparecen en el panel global
+  con «+ <nombre>». Al añadirla, la aplicación vigilada queda vinculada (`"fuente"` en su
+  `app-<id>.json`), y se puede cambiar en «fuente y nota». Sus cifras salen de la fuente;
+  sus `obs-*` solo cubren los días que la fuente no tiene.
+- **Días:** las horas se suman a días en la zona del catálogo, y un día solo cuenta si
+  tiene todas sus horas (23 o 25 cuando cambia la hora). Un hueco entre ejecuciones, una
+  línea a medio escribir o un mes que falta se avisan en el panel y nunca se rellenan.
+- **Por horas:** el panel de una aplicación vinculada muestra los 7 días hasta «datos
+  hasta», en recuento o en tasa (errores entre peticiones, hora a hora; sin peticiones no
+  hay tasa).
+- **«Datos hasta»** es el `to` de `index.json`, y de ahí cuenta el aviso de captura: el
+  colector rellena huecos mientras Kibana conserve los logs, 7 días.
+- **La nota** de cada aplicación es texto libre que se muestra junto a sus tasas: el sitio
+  para salvedades que Health Hub no puede saber, como que una tasa es aproximada.
+- **«↻ recargar»** vuelve a leer las dos carpetas sin elegirlas de nuevo.
+
+**Una carpeta creada antes del colector** tiene en `catalogo.json` las métricas `500`,
+`400` y `403`. Health Hub no reescribe el catálogo por su cuenta: si aún no tiene
+observaciones, cambia a mano su lista `metricas` por la de una carpeta nueva:
+
+```json
+[
+  { "id": "no-controlados", "nombre": "No controlados", "clase": "propia" },
+  { "id": "errores-50x", "nombre": "50x", "clase": "propia" },
+  { "id": "errores-404", "nombre": "404", "clase": "cliente" },
+  { "id": "errores-40x", "nombre": "40x (sin 404)", "clase": "cliente" },
+  { "id": "peticiones", "nombre": "Peticiones", "clase": "peticiones" }
+]
+```
 
 **La salud** es un estado derivado de reglas que el panel global explica: compara los 7
 últimos días con datos con los 7 anteriores. Sus umbrales son una decisión inicial, y

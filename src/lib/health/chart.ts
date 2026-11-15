@@ -12,7 +12,7 @@ import { addDays, dayIndex, MONTHS_ES, parseIso } from '../time/timeline';
 import type { Observacion } from './model';
 import { VENTANA } from './trends';
 
-export type Periodo = '30' | '90' | '365' | 'todo';
+export type Periodo = '30' | '90' | '365' | 'todo' | 'horas';
 
 export const PERIODOS: readonly { id: Periodo; label: string }[] = [
   { id: '30', label: '30 días' },
@@ -37,7 +37,9 @@ export function rango(
 ): { desde: IsoDate; hasta: IsoDate } | null {
   if (primero === null || hasta === null) return null;
   if (periodo === 'todo') return { desde: primero, hasta };
-  return { desde: addDays(hasta, -(Number(periodo) - 1)), hasta };
+  // The hourly view belongs to linked vigiladas; anywhere else it reads as its 7 days.
+  const dias = periodo === 'horas' ? 7 : Number(periodo);
+  return { desde: addDays(hasta, -(dias - 1)), hasta };
 }
 
 export function puntos(
@@ -81,6 +83,9 @@ export function escalaY(maximo: number): { tope: number; ticks: number[] } {
   return { tope: n * entero, ticks: Array.from({ length: n + 1 }, (_, i) => i * entero) };
 }
 
+/** What a line needs of a point, daily or hourly. */
+export type Trazable = Pick<Punto, 'valor' | 'estimado'>;
+
 export interface Tramo {
   /** Index of the first and last point. */
   desde: number;
@@ -92,7 +97,7 @@ export interface Tramo {
  * The stretches of the daily line: broken wherever a day is missing, and by
  * kind, since a segment touching an estimate is drawn as one.
  */
-export function tramos(pts: readonly Punto[]): Tramo[] {
+export function tramos(pts: readonly Trazable[]): Tramo[] {
   const out: Tramo[] = [];
   for (let i = 0; i + 1 < pts.length; i++) {
     if (pts[i].valor === null || pts[i + 1].valor === null) continue;
@@ -105,7 +110,7 @@ export function tramos(pts: readonly Punto[]): Tramo[] {
 }
 
 /** Points with no line through them: a measured day between two missing ones. */
-export function aislados(pts: readonly Punto[]): number[] {
+export function aislados(pts: readonly Trazable[]): number[] {
   const out: number[] = [];
   pts.forEach((p, i) => {
     if (p.valor !== null && pts[i - 1]?.valor == null && pts[i + 1]?.valor == null) out.push(i);
@@ -157,6 +162,95 @@ export function ticksMes(pts: readonly Punto[], maximo = 8): TickMes[] {
   return todos.filter((_, i) => i % salto === 0);
 }
 
+// ---- the hourly view (health-colector-kibana, D7) ----
+
+const HORA_MS = 3_600_000;
+/** The hourly view: the 7 days that end at «datos hasta». */
+export const HORAS_VISTA = 7 * 24;
+
+export interface PuntoHora {
+  /** Start of the hour, in ms. */
+  t: number;
+  valor: number | null;
+  estimado: false;
+}
+
+/**
+ * One point per hour of the `n` hours that end at `hasta` (exclusive). An hour
+ * missing from `horas`, or `null` in it, is a gap: never a zero.
+ */
+export function puntosHora(
+  horas: ReadonlyMap<number, number | null>,
+  hasta: number,
+  n = HORAS_VISTA,
+): PuntoHora[] {
+  const desde = hasta - n * HORA_MS;
+  return Array.from({ length: n }, (_, i) => {
+    const t = desde + i * HORA_MS;
+    return { t, valor: horas.get(t) ?? null, estimado: false };
+  });
+}
+
+const formatosHora = new Map<
+  string,
+  { dia: Intl.DateTimeFormat; tick: Intl.DateTimeFormat; largo: Intl.DateTimeFormat }
+>();
+
+function formatosDe(zona: string) {
+  let f = formatosHora.get(zona);
+  if (!f) {
+    f = {
+      dia: new Intl.DateTimeFormat('en-CA', {
+        timeZone: zona,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }),
+      tick: new Intl.DateTimeFormat('es-ES', { timeZone: zona, weekday: 'short', day: 'numeric' }),
+      largo: new Intl.DateTimeFormat('es-ES', {
+        timeZone: zona,
+        weekday: 'short',
+        day: 'numeric',
+        month: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
+      }),
+    };
+    formatosHora.set(zona, f);
+  }
+  return f;
+}
+
+/** An instant as people read it: «lun, 10 nov, 14:00», in the catalogue's zone. */
+export const formatoInstante = (t: number, zona: string): string =>
+  formatosDe(zona).largo.format(new Date(t));
+
+/** One tick at each local midnight, labelled «lun 10», thinned so that labels fit. */
+export function ticksDia(pts: readonly PuntoHora[], zona: string, maximo = 8): TickMes[] {
+  const f = formatosDe(zona);
+  const todos: TickMes[] = [];
+  pts.forEach((p, i) => {
+    if (i > 0 && f.dia.format(new Date(p.t)) === f.dia.format(new Date(pts[i - 1].t))) return;
+    if (i === 0 && f.dia.format(new Date(p.t)) === f.dia.format(new Date(p.t - HORA_MS))) return;
+    todos.push({ indice: i, etiqueta: f.tick.format(new Date(p.t)).replace(',', '') });
+  });
+  const salto = Math.ceil(todos.length / maximo) || 1;
+  return todos.filter((_, i) => i % salto === 0);
+}
+
+/** Where a day starts in the hourly points, for a release mark; `null` outside them. */
+export function indiceDeDia(pts: readonly PuntoHora[], dia: IsoDate, zona: string): number | null {
+  const f = formatosDe(zona).dia;
+  const i = pts.findIndex((p) => f.format(new Date(p.t)) === dia);
+  return i === -1 ? null : i;
+}
+
+/** A rate as a percentage, with the precision small rates need: «1,32 %». */
+export function formatoTasa(v: number | null): string {
+  if (v === null) return 'sin tasa';
+  return `${new Intl.NumberFormat('es-ES', { maximumFractionDigits: 2, minimumFractionDigits: 2 }).format(v * 100)} %`;
+}
+
 const NUMERO = new Intl.NumberFormat('es-ES');
 
 export const formatoNumero = (n: number): string => NUMERO.format(Math.round(n));
@@ -168,8 +262,13 @@ export function formatoEje(n: number): string {
   return NUMERO.format(n);
 }
 
-export function formatoVariacion(v: number | null): string {
-  if (v === null) return 'nuevo';
+/**
+ * A variation as text. `null` means there was nothing to divide by: that is
+ * «nuevo» only when it counts as a rise; from 0 to 0, or below the minimum,
+ * there is no percentage to give.
+ */
+export function formatoVariacion(v: number | null, sube = true): string {
+  if (v === null) return sube ? 'nuevo' : '—';
   const pct = Math.round(v * 100);
   if (pct === 0) return '= 0 %';
   return `${pct > 0 ? '▲ +' : '▼ −'}${Math.abs(pct)} %`;

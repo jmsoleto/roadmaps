@@ -6,7 +6,7 @@
  * ├─ tech-lead-hub.json        the marker: { "app": "health", "format": 1 }
  * ├─ catalogo.json             { zona, metricas }
  * ├─ order.json                { "aplicaciones": ["pedidos", …] }
- * ├─ app-pedidos.json          { id, nombre, consultas, versiones }
+ * ├─ app-pedidos.json          { id, nombre, fuente?, nota?, consultas, versiones }
  * ├─ obs-pedidos-2026-11.json  one month's observations, one per line
  * └─ entrada-*.json            the inbox: not this document's (see `inbox.ts`)
  * ```
@@ -46,13 +46,16 @@ export const FORMAT = 1;
 export const CATALOG_FILE = 'catalogo.json';
 export const ORDER_FILE = 'order.json';
 
+/** A collector application id, as it names its folder under `series/`. */
+export const ID_FUENTE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+
 type Kind = 'catalogo' | 'metrica' | 'vigilada' | 'version' | 'fila';
 
 const { canon, text } = canonicalizer<Kind>({
   order: {
     catalogo: ['zona', 'metricas'],
     metrica: ['id', 'nombre', 'clase'],
-    vigilada: ['id', 'nombre', 'consultas', 'versiones'],
+    vigilada: ['id', 'nombre', 'fuente', 'nota', 'consultas', 'versiones'],
     version: ['id', 'version', 'dia', 'nota'],
     fila: ['dia', 'metrica', 'valor', 'fuente', 'capturado', 'estimado'],
   },
@@ -208,6 +211,8 @@ export const HEALTH_FORMAT: FileFormat<HealthData> = {
           typeof v.nombre === 'string' &&
           typeof v.id === 'string' &&
           ID_VIGILADA.test(v.id) &&
+          (v.fuente === undefined || (typeof v.fuente === 'string' && ID_FUENTE.test(v.fuente))) &&
+          (v.nota === undefined || typeof v.nota === 'string') &&
           isObject(v.consultas) &&
           Array.isArray(v.versiones) &&
           v.versiones.every(esVersion)

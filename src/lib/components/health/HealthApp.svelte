@@ -13,6 +13,7 @@
   import { ui } from '../../store/ui.svelte';
   import StoreUnavailable from '../StoreUnavailable.svelte';
   import AppPanel from './AppPanel.svelte';
+  import FuentePanel from './FuentePanel.svelte';
   import GlobalPanel from './GlobalPanel.svelte';
   import HealthDialogs from './HealthDialogs.svelte';
   import InboxPanel from './InboxPanel.svelte';
@@ -69,6 +70,7 @@
       {#if health.abiertaVigilada}
         <AppPanel app={health.abiertaVigilada} />
       {:else}
+        <FuentePanel />
         <GlobalPanel />
       {/if}
     </div>

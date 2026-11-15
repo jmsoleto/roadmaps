@@ -36,7 +36,7 @@ function entrada(filas: unknown[], extra: object = {}) {
   });
 }
 
-const fila = (dia: string, valor: number, metrica = '500', app = 'pedidos') => ({
+const fila = (dia: string, valor: number, metrica = 'errores-50x', app = 'pedidos') => ({
   app,
   metrica,
   dia,
@@ -93,7 +93,11 @@ describe('la bandeja al leer la carpeta', () => {
 
   it('deja pendiente una captura con una aplicación desconocida, y no la crea', async () => {
     const { dir, store } = await preparar();
-    await writeText(dir, 'entrada-1.json', entrada([fila(AYER, 1), fila(AYER, 1, '500', 'otra')]));
+    await writeText(
+      dir,
+      'entrada-1.json',
+      entrada([fila(AYER, 1), fila(AYER, 1, 'errores-50x', 'otra')]),
+    );
     await store.init();
     expect(store.bandeja).toHaveLength(1);
     expect(store.observacionesDe('pedidos')).toEqual([]);
@@ -294,10 +298,10 @@ describe('editar', () => {
   it('una consulta vacía desaparece', async () => {
     const { store } = await preparar();
     await store.init();
-    store.setConsulta('pedidos', '500', 'status:500');
-    expect(store.vigilada('pedidos')!.consultas['500']).toBe('status:500');
-    store.setConsulta('pedidos', '500', ' ');
-    expect('500' in store.vigilada('pedidos')!.consultas).toBe(false);
+    store.setConsulta('pedidos', 'errores-50x', 'status:500');
+    expect(store.vigilada('pedidos')!.consultas['errores-50x']).toBe('status:500');
+    store.setConsulta('pedidos', 'errores-50x', ' ');
+    expect('errores-50x' in store.vigilada('pedidos')!.consultas).toBe(false);
   });
 
   it('cambiar de vista no toca la carpeta', async () => {

@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import * as chart from './chart';
 import { addDays } from '../time/timeline';
 import {
   aislados,
@@ -16,7 +17,7 @@ import type { Observacion } from './model';
 
 const obs = (dia: string, valor: number, estimado = false): Observacion => ({
   dia,
-  metrica: '500',
+  metrica: 'errores-50x',
   valor,
   fuente: 'kibana',
   capturado: '2026-11-07',
@@ -30,7 +31,7 @@ describe('los puntos de una serie', () => {
   it('un día sin medir es un hueco, y un cero es un valor', () => {
     const pts = puntos(
       [obs('2026-10-01', 5), obs('2026-10-03', 0)],
-      '500',
+      'errores-50x',
       '2026-10-01',
       '2026-10-03',
     );
@@ -38,13 +39,13 @@ describe('los puntos de una serie', () => {
   });
 
   it('solo mira su métrica', () => {
-    const otra = { ...obs('2026-10-01', 5), metrica: '403' };
-    expect(puntos([otra], '500', '2026-10-01', '2026-10-01')[0].valor).toBeNull();
+    const otra = { ...obs('2026-10-01', 5), metrica: 'errores-40x' };
+    expect(puntos([otra], 'errores-50x', '2026-10-01', '2026-10-01')[0].valor).toBeNull();
   });
 
   it('la media móvil exige los 7 días, también los anteriores al periodo', () => {
     const filas = serie('2026-10-01', 10);
-    expect(puntos(filas, '500', '2026-10-06', '2026-10-07').map((p) => p.media)).toEqual([
+    expect(puntos(filas, 'errores-50x', '2026-10-06', '2026-10-07').map((p) => p.media)).toEqual([
       null,
       10,
     ]);
@@ -52,7 +53,7 @@ describe('los puntos de una serie', () => {
 
   it('un hueco deja sin media los 7 días siguientes', () => {
     const filas = serie('2026-10-01', 20).filter((o) => o.dia !== '2026-10-10');
-    const pts = puntos(filas, '500', '2026-10-09', '2026-10-17');
+    const pts = puntos(filas, 'errores-50x', '2026-10-09', '2026-10-17');
     expect(pts.map((p) => p.media !== null)).toEqual([
       true,
       false,
@@ -155,7 +156,7 @@ describe('los ejes', () => {
   });
 
   it('marca los meses y los aclara si son muchos', () => {
-    const pts = puntos([], '500', '2025-01-15', '2026-11-06');
+    const pts = puntos([], 'errores-50x', '2025-01-15', '2026-11-06');
     const ticks = ticksMes(pts);
     expect(ticks.length).toBeLessThanOrEqual(8);
     expect(ticks[0].etiqueta).toBe('feb');
@@ -177,5 +178,59 @@ describe('la variación como texto', () => {
 
   it('sin base con la que comparar dice que es nuevo', () => {
     expect(formatoVariacion(null)).toBe('nuevo');
+  });
+});
+
+describe('la vista por horas', () => {
+  const H = 3_600_000;
+  const Z = 'Europe/Madrid';
+  const HASTA = Date.parse('2026-11-13T21:00:00Z');
+
+  it('da las 168 horas que terminan en «datos hasta», y una hora sin dato es un hueco', () => {
+    const horas = new Map<number, number | null>([
+      [HASTA - H, 5],
+      [HASTA - 2 * H, null],
+    ]);
+    const pts = chart.puntosHora(horas, HASTA);
+    expect(pts).toHaveLength(168);
+    expect(pts[0].t).toBe(HASTA - 168 * H);
+    expect(pts[167]).toEqual({ t: HASTA - H, valor: 5, estimado: false });
+    expect(pts[166].valor).toBeNull();
+    expect(pts[0].valor).toBeNull();
+  });
+
+  it('un hueco corta la línea por horas igual que la diaria', () => {
+    const horas = new Map([HASTA - 4 * H, HASTA - 3 * H, HASTA - H].map((t) => [t, 1]));
+    const pts = chart.puntosHora(horas, HASTA, 4);
+    expect(chart.tramos(pts)).toEqual([{ desde: 0, hasta: 1, estimado: false }]);
+    expect(chart.aislados(pts)).toEqual([3]);
+  });
+
+  it('marca cada medianoche de Madrid con el día de la semana', () => {
+    const pts = chart.puntosHora(new Map(), HASTA, 48);
+    const ticks = chart.ticksDia(pts, Z);
+    expect(ticks).toHaveLength(2);
+    // 23:00Z is midnight in Madrid in November.
+    expect(new Date(pts[ticks[0].indice].t).toISOString()).toBe('2026-11-11T23:00:00.000Z');
+    expect(ticks[0].etiqueta).toMatch(/^jue\.? 12$/);
+  });
+
+  it('una subida se marca al inicio de su día, y fuera de la ventana no', () => {
+    const pts = chart.puntosHora(new Map(), HASTA, 48);
+    const i = chart.indiceDeDia(pts, '2026-11-12', Z)!;
+    expect(new Date(pts[i].t).toISOString()).toBe('2026-11-11T23:00:00.000Z');
+    expect(chart.indiceDeDia(pts, '2026-11-01', Z)).toBeNull();
+  });
+
+  it('la tasa se lee en porcentaje, y sin tasa no es 0 %', () => {
+    expect(chart.formatoTasa(0.0132)).toBe('1,32 %');
+    expect(chart.formatoTasa(null)).toBe('sin tasa');
+  });
+});
+
+describe('una variación sin base', () => {
+  it('es «nuevo» solo si cuenta como subida; de 0 a 0 no da porcentaje', () => {
+    expect(chart.formatoVariacion(null)).toBe('nuevo');
+    expect(chart.formatoVariacion(null, false)).toBe('—');
   });
 });

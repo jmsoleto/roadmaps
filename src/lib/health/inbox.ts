@@ -14,7 +14,7 @@
  *   "fuente": "kibana",
  *   "capturado": "2026-11-07",
  *   "zona": "Europe/Madrid",
- *   "filas": [{ "app": "pedidos", "metrica": "500", "dia": "2026-11-05", "valor": 340 }]
+ *   "filas": [{ "app": "pedidos", "metrica": "errores-50x", "dia": "2026-11-05", "valor": 340 }]
  * }
  * ```
  */

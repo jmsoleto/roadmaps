@@ -13,7 +13,8 @@ export type Dialogo =
   | { kind: 'renombrar'; id: string }
   | { kind: 'eliminar'; id: string }
   | { kind: 'version'; appId: string; versionId: string | null }
-  | { kind: 'consulta'; appId: string; metrica: string };
+  | { kind: 'consulta'; appId: string; metrica: string }
+  | { kind: 'fuente'; id: string };
 
 class HealthUiStore {
   dialogo = $state<Dialogo | null>(null);
@@ -21,6 +22,8 @@ class HealthUiStore {
   /** The release whose before/after is on screen. */
   versionSel = $state<string | null>(null);
   bandejaAbierta = $state<boolean>(false);
+  /** In the hourly view, errors as a rate of requests instead of counts. */
+  verTasa = $state<boolean>(false);
 
   abrir(dialogo: Dialogo): void {
     this.dialogo = dialogo;

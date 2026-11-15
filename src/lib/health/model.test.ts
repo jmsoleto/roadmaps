@@ -32,9 +32,9 @@ describe('el catálogo inicial', () => {
   it('trae las cinco métricas, cada una con su clase', () => {
     expect(metricasIniciales().map((m) => [m.id, m.clase])).toEqual([
       ['no-controlados', 'propia'],
-      ['500', 'propia'],
-      ['400', 'cliente'],
-      ['403', 'cliente'],
+      ['errores-50x', 'propia'],
+      ['errores-404', 'cliente'],
+      ['errores-40x', 'cliente'],
       ['peticiones', 'peticiones'],
     ]);
   });

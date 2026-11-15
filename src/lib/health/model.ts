@@ -38,6 +38,13 @@ export interface VersionSubida {
 export interface Vigilada {
   id: string;
   nombre: string;
+  /**
+   * The collector application this vigilada reads its figures from
+   * (health-colector-kibana, D5). Absent when it is fed only by its folder.
+   */
+  fuente?: string;
+  /** Free text shown beside its rates: caveats nobody can compute. Never interpreted. */
+  nota?: string;
   /** The text of the query behind each metric, by metric id. Never interpreted. */
   consultas: Record<string, string>;
   versiones: VersionSubida[];
@@ -74,9 +81,9 @@ export const isFuente = (v: unknown): v is Fuente => v === 'kibana' || v === 'pa
 export function metricasIniciales(): Metrica[] {
   return [
     { id: 'no-controlados', nombre: 'No controlados', clase: 'propia' },
-    { id: '500', nombre: '500', clase: 'propia' },
-    { id: '400', nombre: '400', clase: 'cliente' },
-    { id: '403', nombre: '403', clase: 'cliente' },
+    { id: 'errores-50x', nombre: '50x', clase: 'propia' },
+    { id: 'errores-404', nombre: '404', clase: 'cliente' },
+    { id: 'errores-40x', nombre: '40x (sin 404)', clase: 'cliente' },
     { id: 'peticiones', nombre: 'Peticiones', clase: 'peticiones' },
   ];
 }

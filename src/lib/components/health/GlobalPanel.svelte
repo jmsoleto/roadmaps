@@ -115,7 +115,7 @@
                 <span class="valor">{celda(t)}</span>
                 {#if t.estado !== 'sin-datos'}
                   <span class="variacion" class:sube={t.estado === 'sube'}>
-                    {formatoVariacion(t.variacion)}{t.estimado ? ' ≈' : ''}
+                    {formatoVariacion(t.variacion, t.estado === 'sube')}{t.estimado ? ' ≈' : ''}
                   </span>
                 {/if}
               </td>

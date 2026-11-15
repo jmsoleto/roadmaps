@@ -7,6 +7,10 @@
  * after disconnecting (`folder-persistence`, «Health Hub solo guarda en una
  * carpeta»).
  *
+ * A vigilada linked to the collector's folder takes its figures from there
+ * (health-colector-kibana, D4): they are derived here and never put in `data`,
+ * so the autosave cannot write them into `obs-*`.
+ *
  * `$state.raw` and immutable updates because of the size: a few years of
  * observations are tens of thousands of rows, and every one of them would
  * otherwise become a proxy for the benefit of nothing that edits a row in place.
@@ -36,6 +40,9 @@ import {
   type Vigilada,
 } from './model';
 import { ordenarPorSalud, salud, type Salud } from './trends';
+import { healthFuente, type AppLeida, type LecturaFuente } from './fuente/connection.svelte';
+import { diaEn, diasCompletos } from './fuente/days';
+import { datosHasta } from './fuente/rate';
 
 const SAVE_DEBOUNCE_MS = 300;
 
@@ -56,6 +63,21 @@ function textoIgnoradas(ignoradas: Fusion['ignoradas']): string {
   return ` ${filas}: ${partes.join('; ')}.`;
 }
 
+/** What the source gives a linked vigilada. */
+export interface VinculoFuente {
+  leida: AppLeida;
+  /** Complete days, as observations, by the catalogue's metrics. */
+  dias: Observacion[];
+  /** `to` of the application, in ms. */
+  hasta: number | null;
+  avisos: string[];
+}
+
+/** Anything that can hand over the source's reading: the connection, or a test's stand-in. */
+export interface OrigenFuente {
+  readonly lectura: LecturaFuente | null;
+}
+
 export class HealthStore {
   private backend = $state.raw<DocBackend<HealthData> | null>(null);
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -74,6 +96,12 @@ export class HealthStore {
   abierta = $state<string | null>(null);
   /** The day the figures are computed for, refreshed on every way in. */
   hoy = $state<string>(todayIso());
+
+  constructor(private origen: OrigenFuente | null = null) {}
+
+  get lecturaFuente(): LecturaFuente | null {
+    return this.origen?.lectura ?? null;
+  }
 
   get source(): DataSource {
     return this.backend === null ? 'browser' : 'folder';
@@ -152,8 +180,93 @@ export class HealthStore {
     return this.data.aplicaciones.find((a) => a.id === id) ?? null;
   }
 
-  observacionesDe(id: string): Observacion[] {
+  /** What the folder holds for a vigilada: what removing it deletes. */
+  consolidadasDe(id: string): Observacion[] {
     return this.data.observaciones[id] ?? [];
+  }
+
+  /**
+   * By vigilada id, what the source gives each linked one. Two vigiladas linked
+   * to the same application: only the first in order takes it, the other is told.
+   */
+  vinculos: Map<string, VinculoFuente> = $derived.by(() => {
+    const out = new Map<string, VinculoFuente>();
+    const lectura = this.lecturaFuente;
+    if (!lectura) return out;
+    const { zona, metricas } = this.data.catalogo;
+    const enCatalogo = new Set(metricas.map((m) => m.id));
+    const tomadas = new Set<string>();
+    for (const app of this.data.aplicaciones) {
+      if (!app.fuente || tomadas.has(app.fuente)) continue;
+      const leida = lectura.apps.find((a) => a.app.id === app.fuente);
+      if (!leida) continue;
+      tomadas.add(app.fuente);
+      const hasta = datosHasta(leida.app);
+      // `to` ends the last closed hour: the day is that of the hour before it.
+      const capturado = diaEn((hasta ?? Date.now()) - 1, zona);
+      const dias: Observacion[] = [];
+      const avisos = [...leida.avisos];
+      for (const [metrica, { serie }] of leida.series) {
+        if (!enCatalogo.has(metrica)) {
+          avisos.push(
+            `La fuente tiene la métrica «${metrica}», que no está en el catálogo: no se muestra.`,
+          );
+          continue;
+        }
+        dias.push(...diasCompletos(serie.horas, metrica, zona, capturado));
+      }
+      out.set(app.id, { leida, dias, hasta, avisos });
+    }
+    return out;
+  });
+
+  vinculoDe(id: string): VinculoFuente | null {
+    return this.vinculos.get(id) ?? null;
+  }
+
+  /** Why a linked vigilada gets nothing from the source although it is connected. */
+  sinDatosDeFuente(id: string): string | null {
+    const app = this.vigilada(id);
+    if (!app?.fuente || this.vinculos.has(id) || !this.lecturaFuente) return null;
+    const otra = this.data.aplicaciones.find(
+      (a) => a.id !== id && a.fuente === app.fuente && this.vinculos.has(a.id),
+    );
+    if (otra) return `«${otra.nombre}» ya toma los datos de «${app.fuente}» en la fuente.`;
+    return `La fuente no tiene la aplicación «${app.fuente}».`;
+  }
+
+  private mezcladas: Map<string, Observacion[]> = $derived.by(() => {
+    const out = new Map<string, Observacion[]>();
+    for (const [id, v] of this.vinculos) {
+      const deFuente = new Set(v.dias.map((o) => `${o.metrica}|${o.dia}`));
+      const propias = this.consolidadasDe(id).filter((o) => !deFuente.has(`${o.metrica}|${o.dia}`));
+      out.set(id, [...v.dias, ...propias]);
+    }
+    return out;
+  });
+
+  /** Every day of a vigilada: the source's where it has them, the folder's elsewhere. */
+  observacionesDe(id: string): Observacion[] {
+    return this.mezcladas.get(id) ?? this.consolidadasDe(id);
+  }
+
+  /** The query behind a metric: the source's, read only, when the vigilada is linked. */
+  consultaDe(id: string, metrica: string): { texto: string; deFuente: boolean } | null {
+    const v = this.vinculos.get(id);
+    const deFuente = v?.leida.series.get(metrica)?.metrica.consulta;
+    if (deFuente !== undefined) return { texto: deFuente, deFuente: true };
+    const propia = this.vigilada(id)?.consultas[metrica];
+    return propia ? { texto: propia, deFuente: false } : null;
+  }
+
+  /** Applications of the source no vigilada is linked to: what can be added with a gesture. */
+  get disponiblesEnFuente(): { id: string; nombre: string }[] {
+    const lectura = this.lecturaFuente;
+    if (!lectura) return [];
+    const vinculadas = new Set(this.data.aplicaciones.map((a) => a.fuente).filter(Boolean));
+    return lectura.apps
+      .filter((a) => !vinculadas.has(a.app.id))
+      .map((a) => ({ id: a.app.id, nombre: a.app.nombre }));
   }
 
   get metricas(): Metrica[] {
@@ -176,6 +289,13 @@ export class HealthStore {
         for (const entrada of entradas) {
           const dia = ultimoDiaEntrada(entrada, app.id);
           if (dia !== null && (pendiente === null || dia > pendiente)) pendiente = dia;
+        }
+        // A linked vigilada has lost nothing up to its «datos hasta», complete or not.
+        const hasta = this.vinculos.get(app.id)?.hasta;
+        if (hasta !== undefined && hasta !== null) {
+          // `to` is where the last closed hour ends, so its day is the hour before's.
+          const dia = diaEn(hasta - 1, this.data.catalogo.zona);
+          if (pendiente === null || dia > pendiente) pendiente = dia;
         }
         return {
           id: app.id,
@@ -216,6 +336,41 @@ export class HealthStore {
     this.abierta = app.id;
     this.schedule();
     return app;
+  }
+
+  /** Add an application of the source as a vigilada, linked to it, with the source's name. */
+  anadirDesdeFuente(fuenteId: string): Vigilada | null {
+    if (this.down) return null;
+    const leida = this.lecturaFuente?.apps.find((a) => a.app.id === fuenteId);
+    if (!leida || this.data.aplicaciones.some((a) => a.fuente === fuenteId)) return null;
+    const app: Vigilada = {
+      ...nuevaVigilada(
+        leida.app.nombre,
+        this.data.aplicaciones.map((a) => a.id),
+      ),
+      fuente: fuenteId,
+    };
+    this.data = { ...this.data, aplicaciones: [...this.data.aplicaciones, app] };
+    this.schedule();
+    return app;
+  }
+
+  /** Link a vigilada to an application of the source, or unlink it with `null`. */
+  vincular(id: string, fuenteId: string | null): void {
+    this.cambiar(id, (a) => {
+      const resto = { ...a };
+      delete resto.fuente;
+      return fuenteId ? { ...resto, fuente: fuenteId } : resto;
+    });
+  }
+
+  setNota(id: string, texto: string): void {
+    const limpio = texto.trim();
+    this.cambiar(id, (a) => {
+      const resto = { ...a };
+      delete resto.nota;
+      return limpio ? { ...resto, nota: limpio } : resto;
+    });
   }
 
   private cambiar(id: string, fn: (app: Vigilada) => Vigilada): void {
@@ -431,4 +586,4 @@ export class HealthStore {
   }
 }
 
-export const health = new HealthStore();
+export const health = new HealthStore(healthFuente);

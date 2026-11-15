@@ -27,6 +27,7 @@ import {
 } from './apps';
 import { health } from '../health/store.svelte';
 import { healthFolder } from '../health/folder.svelte';
+import { healthFuente } from '../health/fuente/connection.svelte';
 import { healthSummary } from '../health/summary';
 import { healthUi } from '../health/ui.svelte';
 import { decisions } from '../decisions/store.svelte';
@@ -279,9 +280,26 @@ function healthActions(): AppAction[] {
     {
       kind: 'button',
       label: '↻ recargar',
-      title: 'leer la carpeta otra vez y procesar la bandeja',
-      disabled: down || health.recargando,
-      run: () => void health.recargar(),
+      title: 'leer otra vez la carpeta y la fuente, y procesar la bandeja',
+      disabled: down || health.recargando || healthFuente.recargando,
+      run: () => {
+        void health.recargar();
+        void healthFuente.recargar();
+      },
+    },
+    // The collector's folder, read only: choosing it, or going to where it is shown.
+    {
+      kind: 'button',
+      label: '⧉ fuente',
+      title:
+        healthFuente.estado.kind === 'sin-fuente'
+          ? 'conectar la carpeta de datos del colector'
+          : `fuente: «${healthFuente.estado.nombre}»`,
+      disabled: down,
+      run: () => {
+        if (healthFuente.estado.kind === 'sin-fuente') void healthFuente.elegir();
+        else health.abrir(null);
+      },
     },
     // Never disabled: it is the way in, and the way out of a folder that cannot be read.
     {

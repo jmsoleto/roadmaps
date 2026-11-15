@@ -5,12 +5,12 @@ import type { Observacion } from './model';
 
 const conocidas: Conocidas = {
   aplicaciones: new Set(['pedidos']),
-  metricas: new Set(['500']),
+  metricas: new Set(['errores-50x']),
 };
 
 const fila = (dia: string, valor: number, extra: Partial<FilaEntrada> = {}): FilaEntrada => ({
   app: 'pedidos',
-  metrica: '500',
+  metrica: 'errores-50x',
   dia,
   valor,
   estimado: false,
@@ -32,7 +32,7 @@ const entrada = (
 
 const obs = (dia: string, valor: number, extra: Partial<Observacion> = {}): Observacion => ({
   dia,
-  metrica: '500',
+  metrica: 'errores-50x',
   valor,
   fuente: 'kibana',
   capturado: '2026-11-07',

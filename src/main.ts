@@ -12,6 +12,7 @@ import { links } from './lib/links/store.svelte';
 import { linksFolder } from './lib/links/folder.svelte';
 import { health } from './lib/health/store.svelte';
 import { healthFolder } from './lib/health/folder.svelte';
+import { healthFuente } from './lib/health/fuente/connection.svelte';
 
 // Load persisted state from the browser's local storage before the first
 // render, so the app opens directly in its last state.
@@ -61,6 +62,9 @@ async function bootstrap() {
   // a folder may take a while, and nothing else here depends on it.
   if (!healthFolder.startsInBrowser) health.expectFolder();
   void healthFolder.start();
+  // Its source, the collector's folder, the same way: only read, and asked about
+  // its permission without a prompt (health-colector-kibana, D1).
+  void healthFuente.start();
 
   // Register what each application does when it is entered, then adopt the
   // location in the URL. The order matters: a session restored straight into

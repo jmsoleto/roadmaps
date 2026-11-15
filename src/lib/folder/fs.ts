@@ -12,6 +12,9 @@
 
 export type PermissionState = 'granted' | 'prompt' | 'denied';
 
+/** What a folder is opened for. Only Health Hub's source is opened to read. */
+export type AccessMode = 'read' | 'readwrite';
+
 export interface FolderWritable {
   write(data: string): Promise<void>;
   close(): Promise<void>;
@@ -37,8 +40,8 @@ export interface FolderDir {
   getFileHandle(name: string, options?: { create?: boolean }): Promise<FolderFile>;
   removeEntry(name: string): Promise<void>;
   values(): AsyncIterable<FolderDir | FolderFile>;
-  queryPermission?(descriptor: { mode: 'readwrite' }): Promise<PermissionState>;
-  requestPermission?(descriptor: { mode: 'readwrite' }): Promise<PermissionState>;
+  queryPermission?(descriptor: { mode: AccessMode }): Promise<PermissionState>;
+  requestPermission?(descriptor: { mode: AccessMode }): Promise<PermissionState>;
 }
 
 const isNotFound = (e: unknown) =>
@@ -54,14 +57,14 @@ export function supportsFolders(): boolean {
  *
  * Must run inside a user gesture, like every call that can show a prompt.
  */
-export async function pickFolder(): Promise<FolderDir | null> {
+export async function pickFolder(mode: AccessMode = 'readwrite'): Promise<FolderDir | null> {
   const picker = (
     window as unknown as {
-      showDirectoryPicker(options: { mode: 'readwrite' }): Promise<FolderDir>;
+      showDirectoryPicker(options: { mode: AccessMode }): Promise<FolderDir>;
     }
   ).showDirectoryPicker;
   try {
-    return await picker.call(window, { mode: 'readwrite' });
+    return await picker.call(window, { mode });
   } catch (e) {
     if (e instanceof Error && e.name === 'AbortError') return null;
     throw e;

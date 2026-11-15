@@ -7,12 +7,23 @@
    * matters when it jumps. Traffic stays folded, since it explains the others and
    * is not itself a problem.
    */
-  import { formatoNumero, formatoVariacion, PERIODOS, puntos, rango } from '../../health/chart';
+  import {
+    formatoInstante,
+    formatoNumero,
+    formatoVariacion,
+    PERIODOS,
+    puntos,
+    puntosHora,
+    rango,
+  } from '../../health/chart';
+  import { healthFuente } from '../../health/fuente/connection.svelte';
+  import { tasaPorHora } from '../../health/fuente/rate';
   import type { ClaseMetrica, Metrica, Vigilada } from '../../health/model';
   import { health } from '../../health/store.svelte';
   import { healthUi } from '../../health/ui.svelte';
   import { textoCaptura } from '../../health/trends';
   import { fmtDate } from '../../time/timeline';
+  import HourlyChart from './HourlyChart.svelte';
   import MetricChart from './MetricChart.svelte';
   import ReleaseComparison from './ReleaseComparison.svelte';
   import SaludBadge from './SaludBadge.svelte';
@@ -24,6 +35,36 @@
   let { app }: Props = $props();
 
   const filas = $derived(health.observacionesDe(app.id));
+  const vinculo = $derived(health.vinculoDe(app.id));
+  const zona = $derived(health.data.catalogo.zona);
+  /** Why a linked vigilada shows only the folder's data, when it does. */
+  const faltaFuente = $derived.by(() => {
+    if (!app.fuente || vinculo) return null;
+    const e = healthFuente.estado;
+    if (e.kind === 'sin-fuente')
+      return 'Está vinculada a la fuente, pero la fuente no está conectada.';
+    if (e.kind === 'permiso') return 'Está vinculada a la fuente, pero falta reactivar su permiso.';
+    if (e.kind === 'abriendo') return 'Abriendo la fuente…';
+    if (e.kind === 'no-valida') return `La fuente no se puede leer: ${e.motivo}`;
+    return health.sinDatosDeFuente(app.id);
+  });
+  const porHoras = $derived(
+    healthUi.periodo === 'horas' && vinculo !== null && vinculo.hasta !== null,
+  );
+  const idPeticiones = $derived(health.metricas.find((m) => m.clase === 'peticiones')?.id ?? null);
+  const conTasa = $derived(
+    idPeticiones !== null && vinculo?.leida.series.has(idPeticiones) === true,
+  );
+
+  function puntosPorHora(m: Metrica) {
+    if (!vinculo || vinculo.hasta === null) return [];
+    const horas = vinculo.leida.series.get(m.id)?.serie.horas ?? new Map<number, number>();
+    if (healthUi.verTasa && conTasa && m.clase !== 'peticiones') {
+      const pet = vinculo.leida.series.get(idPeticiones!)!.serie.horas;
+      return puntosHora(tasaPorHora(horas, pet), vinculo.hasta);
+    }
+    return puntosHora(horas, vinculo.hasta);
+  }
   const salud = $derived(health.filas.find((f) => f.id === app.id)?.salud ?? null);
 
   const extremos = $derived.by(() => {
@@ -47,7 +88,15 @@
     { clase: 'cliente', titulo: 'Errores de cliente' },
   ];
 
-  const deClase = (clase: ClaseMetrica) => health.metricas.filter((m) => m.clase === clase);
+  /**
+   * A linked vigilada shows the metrics its source has, and any other only if
+   * the folder holds data for it: MYA measures no 404s, and an empty chart per
+   * metric it will never have would only be noise.
+   */
+  const visible = (m: Metrica) =>
+    !vinculo || vinculo.leida.series.has(m.id) || filas.some((f) => f.metrica === m.id);
+  const deClase = (clase: ClaseMetrica) =>
+    health.metricas.filter((m) => m.clase === clase && visible(m));
 
   const seleccionada = $derived(app.versiones.find((v) => v.id === healthUi.versionSel) ?? null);
   const versionesOrdenadas = $derived(
@@ -64,31 +113,52 @@
 
 {#snippet bloqueMetrica(m: Metrica)}
   {@const t = salud?.tendencias[m.id]}
+  {@const consulta = health.consultaDe(app.id, m.id)}
+  {@const tasa = porHoras && healthUi.verTasa && conTasa && m.clase !== 'peticiones'}
   <article class="metrica">
     <header>
       <h4>{m.nombre}</h4>
       {#if t && t.estado !== 'sin-datos' && t.recuento !== null}
         <span class="dato">{formatoNumero(t.recuento)} en 7 días</span>
         <span class="dato variacion" class:sube={t.estado === 'sube' && m.clase !== 'peticiones'}>
-          {formatoVariacion(t.variacion)}{t.base === 'tasa' ? ' tasa' : ''}{t.estimado ? ' ≈' : ''}
+          {formatoVariacion(t.variacion, t.estado === 'sube')}{t.base === 'tasa' &&
+          t.variacion !== null
+            ? ' tasa'
+            : ''}{t.estimado ? ' ≈' : ''}
         </span>
       {/if}
-      <button
-        type="button"
-        class="link consulta"
-        onclick={() => healthUi.abrir({ kind: 'consulta', appId: app.id, metrica: m.id })}
-      >
-        {app.consultas[m.id] ? 'editar consulta' : '+ consulta'}
-      </button>
+      {#if consulta?.deFuente}
+        <span class="link consulta fija" title="la consulta la da la fuente y no se edita aquí">
+          consulta de la fuente
+        </span>
+      {:else}
+        <button
+          type="button"
+          class="link consulta"
+          onclick={() => healthUi.abrir({ kind: 'consulta', appId: app.id, metrica: m.id })}
+        >
+          {consulta ? 'editar consulta' : '+ consulta'}
+        </button>
+      {/if}
     </header>
-    {#if app.consultas[m.id]}<code class="texto-consulta">{app.consultas[m.id]}</code>{/if}
-    <MetricChart
-      titulo={m.nombre}
-      puntos={puntosDe(m)}
-      versiones={app.versiones}
-      seleccionada={healthUi.versionSel}
-      onseleccion={seleccionar}
-    />
+    {#if consulta}<code class="texto-consulta">{consulta.texto}</code>{/if}
+    {#if porHoras}
+      <HourlyChart
+        titulo={tasa ? `Tasa de ${m.nombre}` : m.nombre}
+        puntos={puntosPorHora(m)}
+        modo={tasa ? 'tasa' : 'recuento'}
+        {zona}
+        versiones={app.versiones}
+      />
+    {:else}
+      <MetricChart
+        titulo={m.nombre}
+        puntos={puntosDe(m)}
+        versiones={app.versiones}
+        seleccionada={healthUi.versionSel}
+        onseleccion={seleccionar}
+      />
+    {/if}
   </article>
 {/snippet}
 
@@ -96,6 +166,9 @@
   <h2>{app.nombre}</h2>
   {#if salud}<SaludBadge estado={salud.estado} />{/if}
   {#if salud && salud.motivo.length > 0}<span class="motivo">{salud.motivo.join(', ')}</span>{/if}
+  {#if vinculo?.hasta}
+    <span class="captura">datos hasta {formatoInstante(vinculo.hasta, zona)}</span>
+  {/if}
   {#if salud?.captura}
     <span
       class="captura"
@@ -106,6 +179,13 @@
     </span>
   {/if}
   <div class="acciones">
+    <button
+      type="button"
+      class="link"
+      onclick={() => healthUi.abrir({ kind: 'fuente', id: app.id })}
+    >
+      fuente y nota
+    </button>
     <button
       type="button"
       class="link"
@@ -123,7 +203,35 @@
   </div>
 </div>
 
-{#if filas.length === 0}
+{#if app.nota}
+  <p class="nota-app"><span class="nota-titulo">Nota</span> {app.nota}</p>
+{/if}
+{#if faltaFuente}
+  <p class="aviso-fuente" role="status">
+    {faltaFuente}
+    {#if healthFuente.estado.kind === 'sin-fuente'}
+      <button type="button" class="link" onclick={() => void healthFuente.elegir()}>
+        conectar la fuente…
+      </button>
+    {:else if healthFuente.estado.kind === 'permiso'}
+      <button type="button" class="link" onclick={() => void healthFuente.reactivar()}>
+        reactivar el acceso
+      </button>
+    {/if}
+  </p>
+{/if}
+{#if vinculo && vinculo.avisos.length > 0}
+  <details class="avisos-fuente">
+    <summary>
+      {vinculo.avisos.length === 1 ? '1 aviso' : `${vinculo.avisos.length} avisos`} al leer la fuente
+    </summary>
+    <ul>
+      {#each vinculo.avisos as a (a)}<li>{a}</li>{/each}
+    </ul>
+  </details>
+{/if}
+
+{#if filas.length === 0 && !vinculo}
   <div class="vacio">
     <p>
       Aún no hay datos de {app.nombre}. Cuando un agente deje una captura en la bandeja de la
@@ -144,12 +252,52 @@
           {p.label}
         </button>
       {/each}
+      {#if vinculo?.hasta}
+        <button
+          type="button"
+          class="periodo"
+          class:activo={healthUi.periodo === 'horas'}
+          aria-pressed={healthUi.periodo === 'horas'}
+          onclick={() => (healthUi.periodo = 'horas')}
+        >
+          por horas
+        </button>
+      {/if}
     </div>
-    <p class="leyenda">
-      <span class="muestra media" aria-hidden="true"></span> media 7 días
-      <span class="muestra diaria" aria-hidden="true"></span> diaria
-      <span class="muestra estimada" aria-hidden="true"></span> estimado
-    </p>
+    {#if porHoras}
+      {#if conTasa}
+        <div class="periodos" role="group" aria-label="Errores como">
+          <button
+            type="button"
+            class="periodo"
+            class:activo={!healthUi.verTasa}
+            aria-pressed={!healthUi.verTasa}
+            onclick={() => (healthUi.verTasa = false)}
+          >
+            recuento
+          </button>
+          <button
+            type="button"
+            class="periodo"
+            class:activo={healthUi.verTasa}
+            aria-pressed={healthUi.verTasa}
+            onclick={() => (healthUi.verTasa = true)}
+          >
+            tasa
+          </button>
+        </div>
+      {/if}
+      <p class="leyenda">
+        por horas, 7 días hasta «datos hasta»; una hora sin dato corta la línea; las subidas, que
+        solo tienen día, se marcan al empezar ese día
+      </p>
+    {:else}
+      <p class="leyenda">
+        <span class="muestra media" aria-hidden="true"></span> media 7 días
+        <span class="muestra diaria" aria-hidden="true"></span> diaria
+        <span class="muestra estimada" aria-hidden="true"></span> estimado
+      </p>
+    {/if}
   </div>
 
   {#if seleccionada}
@@ -231,6 +379,46 @@
   }
   .captura.danger {
     color: var(--danger);
+  }
+  .nota-app,
+  .aviso-fuente {
+    margin: 0;
+    padding: 8px 12px;
+    border-left: 2px solid var(--line);
+    background: var(--surface);
+    border-radius: 4px;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text-mid);
+  }
+  .aviso-fuente {
+    border-left-color: var(--accent);
+  }
+  .nota-titulo {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-right: 6px;
+  }
+  .avisos-fuente {
+    font-size: 12px;
+    color: var(--text-mid);
+  }
+  .avisos-fuente summary {
+    cursor: pointer;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--accent);
+  }
+  .avisos-fuente ul {
+    margin: 6px 0 0;
+    padding-left: 18px;
+  }
+  .consulta.fija {
+    cursor: default;
+  }
+  .consulta.fija:hover {
+    color: var(--text-dim);
   }
   .acciones {
     margin-left: auto;
