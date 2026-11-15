@@ -37,9 +37,19 @@
         cada aplicación se reducen o crecen tras una subida.
       </p>
       <p>
-        Son datos internos, así que no se guardan en el navegador ni salen a ningún servicio: viven
-        en la carpeta de un repo privado que eliges tú.
+        Son datos internos, así que no se guardan en el navegador ni salen a ningún servicio. Usa
+        dos carpetas:
       </p>
+      <ol>
+        <li>
+          <strong>La suya</strong>, la raíz de un repo privado: ahí crea <code>health/</code> con las
+          aplicaciones, las versiones y las notas. Es la que se conecta aquí.
+        </li>
+        <li>
+          <strong>La del colector</strong>, la que tiene <code>index.json</code>: se conecta
+          después, con «⧉ fuente», y solo se lee.
+        </li>
+      </ol>
       {#if healthFolder.supported}
         <button type="button" class="btn primary" onclick={() => ui.openFolder(HEALTH_ID)}>
           conectar una carpeta…
@@ -118,6 +128,16 @@
     font-size: 14px;
     line-height: 1.5;
     color: var(--text-mid);
+  }
+  .empty ol {
+    margin: 0 0 16px;
+    padding-left: 20px;
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--text-mid);
+  }
+  .empty li + li {
+    margin-top: 6px;
   }
   .empty .warning {
     color: var(--danger);

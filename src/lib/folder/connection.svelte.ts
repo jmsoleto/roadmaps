@@ -78,6 +78,11 @@ export interface ConnectionConfig {
   dataNoun: string;
   /** Another application's name, from its id, for refusing its folder. */
   nameOf(appId: string): string;
+  /**
+   * A folder this application must never write in, recognised by what is in
+   * it: the message to refuse it with, or `null`. Checked before anything else.
+   */
+  refuse?(chosen: FolderDir): Promise<string | null>;
 }
 
 /**
@@ -200,6 +205,8 @@ export class FolderConnection {
   async choose(): Promise<ConnectPlan> {
     const chosen = await this.deps.pick();
     if (!chosen) return { kind: 'cancelled' };
+    const refused = await this.config.refuse?.(chosen);
+    if (refused) return { kind: 'rejected', message: refused };
     const { appId, appName, dataNoun, format } = this.config;
     const inspection = await inspectFolder(chosen, appId, format);
     switch (inspection.kind) {

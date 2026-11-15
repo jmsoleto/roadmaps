@@ -411,6 +411,17 @@ describe('la conexión de Health Hub', () => {
     expect(store.vigilada('pedidos')?.nombre).toBe('Pedidos');
   });
 
+  it('rechaza la carpeta de datos del colector sin escribir, y dice que es la fuente', async () => {
+    root.put('index.json', JSON.stringify({ formatVersion: 1, apps: {} }));
+    root.put('series/cex-es/peticiones/2026-11.jsonl', '');
+    await folder.start();
+    const plan = await folder.choose();
+    expect(plan.kind).toBe('rejected');
+    expect(plan.kind === 'rejected' && plan.message).toMatch(/carpeta de datos del colector/);
+    expect(root.writes).toEqual([]);
+    expect(await subfolder(root, 'health')).toBeNull();
+  });
+
   it('rechaza la carpeta de otra aplicación sin escribir', async () => {
     await writeText(root, MARKER_FILE, JSON.stringify({ app: 'links', format: 1 }));
     await folder.start();
