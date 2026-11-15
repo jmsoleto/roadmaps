@@ -109,9 +109,20 @@ Alternativa descartada: vincular por convención, con el id de la vigilada igual
 
 `chart.ts` gana el periodo `'horas'` (los últimos 7 días hasta `datosHasta`) con puntos por hora, ticks por día y sin media móvil. Las subidas, que solo tienen día, se marcan al inicio de ese día. La tasa por hora y por rango es una función pura en `fuente/rate.ts`: `tasa(errores, peticiones)`, que vale `null` si las peticiones suman 0. La tendencia diaria ya calcula tasa cuando hay peticiones completas. Solo hay que asegurar el caso de peticiones 0, que hoy no tiene test.
 
-### D8: Catálogo inicial con los ids del colector
+### D8: El catálogo lo manda el colector
 
-`metricasIniciales()` pasa a `no-controlados`, `errores-50x`, `errores-404`, `errores-40x` y `peticiones`. Health Hub no reescribe un `catalogo.json` existente: hacerlo sería una normalización sin gesto sobre datos del usuario. La carpeta real, creada con el catálogo anterior y sin observaciones, se corrige a mano (ver Migration Plan).
+Con la fuente conectada, el catálogo de los paneles se deriva en `fuente/catalog.ts` y nunca se escribe:
+
+- **Métricas, ids y nombres:** los de `index.json`. El nombre es el de la primera aplicación de la fuente que la tiene. En el panel de cada aplicación vinculada se usa el nombre que le da su propia aplicación: MYA llama a su métrica «Errores no controlados (internal server error)».
+- **Clase:** el colector no la da, y sin ella no se puede leer una tendencia. Sale de `catalogo.json` si la métrica está listada ahí; si no, de la tabla de ids conocidos del colector (`CLASE_COLECTOR`). Una métrica que no está en ninguno de los dos no se muestra, y se avisa, porque inventarle la clase decidiría cómo se juzgan sus subidas. Para dársela basta con añadirla a `catalogo.json`, sin tocar código.
+- **Métricas propias de la carpeta:** se quedan solo si la carpeta tiene datos de ellas. Así un `catalogo.json` antiguo (`500`, `400`, `403`) no hay que editarlo ni deja columnas vacías.
+- **Zona:** la de `catalogo.json`.
+
+Sin fuente, el catálogo es el de la carpeta, como antes. `metricasIniciales()` usa los ids del colector para que una carpeta nueva coincida desde el principio.
+
+Alternativa descartada: pedir al usuario que reescriba `catalogo.json` a mano. Duplica en dos sitios algo que decide el colector, y se desincroniza en cuanto el colector añade o renombra una métrica.
+
+Alternativa descartada: pedir al colector que añada la clase a `index.json`. La clase es una forma de leer los datos, que corresponde al visor, no al colector.
 
 ## Risks / Trade-offs
 
@@ -125,7 +136,6 @@ Alternativa descartada: vincular por convención, con el id de la vigilada igual
 ## Migration Plan
 
 1. Desplegar como siempre a GitHub Pages.
-2. En la carpeta real de Health Hub, reemplazar `metricas` de `catalogo.json` por las cinco nuevas. Hoy no tiene observaciones, así que no hay nada que migrar. El README lo indica.
-3. Conectar la fuente (`…/customer-health-viewer/data`) y añadir «CEX ES» y «MYA» desde ella.
+2. Conectar la fuente (`…/customer-health-viewer/data`) y añadir «CEX ES» y «MYA» desde ella.
 
 Para volver atrás basta con revertir el commit. La versión anterior conserva los campos que no conoce (su test «no pierde un campo que no conoce»), así que `fuente` y `nota` sobreviven y vuelven a servir al redesplegar.

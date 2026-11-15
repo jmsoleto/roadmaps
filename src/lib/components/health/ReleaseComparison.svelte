@@ -20,7 +20,7 @@
   let { app, version }: Props = $props();
 
   const comparacion = $derived(
-    compararVersion(version, app, health.observacionesDe(app.id), health.data.catalogo, health.hoy),
+    compararVersion(version, app, health.observacionesDe(app.id), health.catalogo, health.hoy),
   );
   const hayEstimados = $derived(
     comparacion.metricas.some((m) => m.kind === 'completa' && m.estimado),

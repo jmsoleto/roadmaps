@@ -27,11 +27,3 @@ describe('el ejemplo de entrada del README', () => {
     expect(f.ignoradas).toEqual([]);
   });
 });
-
-describe('el catálogo que el README manda poner a mano', () => {
-  it('es el de una carpeta nueva', () => {
-    const lista = /```json\n(\[\n\s*\{ "id": "no-controlados"[\s\S]*?)```/.exec(readme);
-    expect(lista).not.toBeNull();
-    expect(JSON.parse(lista![1])).toEqual(metricasIniciales());
-  });
-});

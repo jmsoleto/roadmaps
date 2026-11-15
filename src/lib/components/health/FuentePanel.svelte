@@ -13,7 +13,7 @@
   import { health } from '../../health/store.svelte';
 
   const estado = $derived(healthFuente.estado);
-  const zona = $derived(health.data.catalogo.zona);
+  const zona = $derived(health.catalogo.zona);
   const disponibles = $derived(health.disponiblesEnFuente);
   const down = $derived(health.sinCarpeta || !health.ready || health.unavailable !== null);
 

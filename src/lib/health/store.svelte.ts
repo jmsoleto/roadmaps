@@ -32,6 +32,7 @@ import {
 } from './merge';
 import {
   datosIniciales,
+  type Catalogo,
   nuevaVersion,
   nuevaVigilada,
   type HealthData,
@@ -41,6 +42,7 @@ import {
 } from './model';
 import { ordenarPorSalud, salud, type Salud } from './trends';
 import { healthFuente, type AppLeida, type LecturaFuente } from './fuente/connection.svelte';
+import { catalogoEfectivo } from './fuente/catalog';
 import { diaEn, diasCompletos } from './fuente/days';
 import { datosHasta } from './fuente/rate';
 
@@ -193,7 +195,7 @@ export class HealthStore {
     const out = new Map<string, VinculoFuente>();
     const lectura = this.lecturaFuente;
     if (!lectura) return out;
-    const { zona, metricas } = this.data.catalogo;
+    const { zona, metricas } = this.catalogo;
     const enCatalogo = new Set(metricas.map((m) => m.id));
     const tomadas = new Set<string>();
     for (const app of this.data.aplicaciones) {
@@ -209,7 +211,7 @@ export class HealthStore {
       for (const [metrica, { serie }] of leida.series) {
         if (!enCatalogo.has(metrica)) {
           avisos.push(
-            `La fuente tiene la métrica «${metrica}», que no está en el catálogo: no se muestra.`,
+            `La métrica «${metrica}» de la fuente no tiene clase (propia, cliente o peticiones): no se muestra. Añádela con su clase a catalogo.json.`,
           );
           continue;
         }
@@ -269,14 +271,35 @@ export class HealthStore {
       .map((a) => ({ id: a.app.id, nombre: a.app.nombre }));
   }
 
+  /**
+   * The catalogue the panels use: the collector's when it is connected, the
+   * folder's otherwise (health-colector-kibana, D8). Never written.
+   */
+  private efectivo = $derived.by(() => {
+    const conDatos = new Set<string>();
+    for (const filas of Object.values(this.data.observaciones)) {
+      for (const f of filas) conDatos.add(f.metrica);
+    }
+    return catalogoEfectivo(this.data.catalogo, this.lecturaFuente, conDatos);
+  });
+
+  get catalogo(): Catalogo {
+    return this.efectivo.catalogo;
+  }
+
   get metricas(): Metrica[] {
-    return this.data.catalogo.metricas;
+    return this.catalogo.metricas;
+  }
+
+  /** A metric as an application names it: the source's name when it is linked. */
+  nombreMetrica(id: string, metrica: Metrica): string {
+    return this.vinculos.get(id)?.leida.series.get(metrica.id)?.metrica.nombre ?? metrica.nombre;
   }
 
   get conocidas(): Conocidas {
     return {
       aplicaciones: new Set(this.data.aplicaciones.map((a) => a.id)),
-      metricas: new Set(this.data.catalogo.metricas.map((m) => m.id)),
+      metricas: new Set(this.metricas.map((m) => m.id)),
     };
   }
 
@@ -294,14 +317,14 @@ export class HealthStore {
         const hasta = this.vinculos.get(app.id)?.hasta;
         if (hasta !== undefined && hasta !== null) {
           // `to` is where the last closed hour ends, so its day is the hour before's.
-          const dia = diaEn(hasta - 1, this.data.catalogo.zona);
+          const dia = diaEn(hasta - 1, this.catalogo.zona);
           if (pendiente === null || dia > pendiente) pendiente = dia;
         }
         return {
           id: app.id,
           nombre: app.nombre,
           app,
-          salud: salud(this.observacionesDe(app.id), this.data.catalogo, this.hoy, pendiente),
+          salud: salud(this.observacionesDe(app.id), this.catalogo, this.hoy, pendiente),
         };
       }),
     );

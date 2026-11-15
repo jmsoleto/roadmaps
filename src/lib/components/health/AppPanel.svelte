@@ -36,7 +36,7 @@
 
   const filas = $derived(health.observacionesDe(app.id));
   const vinculo = $derived(health.vinculoDe(app.id));
-  const zona = $derived(health.data.catalogo.zona);
+  const zona = $derived(health.catalogo.zona);
   /** Why a linked vigilada shows only the folder's data, when it does. */
   const faltaFuente = $derived.by(() => {
     if (!app.fuente || vinculo) return null;
@@ -115,9 +115,10 @@
   {@const t = salud?.tendencias[m.id]}
   {@const consulta = health.consultaDe(app.id, m.id)}
   {@const tasa = porHoras && healthUi.verTasa && conTasa && m.clase !== 'peticiones'}
+  {@const nombre = health.nombreMetrica(app.id, m)}
   <article class="metrica">
     <header>
-      <h4>{m.nombre}</h4>
+      <h4>{nombre}</h4>
       {#if t && t.estado !== 'sin-datos' && t.recuento !== null}
         <span class="dato">{formatoNumero(t.recuento)} en 7 días</span>
         <span class="dato variacion" class:sube={t.estado === 'sube' && m.clase !== 'peticiones'}>
@@ -144,7 +145,7 @@
     {#if consulta}<code class="texto-consulta">{consulta.texto}</code>{/if}
     {#if porHoras}
       <HourlyChart
-        titulo={tasa ? `Tasa de ${m.nombre}` : m.nombre}
+        titulo={tasa ? `Tasa de ${nombre}` : nombre}
         puntos={puntosPorHora(m)}
         modo={tasa ? 'tasa' : 'recuento'}
         {zona}
@@ -152,7 +153,7 @@
       />
     {:else}
       <MetricChart
-        titulo={m.nombre}
+        titulo={nombre}
         puntos={puntosDe(m)}
         versiones={app.versiones}
         seleccionada={healthUi.versionSel}

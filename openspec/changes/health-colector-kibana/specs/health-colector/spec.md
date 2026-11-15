@@ -43,17 +43,17 @@ El sistema MUST NOT crear, modificar ni borrar ningún fichero de la fuente, y M
 
 El sistema MUST descubrir las aplicaciones y las métricas de la fuente a partir de `apps` en `index.json`, con el nombre visible de cada aplicación. De cada métrica MUST usar su nombre, su consulta efectiva, su `step`, su `to` y sus meses.
 
-Una métrica marcada como retirada MUST NOT ofrecerse como métrica activa. Una métrica de la fuente que no está en el catálogo de Health Hub MUST NOT mostrarse y MUST avisarse, sin inventarle clase.
+Una métrica marcada como retirada MUST NOT ofrecerse como métrica activa. Una métrica de la fuente cuya clase no se conoce MUST NOT mostrarse y MUST avisarse, sin inventarle clase.
 
 #### Scenario: Métrica retirada
 
 - **WHEN** una métrica de la fuente tiene `removed: true`
 - **THEN** no aparece en ningún panel ni en ningún aviso de métrica desconocida
 
-#### Scenario: Métrica fuera del catálogo
+#### Scenario: Métrica sin clase conocida
 
-- **WHEN** la fuente tiene una métrica `errores-429` que el catálogo no contiene
-- **THEN** el sistema avisa de que la fuente tiene una métrica sin catálogo y no la dibuja
+- **WHEN** la fuente tiene una métrica `errores-429` cuya clase no da ni el catálogo de la carpeta ni el sistema
+- **THEN** el sistema avisa de que no tiene clase y no la dibuja
 
 ### Requirement: Leer las series
 

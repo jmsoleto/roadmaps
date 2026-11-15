@@ -62,21 +62,33 @@ El sistema MUST mantener un único catálogo de métricas, común a todas las ap
 - **cliente**: puede deberse a la aplicación o a quien la llama; importa el cambio brusco más que la cifra.
 - **peticiones**: el volumen de tráfico, que sirve de denominador y no es un error.
 
-Una carpeta nueva MUST nacer con estas métricas, cuyos identificadores son los de la fuente: `no-controlados` (errores no controlados) y `errores-50x` (50x) como propias, `errores-404` (404) y `errores-40x` (40x excepto 404) como cliente, y `peticiones`.
+Una carpeta nueva MUST nacer con estas métricas, cuyos identificadores son los del colector: `no-controlados` y `errores-50x` como propias, `errores-404` y `errores-40x` como cliente, y `peticiones`.
 
-Cada aplicación vigilada MUST poder guardar, por métrica, el texto de la consulta que la define en la fuente de los logs. En una aplicación vinculada, la consulta de cada métrica MUST ser la consulta efectiva que da la fuente, y MUST NOT poder editarse en Health Hub. El sistema MUST NOT interpretar ni ejecutar ninguna consulta.
+Con la fuente conectada, el catálogo MUST mandarlo la fuente: las métricas, sus identificadores y sus nombres MUST ser los de la fuente, y el sistema MUST NOT exigir editar el catálogo de la carpeta. La clase de cada métrica MUST tomarse del catálogo de la carpeta si la lista, y si no, de las clases que el sistema conoce para las métricas del colector. Una métrica de la fuente sin clase en ninguno de los dos MUST NOT mostrarse y MUST avisarse. Una métrica del catálogo de la carpeta que no está en la fuente MUST mostrarse solo si la carpeta tiene datos de ella. El catálogo de la carpeta MUST NOT reescribirse por esto.
+
+Cada aplicación vigilada MUST poder guardar, por métrica, el texto de la consulta que la define en la fuente de los logs. En una aplicación vinculada, la consulta y el nombre de cada métrica MUST ser los que da la fuente para esa aplicación, y la consulta MUST NOT poder editarse en Health Hub. El sistema MUST NOT interpretar ni ejecutar ninguna consulta.
 
 El sistema MUST NOT mostrar un total que sume varias métricas, porque unas pueden estar contenidas en otras.
 
 #### Scenario: Carpeta nueva
 
 - **WHEN** el usuario conecta Health Hub a una carpeta vacía
-- **THEN** el catálogo contiene las cinco métricas iniciales, con los identificadores de la fuente y su clase
+- **THEN** el catálogo contiene las cinco métricas iniciales, con los identificadores del colector y su clase
 
-#### Scenario: Consulta de la fuente
+#### Scenario: Carpeta creada antes del colector
+
+- **WHEN** el catálogo de la carpeta tiene `500`, `400` y `403`, sin datos, y se conecta la fuente
+- **THEN** los paneles muestran las métricas de la fuente con sus nombres, y `catalogo.json` no cambia
+
+#### Scenario: Métrica nueva en el colector
+
+- **WHEN** la fuente añade la métrica `errores-429`, que no está en el catálogo de la carpeta
+- **THEN** el sistema avisa de que no tiene clase y no la dibuja; al añadirla con su clase al catálogo de la carpeta, aparece con el nombre de la fuente
+
+#### Scenario: Consulta y nombre de la fuente
 
 - **WHEN** el usuario ve una métrica de una aplicación vinculada
-- **THEN** ve la consulta efectiva que da la fuente y no puede editarla
+- **THEN** ve el nombre y la consulta efectiva que da la fuente para esa aplicación, y no puede editar la consulta
 
 #### Scenario: No se suman métricas
 

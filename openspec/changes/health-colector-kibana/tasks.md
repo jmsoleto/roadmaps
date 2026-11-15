@@ -35,4 +35,10 @@
 
 - [x] 6.1 Documentar en el README la fuente: qué carpeta elegir, qué se lee y qué se ignora, el vínculo, la nota y la corrección a mano de un `catalogo.json` antiguo; verificar que los ejemplos del README pasan `readme-contract.test.ts`
 - [x] 6.2 Ejecutar `npm run lint`, `npm run check`, `npm test` y `npm run build`, y verificar que pasan
-- [ ] 6.3 Comprobación manual: en Chrome, con la carpeta real de Health Hub y la fuente `customer-health-viewer/data`, corregir el catálogo, añadir «CEX ES» y «MYA», ver la vista por horas, recargar tras una ejecución del colector, y verificar con `git status` en el repo del colector que la fuente no cambia, y con `git diff` en el de Health Hub que solo cambian `catalogo.json`, `order.json` y los dos `app-*.json`
+- [ ] 6.3 Comprobación manual: en Chrome, con la carpeta real de Health Hub y la fuente `customer-health-viewer/data`, sin editar el catálogo, añadir «CEX ES» y «MYA», ver la vista por horas, recargar tras una ejecución del colector, y verificar con `git status` en el repo del colector que la fuente no cambia, y con `git diff` en el de Health Hub que solo cambian `order.json` y los dos `app-*.json` (`catalogo.json` no se toca)
+
+## 7. El catálogo lo manda el colector
+
+- [x] 7.1 Crear `health/fuente/catalog.ts` con el catálogo efectivo (métricas, ids y nombres de la fuente; clase de `catalogo.json` o de los ids conocidos; métricas propias solo con datos) y usarlo en el store y los paneles, con el nombre de cada aplicación en su panel; verificar con `catalog.test.ts` sobre el `index.json` real del colector (host sustituido, porque el repo es público), con un test del store en el que un `catalogo.json` antiguo no se toca, y con un test de lectura de su `.jsonl` real (una semana y luego una hora, contiguas)
+- [x] 7.2 Quitar del README la edición a mano del catálogo y explicar cómo se da clase a una métrica nueva del colector; verificar con `readme-contract.test.ts`
+

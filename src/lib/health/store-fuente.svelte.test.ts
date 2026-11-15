@@ -200,7 +200,7 @@ describe('Health Hub con la fuente conectada', () => {
     const { store } = await preparar(datosIniciales(ZONA), colector({ extra: ['errores-429'] }));
     store.anadirDesdeFuente('cex-es');
     expect(store.vinculoDe('cex-es')!.avisos).toContain(
-      'La fuente tiene la métrica «errores-429», que no está en el catálogo: no se muestra.',
+      'La métrica «errores-429» de la fuente no tiene clase (propia, cliente o peticiones): no se muestra. Añádela con su clase a catalogo.json.',
     );
     expect(store.observacionesDe('cex-es').some((o) => o.metrica === 'errores-429')).toBe(false);
   });
@@ -224,6 +224,30 @@ describe('Health Hub con la fuente conectada', () => {
     store.anadirDesdeFuente('cex-es');
     // 23:00Z is midnight of the 10th in Madrid: the last hour with data is on the 9th.
     expect(store.filas.find((f) => f.id === 'cex-es')!.salud.captura!.restantes).toBe(2);
+  });
+
+  it('con un catálogo antiguo en la carpeta, manda el del colector y el fichero no se toca', async () => {
+    const antiguo: HealthData = {
+      ...datosIniciales(ZONA),
+      catalogo: {
+        zona: ZONA,
+        metricas: [
+          { id: 'no-controlados', nombre: 'No controlados', clase: 'propia' },
+          { id: '500', nombre: '500', clase: 'propia' },
+          { id: '400', nombre: '400', clase: 'cliente' },
+          { id: '403', nombre: '403', clase: 'cliente' },
+          { id: 'peticiones', nombre: 'Peticiones', clase: 'peticiones' },
+        ],
+      },
+    };
+    const { store, dir } = await preparar(antiguo);
+    const antes = dir.read('catalogo.json');
+    expect(store.metricas.map((m) => m.id)).toEqual(METRICAS);
+    store.anadirDesdeFuente('cex-es');
+    const fila = store.filas.find((f) => f.id === 'cex-es')!;
+    expect(fila.salud.tendencias['errores-50x'].estado).not.toBe('sin-datos');
+    await store.flush();
+    expect(dir.read('catalogo.json')).toBe(antes);
   });
 
   it('recargar la fuente recoge una línea nueva', async () => {

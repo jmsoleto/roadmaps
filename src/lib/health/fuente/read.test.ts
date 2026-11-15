@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ALCANCE, indiceReal, linea } from './fixtures';
+import { ALCANCE, indiceColector, indiceReal, linea } from './fixtures';
 import { leerIndice, leerSerie, rutaSerie, type Indice } from './read';
 
 const ok = (i: Indice) => {
@@ -174,5 +174,40 @@ describe('las series de la fuente', () => {
     );
     expect([...s.horas.values()]).toEqual([3, 4]);
     expect(s.avisos).toEqual(['cex-es/peticiones: falta el fichero 2027-01.jsonl']);
+  });
+});
+
+describe('los ficheros del colector tal como los escribe hoy', () => {
+  it('lee su index.json', () => {
+    const i = leerIndice(JSON.stringify(indiceColector()));
+    if (i.kind !== 'ok') throw new Error(i.motivo);
+    expect(i.avisos).toEqual([]);
+    expect(i.apps.map((a) => [a.id, a.metricas.map((m) => m.id)])).toEqual([
+      ['cex-es', ['errores-404', 'errores-40x', 'errores-50x', 'no-controlados', 'peticiones']],
+      ['mya', ['no-controlados', 'peticiones']],
+    ]);
+  });
+
+  it('una semana de golpe y luego una hora: contiguas, sin huecos ni avisos', () => {
+    const semana = Array.from({ length: 168 }, (_, i) => (i === 21 || i === 159 ? 1 : 0));
+    const texto = [
+      JSON.stringify({
+        run: '2026-11-13T20:53:49Z',
+        from: '2026-11-06T20:00:00Z',
+        step: 3600,
+        v: semana,
+      }),
+      JSON.stringify({
+        run: '2026-11-13T21:06:04Z',
+        from: '2026-11-13T20:00:00Z',
+        step: 3600,
+        v: [0],
+      }),
+    ].join('\n');
+    const s = leerSerie('cex-es/no-controlados', new Map([['2026-11', texto]]));
+    expect(s.horas.size).toBe(169);
+    expect(s.huecos).toEqual([]);
+    expect(s.avisos).toEqual([]);
+    expect([...s.horas.values()].reduce((a, b) => a + b, 0)).toBe(2);
   });
 });

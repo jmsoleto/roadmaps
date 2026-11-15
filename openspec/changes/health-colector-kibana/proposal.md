@@ -11,7 +11,7 @@ Health Hub ya sabe guardar y analizar la evolución de los errores, pero nadie l
 - El panel de una aplicación vinculada ofrece una vista por horas de los últimos 7 días, con la tasa calculada hora a hora.
 - Siempre se muestra «datos hasta», y el aviso de captura se calcula desde ahí.
 - Cada aplicación vigilada puede llevar una nota, que se muestra junto a sus tasas.
-- **BREAKING**: el catálogo inicial pasa a ser `no-controlados`, `errores-50x`, `errores-404`, `errores-40x` y `peticiones`, los ids del colector. Una carpeta creada con el catálogo anterior se corrige a mano, porque aún no tiene datos.
+- El catálogo lo manda el colector: con la fuente conectada, las métricas, sus ids y sus nombres salen de `index.json`, y `catalogo.json` solo aporta la zona y la clase de las métricas que Health Hub no conoce. Una carpeta antigua no se edita. El catálogo de una carpeta nueva usa ya los ids del colector.
 
 ## Capabilities
 

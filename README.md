@@ -204,19 +204,16 @@ nunca en ella**, con permiso solo de lectura, y no guarda sus datos en ningún s
   para salvedades que Health Hub no puede saber, como que una tasa es aproximada.
 - **«↻ recargar»** vuelve a leer las dos carpetas sin elegirlas de nuevo.
 
-**Una carpeta creada antes del colector** tiene en `catalogo.json` las métricas `500`,
-`400` y `403`. Health Hub no reescribe el catálogo por su cuenta: si aún no tiene
-observaciones, cambia a mano su lista `metricas` por la de una carpeta nueva:
-
-```json
-[
-  { "id": "no-controlados", "nombre": "No controlados", "clase": "propia" },
-  { "id": "errores-50x", "nombre": "50x", "clase": "propia" },
-  { "id": "errores-404", "nombre": "404", "clase": "cliente" },
-  { "id": "errores-40x", "nombre": "40x (sin 404)", "clase": "cliente" },
-  { "id": "peticiones", "nombre": "Peticiones", "clase": "peticiones" }
-]
-```
+**El catálogo lo manda el colector.** Con la fuente conectada, las métricas, sus
+identificadores y sus nombres salen de `index.json`; `catalogo.json` no hay que tocarlo.
+Lo único que el colector no dice es la clase de cada métrica (propia, cliente o
+peticiones), y Health Hub ya conoce la de las suyas: `no-controlados` y `errores-50x` son
+propias, `errores-404` y `errores-40x` de cliente, y `peticiones` el tráfico. Si el
+colector añade una métrica nueva, el panel avisa de que no tiene clase; para dársela,
+añádela a `metricas` en `catalogo.json` con su `id` y su `clase`. Las métricas de
+`catalogo.json` que no están en la fuente solo se muestran si la carpeta tiene datos de
+ellas, así que una carpeta creada antes del colector (con `500`, `400` y `403`) funciona
+sin editarla.
 
 **La salud** es un estado derivado de reglas que el panel global explica: compara los 7
 últimos días con datos con los 7 anteriores. Sus umbrales son una decisión inicial, y
