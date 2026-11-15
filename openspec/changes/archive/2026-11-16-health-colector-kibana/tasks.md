@@ -35,7 +35,8 @@
 
 - [x] 6.1 Documentar en el README la fuente: qué carpeta elegir, qué se lee y qué se ignora, el vínculo, la nota y la corrección a mano de un `catalogo.json` antiguo; verificar que los ejemplos del README pasan `readme-contract.test.ts`
 - [x] 6.2 Ejecutar `npm run lint`, `npm run check`, `npm test` y `npm run build`, y verificar que pasan
-- [ ] 6.3 Comprobación manual: en Chrome, con la carpeta real de Health Hub y la fuente `customer-health-viewer/data`, sin editar el catálogo, añadir «CEX ES» y «MYA», ver la vista por horas, recargar tras una ejecución del colector, y verificar con `git status` en el repo del colector que la fuente no cambia, y con `git diff` en el de Health Hub que solo cambian `order.json` y los dos `app-*.json` (`catalogo.json` no se toca)
+- [x] 6.3 Comprobación manual: en Chrome, con la carpeta real de Health Hub y la fuente `customer-health-viewer/data`, sin editar el catálogo, añadir «CEX ES» y «MYA», ver la vista por horas, recargar tras una ejecución del colector, y verificar con `git status` en el repo del colector que la fuente no cambia, y con `git diff` en el de Health Hub que solo cambian `order.json` y los dos `app-*.json` (`catalogo.json` no se toca)
+  - Dada por buena por el usuario al pedir el archivado (2026-11-16), tras conectar en el portátil del trabajo la carpeta propia y la fuente reales. Al hacerlo salió que la carpeta del colector se podía elegir como carpeta propia; se corrigió en la 7.3.
 
 ## 7. El catálogo lo manda el colector
 
