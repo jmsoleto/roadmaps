@@ -12,6 +12,7 @@
     escalaY,
     formatoEje,
     formatoNumero,
+    indiceBajoPuntero,
     pathDe,
     ticksMes,
     tramos,
@@ -86,10 +87,9 @@
   });
 
   function mover(e: PointerEvent) {
+    // The listener is the plot rect, which already starts at PAD.left.
     const caja = (e.currentTarget as SVGElement).getBoundingClientRect();
-    const px = e.clientX - caja.left - PAD.left;
-    const i = Math.round((px / plotW) * (puntos.length - 1));
-    hover = i >= 0 && i < puntos.length ? i : null;
+    hover = indiceBajoPuntero(e.clientX - caja.left, plotW, puntos.length);
   }
 
   function teclaMarca(e: KeyboardEvent, id: string) {

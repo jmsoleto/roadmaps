@@ -14,6 +14,7 @@
     formatoEje,
     formatoInstante,
     formatoNumero,
+    indiceBajoPuntero,
     formatoTasa,
     indiceDeDia,
     pathDe,
@@ -82,10 +83,9 @@
   const eje = (t: number) => (modo === 'tasa' ? `${formatoEje(t)} %` : formatoEje(t));
 
   function mover(e: PointerEvent) {
+    // The listener is the plot rect, which already starts at PAD.left.
     const caja = (e.currentTarget as SVGElement).getBoundingClientRect();
-    const px = e.clientX - caja.left - PAD.left;
-    const i = Math.round((px / plotW) * (puntos.length - 1));
-    hover = i >= 0 && i < puntos.length ? i : null;
+    hover = indiceBajoPuntero(e.clientX - caja.left, plotW, puntos.length);
   }
 
   const punto = $derived(hover === null ? null : (puntos[hover] ?? null));

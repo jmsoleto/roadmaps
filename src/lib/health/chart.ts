@@ -143,6 +143,18 @@ export function pathDe(
   return partes.join(' ');
 }
 
+/**
+ * The point under the pointer, from its offset inside the plot area (0 at the
+ * first point, `plotW` at the last). The offset is measured from the plot, not
+ * from the svg: subtracting the left padding again would put the reading
+ * behind the cursor and leave the last points out of reach.
+ */
+export function indiceBajoPuntero(offset: number, plotW: number, n: number): number | null {
+  if (n === 0) return null;
+  const i = Math.round((offset / plotW) * (n - 1));
+  return i >= 0 && i < n ? i : null;
+}
+
 export interface TickMes {
   indice: number;
   etiqueta: string;

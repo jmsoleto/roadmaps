@@ -234,3 +234,17 @@ describe('una variación sin base', () => {
     expect(chart.formatoVariacion(null, false)).toBe('—');
   });
 });
+
+describe('el punto bajo el puntero', () => {
+  it('lee el punto que hay debajo, sin desfase, de punta a punta', () => {
+    expect(chart.indiceBajoPuntero(0, 600, 7)).toBe(0);
+    expect(chart.indiceBajoPuntero(300, 600, 7)).toBe(3);
+    expect(chart.indiceBajoPuntero(600, 600, 7)).toBe(6);
+  });
+
+  it('fuera de la zona de datos no hay punto', () => {
+    expect(chart.indiceBajoPuntero(-60, 600, 7)).toBeNull();
+    expect(chart.indiceBajoPuntero(660, 600, 7)).toBeNull();
+    expect(chart.indiceBajoPuntero(10, 600, 0)).toBeNull();
+  });
+});
