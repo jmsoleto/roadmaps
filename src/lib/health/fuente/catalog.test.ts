@@ -9,7 +9,10 @@ import { leerIndice } from './read';
 function lectura(raw = indiceColector()): LecturaFuente {
   const i = leerIndice(JSON.stringify(raw));
   if (i.kind !== 'ok') throw new Error(i.motivo);
-  return { apps: i.apps.map((app) => ({ app, series: new Map(), avisos: [] })), avisos: [] };
+  return {
+    apps: i.apps.map((app) => ({ app, series: new Map(), despliegues: [], avisos: [] })),
+    avisos: [],
+  };
 }
 
 /** The catalogue a folder got before the collector existed. */

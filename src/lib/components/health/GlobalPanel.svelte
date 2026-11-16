@@ -7,6 +7,8 @@
    * side here is how each one has changed.
    */
   import { formatoNumero, formatoVariacion, puntos as puntosDe } from '../../health/chart';
+  import { ultimoRelease } from '../../health/fuente/despliegues';
+  import { ultimaVersion as ultimaDe } from '../../health/marcas';
   import { health, type FilaPanel } from '../../health/store.svelte';
   import { healthUi } from '../../health/ui.svelte';
   import {
@@ -49,10 +51,14 @@
     return dias.map((p) => ({ ...p, valor: p.media }));
   }
 
-  function ultimaVersion(fila: FilaPanel): string {
-    let ultima = null as FilaPanel['app']['versiones'][number] | null;
-    for (const v of fila.app.versiones) if (!ultima || v.dia > ultima.dia) ultima = v;
-    return ultima?.version ?? '—';
+  /** The latest manual release or successful deployment, whichever is newer (health-despliegues, D7). */
+  function ultimaVersion(fila: FilaPanel) {
+    const despliegues = health.desplieguesDe(fila.id);
+    return ultimaDe(
+      fila.app.versiones,
+      despliegues ? ultimoRelease(despliegues) : null,
+      health.catalogo.zona,
+    );
   }
 
   function celda(t: Tendencia): string {
@@ -99,6 +105,7 @@
       <tbody>
         {#each filas as fila (fila.id)}
           {@const serie = evolucion(fila)}
+          {@const ultima = ultimaVersion(fila)}
           <tr onclick={() => health.abrir(fila.id)}>
             <th scope="row">
               <button type="button" class="nombre" onclick={() => health.abrir(fila.id)}>
@@ -123,7 +130,21 @@
             <td>
               {#if serie}<Sparkline puntos={serie} />{:else}<span class="dim">sin datos</span>{/if}
             </td>
-            <td class="mono">{ultimaVersion(fila)}</td>
+            <td class="mono">
+              {#if ultima}
+                {ultima.version}
+                <span
+                  class="origen"
+                  title={ultima.origen === 'despliegue'
+                    ? 'último despliegue a producción, leído de la fuente'
+                    : 'subida registrada a mano'}
+                >
+                  {ultima.origen === 'despliegue' ? '● desplegada' : '✎ manual'}
+                </span>
+              {:else}
+                —
+              {/if}
+            </td>
             <td class="mono">
               {#if fila.salud.captura}
                 <span
@@ -163,6 +184,11 @@
 {/if}
 
 <style>
+  .origen {
+    display: block;
+    font-size: 10.5px;
+    color: var(--text-dim);
+  }
   .empty {
     max-width: 480px;
     margin: 40px auto;

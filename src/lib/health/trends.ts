@@ -12,14 +12,8 @@
 import type { IsoDate } from '../model/types';
 import { addDays, dayIndex } from '../time/timeline';
 import type { Tone } from '../hub/types';
-import type {
-  Catalogo,
-  ClaseMetrica,
-  Metrica,
-  Observacion,
-  VersionSubida,
-  Vigilada,
-} from './model';
+import type { Catalogo, ClaseMetrica, Metrica, Observacion } from './model';
+import { abreComparacion, sinDuplicados, type Marca } from './marcas';
 
 /** Minimum variation for a metric of the application's own errors to count. */
 export const UMBRAL_PROPIA = 0.2;
@@ -312,27 +306,34 @@ export type ComparacionMetrica =
 
 export interface Comparacion {
   metricas: ComparacionMetrica[];
-  /** Other releases in either window, which is why the effect cannot be attributed to one. */
-  otras: VersionSubida[];
+  /**
+   * Other releases in either window, which is why the effect cannot be
+   * attributed to one: manual ones and successful deployments, each release
+   * once (health-hub, «Comparación antes y después de una subida»).
+   */
+  otras: Marca[];
 }
 
 /**
  * The 7 days before a release against the 7 after, without the day itself: it
  * mixes hours from both sides. It states what happened around the release, and
- * cannot say the release caused it.
+ * cannot say the release caused it. `marcas` are every mark of the application,
+ * for the warning; a failed deployment never opens a comparison, so asking for
+ * one is a mistake of the caller and gives no metrics.
  */
-export function compararVersion(
-  version: VersionSubida,
-  app: Vigilada,
+export function compararMarca(
+  marca: Marca,
+  marcas: readonly Marca[],
   filas: readonly Observacion[],
   catalogo: Catalogo,
   hoy: IsoDate,
 ): Comparacion {
+  if (!abreComparacion(marca)) return { metricas: [], otras: [] };
   const indice = indexar(filas);
   const idPeticiones = idPeticionesDe(catalogo);
-  const desdeAntes = addDays(version.dia, -VENTANA);
-  const desdeDespues = addDays(version.dia, 1);
-  const finDespues = addDays(version.dia, VENTANA);
+  const desdeAntes = addDays(marca.dia, -VENTANA);
+  const desdeDespues = addDays(marca.dia, 1);
+  const finDespues = addDays(marca.dia, VENTANA);
 
   const metricas = catalogo.metricas.map((metrica): ComparacionMetrica => {
     const dias = indice.get(metrica.id);
@@ -363,8 +364,76 @@ export function compararVersion(
     };
   });
 
-  const otras = app.versiones.filter(
-    (v) => v.id !== version.id && v.dia >= desdeAntes && v.dia <= finDespues,
+  const enVentana = marcas.filter(
+    (m) => m.id !== marca.id && abreComparacion(m) && m.dia >= desdeAntes && m.dia <= finDespues,
   );
-  return { metricas, otras };
+  return { metricas, otras: sinDuplicados(marca, enVentana) };
+}
+
+// ---- around a deployment, by the hour ----
+
+/** Hours compared on each side of a deployment in the hourly view (health-despliegues, D5). */
+export const VENTANA_HORAS = 24;
+const HORA_MS = 3_600_000;
+
+export type ComparacionHoras =
+  | {
+      kind: 'completa';
+      antes: number;
+      despues: number;
+      variacion: number | null;
+      base: 'tasa' | 'recuento';
+      /** By the trend's rule: enough of a change, and enough of a rise. */
+      sube: boolean;
+    }
+  /** The 24 hours after have not all been collected yet: this many to go. */
+  | { kind: 'pendiente'; quedan: number }
+  /** Some hour has no data, and it will not come back. */
+  | { kind: 'insuficiente'; faltan: number };
+
+function ventanaHoras(horas: ReadonlyMap<number, number> | undefined, desde: number): Ventana {
+  let suma = 0;
+  let faltan = 0;
+  for (let i = 0; i < VENTANA_HORAS; i++) {
+    const v = horas?.get(desde + i * HORA_MS);
+    if (v === undefined) faltan++;
+    else suma += v;
+  }
+  return { suma, completa: faltan === 0, faltan, estimado: false };
+}
+
+/**
+ * The 24 whole hours before the hour a deployment finished in, against the 24
+ * after it, without that hour: it mixes both sides. `hasta` is the end of the
+ * last hour collected. Like the comparison by days, it describes what
+ * coincided in time, never a cause.
+ */
+export function compararHoras(
+  instante: number,
+  horas: ReadonlyMap<number, number> | undefined,
+  peticiones: ReadonlyMap<number, number> | null,
+  clase: ClaseMetrica,
+  hasta: number,
+): ComparacionHoras {
+  const h0 = Math.floor(instante / HORA_MS) * HORA_MS;
+  const desdeAntes = h0 - VENTANA_HORAS * HORA_MS;
+  const desdeDespues = h0 + HORA_MS;
+  const finDespues = desdeDespues + VENTANA_HORAS * HORA_MS;
+  if (finDespues > hasta) {
+    return { kind: 'pendiente', quedan: Math.ceil((finDespues - hasta) / HORA_MS) };
+  }
+  const antes = ventanaHoras(horas, desdeAntes);
+  const despues = ventanaHoras(horas, desdeDespues);
+  if (!antes.completa || !despues.completa) {
+    return { kind: 'insuficiente', faltan: antes.faltan + despues.faltan };
+  }
+  const { variacion, base } = variacionEntre(
+    antes,
+    despues,
+    peticiones ? ventanaHoras(peticiones, desdeAntes) : null,
+    peticiones ? ventanaHoras(peticiones, desdeDespues) : null,
+  );
+  const cambio = despues.suma - antes.suma;
+  const sube = cambio >= MINIMO_ABSOLUTO && (variacion === null || variacion >= umbralDe(clase));
+  return { kind: 'completa', antes: antes.suma, despues: despues.suma, variacion, base, sube };
 }

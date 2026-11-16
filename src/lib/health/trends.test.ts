@@ -1,9 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import { addDays } from '../time/timeline';
 import { metricasIniciales, type Catalogo, type Observacion, type Vigilada } from './model';
+import { lineaDespliegue } from './fuente/fixtures';
+import { leerLineaDespliegue, type Despliegue } from './fuente/despliegues';
+import { marcaDespliegue, marcaManual, marcasDe, type Marca } from './marcas';
 import {
   captura,
-  compararVersion,
+  compararHoras,
+  compararMarca,
   indexar,
   ordenarPorSalud,
   salud,
@@ -224,6 +228,14 @@ describe('la comparación antes y después de una subida', () => {
     consultas: {},
     versiones: [version, ...otras],
   });
+  /** A manual release compared among the marks of `a`, with no deployments. */
+  const compararVersion = (
+    v: typeof version,
+    a: Vigilada,
+    filas: Observacion[],
+    cat: Catalogo,
+    hoy: string,
+  ) => compararMarca(marcaManual(v), marcasDe(a, [], cat.zona), filas, cat, hoy);
 
   /** A week before at `antes`, the day itself at `dia`, a week after at `despues`. */
   function alrededor(metrica: string, antes: number, despues: number, dia = 9999): Observacion[] {
@@ -292,11 +304,164 @@ describe('la comparación antes y después de una subida', () => {
     expect(c.otras.map((v) => v.id)).toEqual(['w']);
   });
 
+  /** A deployment finished at noon UTC of `dia`. */
+  const desp = (runId: number, dia: string, campos: Record<string, unknown> = {}): Despliegue =>
+    leerLineaDespliegue(
+      lineaDespliegue({
+        runId,
+        finishedAt: `${dia}T12:00:00Z`,
+        version: `0.0.${runId}`,
+        ...campos,
+      }),
+    )!;
+  const marcas = (...d: Despliegue[]): Marca[] => marcasDe(app(), d, catalogo.zona);
+
+  it('un despliegue con éxito abre la comparación en el día de su finishedAt', () => {
+    const d = desp(1, DIA);
+    const c = compararMarca(
+      marcaDespliegue(d, catalogo.zona),
+      marcas(d),
+      alrededor('errores-50x', 100, 130),
+      catalogo,
+      HOY,
+    );
+    expect(c.metricas.find((x) => x.metrica.id === 'errores-50x')).toMatchObject({
+      kind: 'completa',
+      mediaAntes: 100,
+    });
+  });
+
+  it('un despliegue fallido no abre la comparación', () => {
+    const d = desp(1, DIA, { result: 'failure' });
+    const c = compararMarca(marcaDespliegue(d, catalogo.zona), marcas(d), [], catalogo, HOY);
+    expect(c).toEqual({ metricas: [], otras: [] });
+  });
+
+  it('un fallo o un cancelado dentro de la ventana no cuenta como otra subida', () => {
+    const fallo = desp(2, addDays(DIA, 2), { result: 'failure' });
+    const cancelado = desp(3, addDays(DIA, -2), { result: 'cancelled' });
+    const c = compararMarca(marcaManual(version), marcas(fallo, cancelado), [], catalogo, HOY);
+    expect(c.otras).toEqual([]);
+  });
+
+  it('un despliegue con éxito dentro de la ventana sí cuenta, y un rollback también', () => {
+    const otro = desp(2, addDays(DIA, 2));
+    const rollback = desp(3, addDays(DIA, 3), { kind: 'rollback' });
+    const c = compararMarca(marcaManual(version), marcas(otro, rollback), [], catalogo, HOY);
+    expect(c.otras.map((m) => m.id)).toEqual(['run-2', 'run-3']);
+  });
+
+  it('una manual y un despliegue de la misma versión y día son una sola subida', () => {
+    const mismo = desp(9, DIA, { version: '4.2.0' });
+    const desdeManual = compararMarca(marcaManual(version), marcas(mismo), [], catalogo, HOY);
+    expect(desdeManual.otras).toEqual([]);
+    const desdeDespliegue = compararMarca(
+      marcaDespliegue(mismo, catalogo.zona),
+      marcas(mismo),
+      [],
+      catalogo,
+      HOY,
+    );
+    expect(desdeDespliegue.otras).toEqual([]);
+  });
+
+  it('dos despliegues sin versión nunca se toman por la misma subida', () => {
+    const a = desp(5, addDays(DIA, 1), { version: null });
+    const b = desp(6, addDays(DIA, 1), { version: null });
+    const c = compararMarca(marcaManual(version), marcas(a, b), [], catalogo, HOY);
+    expect(c.otras.map((m) => m.id)).toEqual(['run-5', 'run-6']);
+  });
+
   it('indica si usa valores estimados', () => {
     const filas = alrededor('errores-50x', 100, 130);
     filas[1] = { ...filas[1], estimado: true };
     expect(de(compararVersion(version, app(), filas, catalogo, HOY), 'errores-50x')).toMatchObject({
       estimado: true,
     });
+  });
+});
+
+describe('las marcas de una aplicación', () => {
+  const zona = 'Europe/Madrid';
+  const d = (campos: Record<string, unknown>) => leerLineaDespliegue(lineaDespliegue(campos))!;
+
+  it('el día de un despliegue es el de su finishedAt en la zona del catálogo', () => {
+    const tarde = d({ finishedAt: '2026-11-16T23:30:00Z' });
+    expect(marcaDespliegue(tarde, zona).dia).toBe('2026-11-17');
+  });
+
+  it('pedido en octubre y terminado en noviembre: su día es de noviembre', () => {
+    const m = marcaDespliegue(d({}), zona);
+    expect(m).toMatchObject({ id: 'run-41036559302', dia: '2026-11-03', version: '0.0.543' });
+  });
+
+  it('junta las manuales y los despliegues', () => {
+    const app = { versiones: [{ id: 'v', version: '1.0', dia: '2026-11-01' }] };
+    expect(marcasDe(app, [d({})], zona).map((m) => [m.origen, m.id])).toEqual([
+      ['manual', 'v'],
+      ['despliegue', 'run-41036559302'],
+    ]);
+  });
+});
+
+describe('alrededor de un despliegue, por horas', () => {
+  const H = 3_600_000;
+  const T = Date.parse('2026-11-10T10:24:00Z');
+  const H0 = Date.parse('2026-11-10T10:00:00Z');
+  const HASTA = H0 + 48 * H;
+
+  /** 24 hours before the deployment's hour at `antes`, the hour itself at 999, 24 after at `despues`. */
+  function horas(antes: number, despues: number): Map<number, number> {
+    const out = new Map<number, number>([[H0, 999]]);
+    for (let i = 1; i <= 24; i++) {
+      out.set(H0 - i * H, antes / 24);
+      out.set(H0 + i * H, despues / 24);
+    }
+    return out;
+  }
+
+  it('sube cuando las 24 horas siguientes pasan el umbral de la tendencia', () => {
+    expect(compararHoras(T, horas(48, 144), null, 'propia', HASTA)).toMatchObject({
+      kind: 'completa',
+      antes: 48,
+      despues: 144,
+      variacion: 2,
+      base: 'recuento',
+      sube: true,
+    });
+  });
+
+  it('un cambio pequeño en números absolutos no sube', () => {
+    expect(compararHoras(T, horas(24, 40.8), null, 'propia', HASTA)).toMatchObject({
+      kind: 'completa',
+      sube: false,
+    });
+  });
+
+  it('en la clase cliente hace falta más para subir', () => {
+    expect(compararHoras(T, horas(240, 312), null, 'cliente', HASTA).kind).toBe('completa');
+    expect(compararHoras(T, horas(240, 312), null, 'cliente', HASTA)).toMatchObject({
+      sube: false,
+    });
+    expect(compararHoras(T, horas(240, 312), null, 'propia', HASTA)).toMatchObject({ sube: true });
+  });
+
+  it('una hora sin dato deja la comparación sin porcentaje', () => {
+    const h = horas(48, 144);
+    h.delete(H0 - 3 * H);
+    expect(compararHoras(T, h, null, 'propia', HASTA)).toEqual({ kind: 'insuficiente', faltan: 1 });
+  });
+
+  it('un despliegue de hace 5 horas dice cuántas faltan', () => {
+    expect(compararHoras(T, horas(48, 144), null, 'propia', H0 + 6 * H)).toEqual({
+      kind: 'pendiente',
+      quedan: 19,
+    });
+  });
+
+  it('usa la tasa si hay peticiones', () => {
+    const r = compararHoras(T, horas(48, 144), horas(4800, 14400), 'propia', HASTA);
+    expect(r).toMatchObject({ kind: 'completa', base: 'tasa', sube: false });
+    if (r.kind === 'completa') expect(r.variacion).toBeCloseTo(0);
   });
 });

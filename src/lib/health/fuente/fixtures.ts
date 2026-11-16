@@ -122,3 +122,141 @@ export function indiceColector(): Record<string, unknown> {
     skipped: [],
   };
 }
+
+/** One deployment line, as the collector writes it: every field present. */
+export function lineaDespliegue(campos: Record<string, unknown> = {}): string {
+  return JSON.stringify({
+    runId: 41036559302,
+    attempt: 1,
+    kind: 'release',
+    result: 'success',
+    version: '0.0.543',
+    crq: 'CRQ000002715667',
+    requestedAt: '2026-10-30T09:52:12Z',
+    startedAt: '2026-11-03T01:00:08Z',
+    finishedAt: '2026-11-03T01:24:24Z',
+    plannedFrom: '2026-11-03T01:00:00Z',
+    plannedTo: '2026-11-03T04:00:00Z',
+    actor: 'alguien_geci',
+    runUrl: 'https://github.com/org/deploy/actions/runs/41036559302',
+    originBranch: 'vuestore/mya/release/release_17_01',
+    components: [{ name: 'msh3-my-account-web', version: '0.1.537' }],
+    rollbackOf: null,
+    gdv: { status: 'pending' },
+    collectedAt: '2026-11-03T05:00:00Z',
+    ...campos,
+  });
+}
+
+/** A `found` GDV whose changelog tries to be HTML and Markdown. */
+export const GDV_FOUND = {
+  status: 'found',
+  key: 'GDV-24812',
+  url: 'https://jira.example/browse/GDV-24812',
+  summary: 'MSH3_MY_ACCOUNT - Despliegue_Release_26_17_01_hotfix',
+  releaseNotes: 'IAMC:\r\n * MYA - <img src=x onerror=alert(1)> **negrita**\r\n',
+  releaseNotesTruncated: false,
+  deployedAt: '2026-11-03T02:02:00Z',
+  release: { key: 'PD00000473-15592', summary: 'Release_26_17_01_hotfix_MYA' },
+};
+
+/**
+ * `indiceReal` with deployments: `mya` has months with a gap, and `pagos` has
+ * deployments and no metrics. `mya` also carries a key nobody knows.
+ */
+export function indiceConDespliegues(): Record<string, unknown> {
+  const i = indiceReal() as { apps: Record<string, Record<string, unknown>> };
+  i.apps.mya.deployments = {
+    repo: 'org/deploy',
+    count: 6,
+    from: '2026-04-02T09:12:03Z',
+    to: '2026-11-03T04:51:10Z',
+    months: ['2026-04', '2026-10', '2026-11'],
+  };
+  i.apps.mya.alerts = { cualquier: 'cosa' };
+  i.apps.pagos = {
+    name: 'Pagos',
+    metrics: {},
+    deployments: {
+      repo: null,
+      count: 1,
+      from: '2026-11-01T10:00:00Z',
+      to: '2026-11-01T11:00:00Z',
+      months: ['2026-11'],
+    },
+  };
+  return i;
+}
+
+/**
+ * The months of `mya` in `indiceConDespliegues`, by month. Covers: a run
+ * enriched later, two runs with the same version, a rollback with and without
+ * its release, a failure, a cancelled run, a cut line and an unknown kind.
+ */
+export function desplieguesMya(): Map<string, string> {
+  return new Map([
+    [
+      '2026-04',
+      [
+        lineaDespliegue({
+          runId: 100,
+          version: '0.0.300',
+          requestedAt: '2026-04-02T09:12:03Z',
+          finishedAt: '2026-04-02T10:00:00Z',
+          collectedAt: '2026-04-02T11:00:00Z',
+        }),
+      ].join('\n') + '\n',
+    ],
+    [
+      '2026-10',
+      [
+        // Requested in October, finished in November: lives in October's file.
+        lineaDespliegue({ collectedAt: '2026-11-03T05:00:00Z' }),
+        lineaDespliegue({
+          runId: 200,
+          kind: 'release',
+          result: 'failure',
+          requestedAt: '2026-10-29T08:00:00Z',
+          finishedAt: '2026-11-02T22:00:00Z',
+          collectedAt: '2026-11-03T05:00:01Z',
+          gdv: { status: 'not-found' },
+        }),
+        lineaDespliegue({ gdv: GDV_FOUND, collectedAt: '2026-11-16T15:41:51Z' }),
+      ].join('\n') + '\n',
+    ],
+    [
+      '2026-11',
+      [
+        lineaDespliegue({
+          runId: 300,
+          crq: 'CRQ-OTRO',
+          requestedAt: '2026-11-03T06:00:00Z',
+          finishedAt: '2026-11-03T07:00:00Z',
+          collectedAt: '2026-11-03T08:00:00Z',
+        }),
+        lineaDespliegue({
+          runId: 301,
+          kind: 'rollback',
+          version: '0.0.542',
+          requestedAt: '2026-11-04T06:00:00Z',
+          finishedAt: '2026-11-04T07:00:00Z',
+          rollbackOf: 300,
+          gdv: { status: 'not-applicable' },
+          collectedAt: '2026-11-04T08:00:00Z',
+        }),
+        lineaDespliegue({
+          runId: 302,
+          kind: 'rollback',
+          result: 'cancelled',
+          requestedAt: '2026-11-05T06:00:00Z',
+          finishedAt: '2026-11-05T07:00:00Z',
+          rollbackOf: null,
+          gdv: { status: 'not-applicable' },
+          collectedAt: '2026-11-05T08:00:00Z',
+        }),
+        lineaDespliegue({ runId: 303, kind: 'hotfix', collectedAt: '2026-11-06T08:00:00Z' }),
+        '{"runId":304,"attempt":1,"kind":"rel',
+      ].join('\n'),
+    ],
+  ]);
+}

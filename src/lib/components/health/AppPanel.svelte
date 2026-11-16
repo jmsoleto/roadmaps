@@ -16,13 +16,17 @@
     puntosHora,
     rango,
   } from '../../health/chart';
+  import { describir, horaLocal } from '../../health/despliegue-texto';
   import { healthFuente } from '../../health/fuente/connection.svelte';
+  import { rollbackPosterior, ultimoRelease } from '../../health/fuente/despliegues';
+  import { esFallido, type Marca } from '../../health/marcas';
   import { tasaPorHora } from '../../health/fuente/rate';
   import type { ClaseMetrica, Metrica, Vigilada } from '../../health/model';
   import { health } from '../../health/store.svelte';
   import { healthUi } from '../../health/ui.svelte';
-  import { textoCaptura } from '../../health/trends';
+  import { compararHoras, textoCaptura } from '../../health/trends';
   import { fmtDate } from '../../time/timeline';
+  import DeployTimeline from './DeployTimeline.svelte';
   import HourlyChart from './HourlyChart.svelte';
   import MetricChart from './MetricChart.svelte';
   import ReleaseComparison from './ReleaseComparison.svelte';
@@ -67,6 +71,21 @@
   }
   const salud = $derived(health.filas.find((f) => f.id === app.id)?.salud ?? null);
 
+  /** `null` when the source has no deployments for this vigilada (or it is not linked). */
+  const despliegues = $derived(health.desplieguesDe(app.id));
+  const todasMarcas = $derived(health.marcasDe(app.id));
+  /** What the charts draw: «ocultar fallidos y cancelados» applies to deployments only. */
+  const marcasVisibles = $derived(
+    healthUi.ocultarFallidos
+      ? todasMarcas.filter((m) => m.origen === 'manual' || !esFallido(m.d))
+      : todasMarcas,
+  );
+  const ultimo = $derived(despliegues ? ultimoRelease(despliegues) : null);
+  const rollbackTras = $derived(
+    despliegues && ultimo ? rollbackPosterior(despliegues, ultimo) : null,
+  );
+  const ahora = Date.now();
+
   const extremos = $derived.by(() => {
     let primero: string | null = null;
     let ultimo: string | null = null;
@@ -74,9 +93,11 @@
       if (primero === null || f.dia < primero) primero = f.dia;
       if (ultimo === null || f.dia > ultimo) ultimo = f.dia;
     }
-    // A release newer than the data must still have its place on the axis.
-    for (const v of app.versiones) {
+    // A release newer than the data must still have its place on the axis, and
+    // «todo» starts at the oldest release when it predates the data.
+    for (const v of todasMarcas) {
       if (ultimo !== null && v.dia > ultimo && v.dia <= health.hoy) ultimo = v.dia;
+      if (primero !== null && v.dia < primero) primero = v.dia;
     }
     return { primero, ultimo };
   });
@@ -98,7 +119,73 @@
   const deClase = (clase: ClaseMetrica) =>
     health.metricas.filter((m) => m.clase === clase && visible(m));
 
-  const seleccionada = $derived(app.versiones.find((v) => v.id === healthUi.versionSel) ?? null);
+  const seleccionada = $derived(todasMarcas.find((m) => m.id === healthUi.versionSel) ?? null);
+  /** Deployments of the same day as the selected mark, to move between them. */
+  const mismoDia = $derived(
+    seleccionada
+      ? marcasVisibles.filter((m) => m.dia === seleccionada.dia && m.id !== seleccionada.id)
+      : [],
+  );
+
+  /** Error metrics with hours in the source, for the hourly comparison. */
+  const conHoras = $derived(
+    vinculo
+      ? health.metricas.filter((m) => m.clase !== 'peticiones' && vinculo.leida.series.has(m.id))
+      : [],
+  );
+  /** The 24 hours around a deployment, per error metric (health-despliegues, D5). */
+  function alrededor(m: Marca) {
+    if (m.origen !== 'despliegue' || m.d.result !== 'success' || !vinculo || vinculo.hasta === null)
+      return null;
+    const pet = idPeticiones ? (vinculo.leida.series.get(idPeticiones)?.serie.horas ?? null) : null;
+    return conHoras.map((metrica) => ({
+      nombre: health.nombreMetrica(app.id, metrica),
+      r: compararHoras(
+        m.instante,
+        vinculo.leida.series.get(metrica.id)?.serie.horas,
+        pet,
+        metrica.clase,
+        vinculo.hasta!,
+      ),
+    }));
+  }
+  /** Deployments in the hourly view after which some error metric rose. */
+  const resaltadas = $derived.by(() => {
+    const out = new Set<string>();
+    if (!porHoras || !vinculo?.hasta) return out;
+    const desde = vinculo.hasta - 7 * 24 * 3_600_000;
+    for (const m of marcasVisibles) {
+      if (m.origen !== 'despliegue' || m.instante < desde) continue;
+      if (alrededor(m)?.some((h) => h.r.kind === 'completa' && h.r.sube)) out.add(m.id);
+    }
+    return out;
+  });
+
+  /** The timeline follows the period on screen; with no data at all, every deployment. */
+  const enPeriodo = $derived.by(() => {
+    if (!despliegues) return [];
+    if (porHoras && vinculo?.hasta) {
+      const desde = vinculo.hasta - 7 * 24 * 3_600_000;
+      return despliegues.filter((d) => d.finishedAt >= desde);
+    }
+    if (!periodo) return despliegues;
+    const dias = new Map(todasMarcas.map((m) => [m.id, m.dia]));
+    return despliegues.filter((d) => {
+      const dia = dias.get(`run-${d.runId}`)!;
+      return dia >= periodo.desde && dia <= periodo.hasta;
+    });
+  });
+  const visiblesTimeline = $derived(
+    healthUi.ocultarFallidos ? enPeriodo.filter((d) => !esFallido(d)) : enPeriodo,
+  );
+  const hayFallidos = $derived(despliegues?.some(esFallido) ?? false);
+  /** Linked, with no metric in the source: a vigilada that only has deployments. */
+  const soloDespliegues = $derived(
+    filas.length === 0 &&
+      vinculo !== null &&
+      vinculo.leida.series.size === 0 &&
+      despliegues !== null,
+  );
   const versionesOrdenadas = $derived(
     [...app.versiones].sort((a, b) => (a.dia < b.dia ? 1 : a.dia > b.dia ? -1 : 0)),
   );
@@ -149,13 +236,16 @@
         puntos={puntosPorHora(m)}
         modo={tasa ? 'tasa' : 'recuento'}
         {zona}
-        versiones={app.versiones}
+        marcas={marcasVisibles}
+        {resaltadas}
+        seleccionada={healthUi.versionSel}
+        onseleccion={seleccionar}
       />
     {:else}
       <MetricChart
         titulo={nombre}
         puntos={puntosDe(m)}
-        versiones={app.versiones}
+        marcas={marcasVisibles}
         seleccionada={healthUi.versionSel}
         onseleccion={seleccionar}
       />
@@ -169,6 +259,18 @@
   {#if salud && salud.motivo.length > 0}<span class="motivo">{salud.motivo.join(', ')}</span>{/if}
   {#if vinculo?.hasta}
     <span class="captura">datos hasta {formatoInstante(vinculo.hasta, zona)}</span>
+  {/if}
+  {#if despliegues}
+    <span class="captura ultimo-despliegue">
+      {#if ultimo}
+        último despliegue a producción: {ultimo.version ?? `run ${ultimo.runId}`}, {horaLocal(
+          ultimo.finishedAt,
+        )}{#if rollbackTras}
+          · después, {describir(rollbackTras)}, {horaLocal(rollbackTras.finishedAt)}{/if}
+      {:else}
+        ningún release ha llegado a producción con éxito
+      {/if}
+    </span>
   {/if}
   {#if salud?.captura}
     <span
@@ -232,7 +334,13 @@
   </details>
 {/if}
 
-{#if filas.length === 0 && !vinculo}
+{#if soloDespliegues}
+  <div class="vacio">
+    <p>
+      La fuente no tiene métricas de {app.nombre}: solo sus despliegues, que aparecen más abajo.
+    </p>
+  </div>
+{:else if filas.length === 0 && !vinculo}
   <div class="vacio">
     <p>
       Aún no hay datos de {app.nombre}. Cuando un agente deje una captura en la bandeja de la
@@ -289,8 +397,9 @@
         </div>
       {/if}
       <p class="leyenda">
-        por horas, 7 días hasta «datos hasta»; una hora sin dato corta la línea; las subidas, que
-        solo tienen día, se marcan al empezar ese día
+        por horas, 7 días hasta «datos hasta»; una hora sin dato corta la línea; las subidas
+        manuales, que solo tienen día, se marcan al empezar ese día; los despliegues, en su hora,
+        con ▲ si algún error sube en las 24 horas siguientes
       </p>
     {:else}
       <p class="leyenda">
@@ -299,10 +408,23 @@
         <span class="muestra estimada" aria-hidden="true"></span> estimado
       </p>
     {/if}
+    {#if despliegues && despliegues.length > 0}
+      <p class="leyenda">
+        <span class="muestra manual" aria-hidden="true"></span> subida manual
+        <span class="muestra despliegue" aria-hidden="true"></span> despliegue: ● éxito · ✕ fallido ·
+        ○ cancelado · ↶ rollback
+      </p>
+    {/if}
   </div>
 
   {#if seleccionada}
-    <ReleaseComparison {app} version={seleccionada} />
+    <ReleaseComparison
+      {app}
+      marca={seleccionada}
+      marcas={todasMarcas}
+      {mismoDia}
+      horas={porHoras ? alrededor(seleccionada) : null}
+    />
   {/if}
 
   {#each GRUPOS as g (g.clase)}
@@ -326,6 +448,49 @@
     </details>
   {/if}
 {/if}
+
+<section class="grupo">
+  <div class="titulo-despliegues">
+    <h3>Despliegues a producción</h3>
+    {#if despliegues && hayFallidos}
+      <label class="filtro">
+        <input type="checkbox" bind:checked={healthUi.ocultarFallidos} />
+        ocultar fallidos y cancelados
+      </label>
+    {/if}
+  </div>
+  {#if !app.fuente}
+    <p class="sin-versiones">
+      Los despliegues llegan de la fuente: vincula {app.nombre} a una aplicación de la fuente para verlos.
+    </p>
+  {:else if !vinculo}
+    <p class="sin-versiones">
+      Sus despliegues se leen de la fuente, que ahora no da datos de {app.nombre}.
+    </p>
+  {:else if !despliegues || despliegues.length === 0}
+    <p class="sin-versiones">La fuente no tiene despliegues registrados de {app.nombre}.</p>
+  {:else if enPeriodo.length === 0}
+    <p class="sin-versiones">
+      No hay despliegues en este periodo. El último terminó el {horaLocal(
+        despliegues[0].finishedAt,
+      )}.
+    </p>
+  {:else if visiblesTimeline.length === 0}
+    <p class="sin-versiones">
+      {enPeriodo.length === 1
+        ? 'El único despliegue de este periodo es fallido o cancelado, y el filtro lo oculta.'
+        : `Los ${enPeriodo.length} despliegues de este periodo son fallidos o cancelados, y el filtro los oculta.`}
+    </p>
+  {:else}
+    <DeployTimeline
+      despliegues={visiblesTimeline}
+      todos={despliegues}
+      seleccionada={healthUi.versionSel}
+      onseleccion={seleccionar}
+      {ahora}
+    />
+  {/if}
+</section>
 
 <section class="grupo">
   <h3>Subidas de versión</h3>
@@ -500,6 +665,29 @@
   }
   .muestra.estimada {
     border-top: 1px dashed var(--text-dim);
+  }
+  .muestra.manual {
+    border-top: 1px dashed var(--text-mid);
+  }
+  .muestra.despliegue {
+    border-top: 1px solid var(--accent);
+  }
+  .ultimo-despliegue {
+    flex-basis: 100%;
+  }
+  .titulo-despliegues {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 6px 16px;
+  }
+  .filtro {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12.5px;
+    color: var(--text-mid);
+    cursor: pointer;
   }
   .grupo {
     display: flex;

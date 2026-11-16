@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ALCANCE, indiceColector, indiceReal, linea } from './fixtures';
+import { ALCANCE, indiceColector, indiceConDespliegues, indiceReal, linea } from './fixtures';
 import { leerIndice, leerSerie, rutaSerie, type Indice } from './read';
 
 const ok = (i: Indice) => {
@@ -209,5 +209,54 @@ describe('los ficheros del colector tal como los escribe hoy', () => {
     expect(s.huecos).toEqual([]);
     expect(s.avisos).toEqual([]);
     expect([...s.horas.values()].reduce((a, b) => a + b, 0)).toBe(2);
+  });
+});
+
+describe('los despliegues en index.json', () => {
+  it('conserva la clave deployments con sus meses, aunque tengan huecos', () => {
+    const i = ok(leerIndice(JSON.stringify(indiceConDespliegues())));
+    const mya = i.apps.find((a) => a.id === 'mya')!;
+    expect(mya.despliegues).toEqual({
+      repo: 'org/deploy',
+      count: 6,
+      meses: ['2026-04', '2026-10', '2026-11'],
+    });
+  });
+
+  it('una aplicación sin la clave no tiene despliegues', () => {
+    const i = ok(leerIndice(JSON.stringify(indiceConDespliegues())));
+    expect(i.apps.find((a) => a.id === 'cex-es')!.despliegues).toBeNull();
+  });
+
+  it('una aplicación con metrics vacío y despliegues es de la fuente, con repo null', () => {
+    const i = ok(leerIndice(JSON.stringify(indiceConDespliegues())));
+    const pagos = i.apps.find((a) => a.id === 'pagos')!;
+    expect(pagos.nombre).toBe('Pagos');
+    expect(pagos.metricas).toEqual([]);
+    expect(pagos.despliegues?.repo).toBeNull();
+  });
+
+  it('una aplicación sin metrics pero con despliegues también', () => {
+    const indice = indiceConDespliegues() as { apps: Record<string, Record<string, unknown>> };
+    delete indice.apps.pagos.metrics;
+    const i = ok(leerIndice(JSON.stringify(indice)));
+    expect(i.apps.some((a) => a.id === 'pagos')).toBe(true);
+    expect(i.avisos).toEqual([]);
+  });
+
+  it('ignora las claves que no conoce, sin avisos', () => {
+    const i = ok(leerIndice(JSON.stringify(indiceConDespliegues())));
+    expect(i.avisos).toEqual([]);
+    expect(i.apps.find((a) => a.id === 'mya')!.metricas).toHaveLength(2);
+  });
+
+  it('avisa de unos despliegues ilegibles y lee las métricas', () => {
+    const indice = indiceConDespliegues() as { apps: Record<string, Record<string, unknown>> };
+    indice.apps.mya.deployments = { months: ['octubre'] };
+    const i = ok(leerIndice(JSON.stringify(indice)));
+    const mya = i.apps.find((a) => a.id === 'mya')!;
+    expect(mya.despliegues).toBeNull();
+    expect(mya.metricas).toHaveLength(2);
+    expect(i.avisos).toEqual(['mya: sus despliegues no se pueden leer']);
   });
 });

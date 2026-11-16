@@ -30,6 +30,7 @@ import {
   type MetricaFuente,
   type Serie,
 } from './read';
+import { leerDespliegues, rutaDespliegues, type Despliegue } from './despliegues';
 
 /** The key the source's handle is remembered under, beside the applications'. */
 export const FUENTE_KEY = 'health-fuente';
@@ -43,6 +44,8 @@ export interface AppLeida {
   app: AppFuente;
   /** By metric id. */
   series: Map<string, SerieLeida>;
+  /** Current state of each run, newest first; empty when the application has none. */
+  despliegues: Despliegue[];
   /** What reading its series found: gaps, skipped lines, missing months. */
   avisos: string[];
 }
@@ -94,7 +97,8 @@ async function leerRuta(dir: FolderDir, ruta: string[]): Promise<string | null> 
 
 /**
  * Read the whole source: `index.json`, then every listed month of every
- * active metric. Only reads, and only those files.
+ * active metric and of every application's deployments. Only reads, and only
+ * those files.
  */
 export async function leerFuente(
   dir: FolderDir,
@@ -114,7 +118,19 @@ export async function leerFuente(
       series.set(metrica.id, { metrica, serie });
       avisos.push(...serie.avisos);
     }
-    apps.push({ app, series, avisos });
+    // Every listed month, whatever is on screen: the file is the month of
+    // `requestedAt`, and a run may finish weeks later (health-despliegues, D1).
+    let despliegues: Despliegue[] = [];
+    if (app.despliegues) {
+      const textos = new Map<string, string | null>();
+      for (const mes of app.despliegues.meses) {
+        textos.set(mes, await leerRuta(dir, rutaDespliegues(app.id, mes)));
+      }
+      const leidos = leerDespliegues(app.id, textos);
+      despliegues = leidos.despliegues;
+      avisos.push(...leidos.avisos);
+    }
+    apps.push({ app, series, despliegues, avisos });
   }
   return { kind: 'ok', lectura: { apps, avisos: indice.avisos } };
 }

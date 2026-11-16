@@ -45,6 +45,8 @@ import { healthFuente, type AppLeida, type LecturaFuente } from './fuente/connec
 import { catalogoEfectivo } from './fuente/catalog';
 import { diaEn, diasCompletos } from './fuente/days';
 import { datosHasta } from './fuente/rate';
+import type { Despliegue } from './fuente/despliegues';
+import { marcasDe, type Marca } from './marcas';
 
 const SAVE_DEBOUNCE_MS = 300;
 
@@ -224,6 +226,22 @@ export class HealthStore {
 
   vinculoDe(id: string): VinculoFuente | null {
     return this.vinculos.get(id) ?? null;
+  }
+
+  /**
+   * The deployments of a linked vigilada, newest first. `null` when it is not
+   * linked or its source application has no deployments (health-despliegues).
+   */
+  desplieguesDe(id: string): Despliegue[] | null {
+    const v = this.vinculos.get(id);
+    return v?.leida.app.despliegues ? v.leida.despliegues : null;
+  }
+
+  /** Every mark of a vigilada: its manual releases and its deployments. */
+  marcasDe(id: string): Marca[] {
+    const app = this.vigilada(id);
+    if (!app) return [];
+    return marcasDe(app, this.desplieguesDe(id) ?? [], this.catalogo.zona);
   }
 
   /** Why a linked vigilada gets nothing from the source although it is connected. */

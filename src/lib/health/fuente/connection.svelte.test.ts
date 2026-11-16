@@ -2,7 +2,13 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import type { FolderDir, PermissionState } from '../../folder/fs';
 import { MemoryDir } from '../../folder/memory-fs';
 import { FUENTE_KEY, FuenteConnection, type FuenteDeps } from './connection.svelte';
-import { indiceReal, linea } from './fixtures';
+import {
+  desplieguesMya,
+  indiceConDespliegues,
+  indiceReal,
+  lineaDespliegue,
+  linea,
+} from './fixtures';
 
 const H = 3_600_000;
 const T0 = Date.parse('2026-11-06T20:00:00Z');
@@ -152,5 +158,27 @@ describe('la conexión con la fuente', () => {
     await conn.desconectar();
     expect(deps.names.size).toBe(0);
     expect(conn.estado.kind).toBe('sin-fuente');
+  });
+
+  it('lee los despliegues de los meses listados, y solo esos', async () => {
+    const c = carpetaColector();
+    c.put('index.json', JSON.stringify(indiceConDespliegues()));
+    for (const [mes, texto] of desplieguesMya()) c.put(`deployments/mya/${mes}.jsonl`, texto);
+    // Not listed in index.json: never read.
+    c.put('deployments/mya/2026-06.jsonl', lineaDespliegue({ runId: 999 }));
+    c.put('deployments/README.md', '# Despliegues a producción');
+    c.put('deployments/pagos/2026-11.jsonl', lineaDespliegue({ runId: 7 }));
+    deps.next = c;
+    await conn.elegir();
+    const apps = conn.lectura!.apps;
+    const mya = apps.find((a) => a.app.id === 'mya')!;
+    expect(mya.despliegues.map((d) => d.runId)).toEqual([302, 301, 300, 41036559302, 200, 100]);
+    expect(mya.avisos).toEqual([
+      'mya: se saltaron 2 líneas ilegibles en los despliegues de 2026-11.jsonl (líneas 4, 5)',
+    ]);
+    expect(apps.find((a) => a.app.id === 'pagos')!.despliegues.map((d) => d.runId)).toEqual([7]);
+    expect(apps.find((a) => a.app.id === 'cex-es')!.despliegues).toEqual([]);
+    expect(c.writes).toEqual([]);
+    expect(c.removals).toEqual([]);
   });
 });

@@ -6,6 +6,10 @@
    * weekends; the 7-day mean is what carries the reading. A day not measured cuts
    * both, since drawing through it would claim a value nobody saw. Estimates are
    * dashed, and every day can be read as text under the chart.
+   *
+   * Releases registered by hand are a dashed mark; deployments read from the
+   * source, a solid one with a glyph per result (health-despliegues, D4). Each
+   * day has at most one of each, saying how many there were.
    */
   import {
     aislados,
@@ -19,19 +23,21 @@
     tramosMedia,
     type Punto,
   } from '../../health/chart';
-  import type { VersionSubida } from '../../health/model';
+  import { describir, resumenGlifos } from '../../health/despliegue-texto';
+  import { abreComparacion, type Marca } from '../../health/marcas';
   import type { IsoDate } from '../../model/types';
   import { dayIndex, fmtDate } from '../../time/timeline';
 
   interface Props {
     titulo: string;
     puntos: Punto[];
-    versiones: VersionSubida[];
+    /** Manual releases and deployments, already filtered. */
+    marcas: Marca[];
     seleccionada: string | null;
     onseleccion: (id: string) => void;
   }
 
-  let { titulo, puntos, versiones, seleccionada, onseleccion }: Props = $props();
+  let { titulo, puntos, marcas: todas, seleccionada, onseleccion }: Props = $props();
 
   const H = 170;
   const PAD = { top: 30, right: 12, bottom: 22, left: 48 };
@@ -55,33 +61,60 @@
   const meses = $derived(ticksMes(puntos, Math.max(2, Math.floor(plotW / 70))));
   const hayDatos = $derived(puntos.some((p) => p.valor !== null));
 
-  /** Releases by day, so two on the same day show together. */
+  /**
+   * Marks by day and by origin, so two on the same day show together. The one
+   * a click selects is the first that opens a comparison, if any.
+   */
   const marcas = $derived.by(() => {
     if (puntos.length === 0) return [];
     const desde = puntos[0].dia;
     const hasta = puntos[puntos.length - 1].dia;
-    const porDia = new Map<IsoDate, VersionSubida[]>();
-    for (const v of versiones) {
-      if (v.dia < desde || v.dia > hasta) continue;
-      const lista = porDia.get(v.dia);
-      if (lista) lista.push(v);
-      else porDia.set(v.dia, [v]);
+    const grupos = new Map<string, { dia: IsoDate; origen: Marca['origen']; lista: Marca[] }>();
+    for (const m of todas) {
+      if (m.dia < desde || m.dia > hasta) continue;
+      const clave = `${m.dia}|${m.origen}`;
+      const g = grupos.get(clave);
+      if (g) g.lista.push(m);
+      else grupos.set(clave, { dia: m.dia, origen: m.origen, lista: [m] });
     }
-    const ordenadas = [...porDia.entries()].sort(([a], [b]) => (a < b ? -1 : 1));
-    let previa = -Infinity;
-    let fila = 0;
-    return ordenadas.map(([dia, lista]) => {
+    const ordenados = [...grupos.values()].sort((a, b) =>
+      a.dia !== b.dia ? (a.dia < b.dia ? -1 : 1) : a.origen === 'manual' ? -1 : 1,
+    );
+    // Where the last label of each row ends, so a label goes to a row it fits in.
+    const finDeFila = [-Infinity, -Infinity];
+    return ordenados.map(({ dia, origen, lista }) => {
       const px = x(dayIndex(desde, dia));
-      // Alternate the row of labels that would land on top of each other.
-      fila = px - previa < 64 ? (fila + 1) % 2 : 0;
-      previa = px;
+      const despliegues = lista.flatMap((m) => (m.origen === 'despliegue' ? [m.d] : []));
+      const exito = despliegues.find((d) => d.result === 'success');
+      const etiqueta =
+        origen === 'manual'
+          ? lista.map((m) => m.version).join(' · ')
+          : `${resumenGlifos(despliegues)}${exito?.version ? ` ${exito.version}` : ''}`;
+      const descripcion =
+        origen === 'manual'
+          ? `Subida ${etiqueta} el ${fmtDate(dia)}: comparar antes y después`
+          : `${despliegues.length === 1 ? 'Despliegue' : `${despliegues.length} despliegues`} el ${fmtDate(dia)}: ${despliegues.map(describir).join('; ')}`;
+      // About 6.5 px a character at 10.5 px monospace. Near an edge the label
+      // hangs to one side of its mark, centred elsewhere.
+      const largo = etiqueta.length * 6.5 + 8;
+      const anclaje: 'start' | 'middle' | 'end' =
+        px > ancho - 60 ? 'end' : px < PAD.left + 30 ? 'start' : 'middle';
+      const inicio = anclaje === 'end' ? px - largo : anclaje === 'start' ? px : px - largo / 2;
+      const libre = finDeFila.findIndex((fin) => fin <= inicio);
+      const fila = libre !== -1 ? libre : finDeFila[0] <= finDeFila[1] ? 0 : 1;
+      finDeFila[fila] = inicio + largo;
       return {
+        clave: `${dia}|${origen}`,
         dia,
-        lista,
+        origen,
         px,
         fila,
-        etiqueta: lista.map((v) => v.version).join(' · '),
-        activa: lista.some((v) => v.id === seleccionada),
+        anclaje,
+        etiqueta,
+        descripcion,
+        destino: (lista.find(abreComparacion) ?? lista[0]).id,
+        activa: lista.some((m) => m.id === seleccionada),
+        fallida: origen === 'despliegue' && !exito,
       };
     });
   });
@@ -145,23 +178,22 @@
         {/if}
       {/if}
 
-      {#each marcas as m (m.dia)}
+      {#each marcas as m (m.clave)}
         <g
           class="marca"
+          class:despliegue={m.origen === 'despliegue'}
+          class:fallida={m.fallida}
           class:activa={m.activa}
           role="button"
           tabindex="0"
-          aria-label="Subida {m.etiqueta} el {fmtDate(m.dia)}: comparar antes y después"
-          onclick={() => onseleccion(m.lista[0].id)}
-          onkeydown={(e) => teclaMarca(e, m.lista[0].id)}
+          aria-label={m.descripcion}
+          onclick={() => onseleccion(m.destino)}
+          onkeydown={(e) => teclaMarca(e, m.destino)}
         >
+          <title>{m.descripcion}</title>
           <line x1={m.px} x2={m.px} y1={PAD.top - 4} y2={PAD.top + plotH} />
           <rect class="marca-hit" x={m.px - 6} y={4} width="12" height={PAD.top + plotH - 4} />
-          <text
-            x={m.px}
-            y={m.fila === 0 ? 12 : 23}
-            text-anchor={m.px > ancho - 60 ? 'end' : m.px < PAD.left + 30 ? 'start' : 'middle'}
-          >
+          <text x={m.px} y={m.fila === 0 ? 12 : 23} text-anchor={m.anclaje}>
             {m.etiqueta}
           </text>
         </g>
@@ -292,6 +324,21 @@
     fill: var(--text-mid);
     font-family: 'IBM Plex Mono', monospace;
     font-size: 10.5px;
+  }
+  .marca.despliegue line {
+    stroke: var(--accent);
+    stroke-dasharray: none;
+    opacity: 0.7;
+  }
+  .marca.despliegue text {
+    fill: var(--accent);
+  }
+  .marca.despliegue.fallida line {
+    stroke: var(--danger);
+    opacity: 0.45;
+  }
+  .marca.despliegue.fallida text {
+    fill: var(--danger);
   }
   .marca-hit {
     fill: transparent;

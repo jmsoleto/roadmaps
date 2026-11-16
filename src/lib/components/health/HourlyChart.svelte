@@ -6,7 +6,9 @@
    * The same reading as the daily chart, at a closer range: one series, one
    * axis, an hour without data cuts the line, and every hour can be read as
    * text. There is no moving mean: at this range the hours are the point. A
-   * release has only a day, so its mark sits at the start of that day.
+   * manual release has only a day, so its mark sits at the start of that day; a
+   * deployment sits at the hour it finished in, and stands out when an error
+   * metric rose in the 24 hours after it (health-despliegues, D5).
    */
   import {
     aislados,
@@ -22,7 +24,8 @@
     tramos,
     type PuntoHora,
   } from '../../health/chart';
-  import type { VersionSubida } from '../../health/model';
+  import { describir, glifo, horaLocal } from '../../health/despliegue-texto';
+  import type { Marca } from '../../health/marcas';
 
   interface Props {
     titulo: string;
@@ -30,10 +33,25 @@
     /** `tasa`: values are rates (0–1) and read as percentages. */
     modo: 'recuento' | 'tasa';
     zona: string;
-    versiones: VersionSubida[];
+    /** Manual releases and deployments, already filtered. */
+    marcas: Marca[];
+    /** Ids of the deployments after which some error metric rose. */
+    resaltadas: ReadonlySet<string>;
+    seleccionada: string | null;
+    onseleccion: (id: string) => void;
   }
 
-  let { titulo, puntos, modo, zona, versiones }: Props = $props();
+  let {
+    titulo,
+    puntos,
+    modo,
+    zona,
+    marcas: todas,
+    resaltadas,
+    seleccionada,
+    onseleccion,
+  }: Props = $props();
+  const HORA_MS = 3_600_000;
 
   const H = 170;
   const PAD = { top: 30, right: 12, bottom: 22, left: 52 };
@@ -57,20 +75,50 @@
   const dias = $derived(ticksDia(puntos, zona, Math.max(2, Math.floor(plotW / 60))));
   const hayDatos = $derived(puntos.some((p) => p.valor !== null));
 
-  const marcas = $derived.by(() => {
-    const porDia = new Map<string, VersionSubida[]>();
-    for (const v of versiones) {
-      const lista = porDia.get(v.dia);
-      if (lista) lista.push(v);
-      else porDia.set(v.dia, [v]);
+  const manuales = $derived.by(() => {
+    const porDia = new Map<string, Marca[]>();
+    for (const m of todas) {
+      if (m.origen !== 'manual') continue;
+      const lista = porDia.get(m.dia);
+      if (lista) lista.push(m);
+      else porDia.set(m.dia, [m]);
     }
     return [...porDia].flatMap(([dia, lista]) => {
       const i = indiceDeDia(puntos, dia, zona);
       return i === null
         ? []
-        : [{ dia, px: x(i), etiqueta: lista.map((v) => v.version).join(' · ') }];
+        : [{ dia, px: x(i), id: lista[0].id, etiqueta: lista.map((v) => v.version).join(' · ') }];
     });
   });
+
+  /** Each deployment at the hour it finished in, inside the 7 days on screen. */
+  const despliegues = $derived.by(() => {
+    if (puntos.length === 0) return [];
+    const inicio = puntos[0].t;
+    return todas.flatMap((m) => {
+      if (m.origen !== 'despliegue') return [];
+      const i = Math.floor((m.instante - inicio) / HORA_MS);
+      if (i < 0 || i >= puntos.length) return [];
+      const resaltada = resaltadas.has(m.id);
+      return [
+        {
+          m,
+          px: x(i),
+          glifo: glifo(m.d),
+          resaltada,
+          fallida: m.d.result !== 'success',
+          descripcion: `${describir(m.d)}, ${horaLocal(m.instante)}${resaltada ? '; algún error sube en las 24 horas siguientes' : ''}`,
+        },
+      ];
+    });
+  });
+
+  function teclaMarca(e: KeyboardEvent, id: string) {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      onseleccion(id);
+    }
+  }
 
   const texto = (v: number | null) =>
     v === null
@@ -119,8 +167,8 @@
         <circle class="solo" cx={x(i)} cy={yValor(i)} r="3" />
       {/each}
 
-      {#each marcas as m (m.dia)}
-        <g class="marca">
+      {#each manuales as m (m.dia)}
+        <g class="marca" class:activa={m.id === seleccionada}>
           <line x1={m.px} x2={m.px} y1={PAD.top - 4} y2={PAD.top + plotH} />
           <text x={m.px} y={12} text-anchor={m.px > ancho - 60 ? 'end' : 'middle'}
             >{m.etiqueta}</text
@@ -144,6 +192,27 @@
           <circle class="foco" cx={x(hover)} cy={yValor(hover)} r="4" />
         {/if}
       {/if}
+
+      {#each despliegues as d (d.m.id)}
+        <g
+          class="marca despliegue"
+          class:fallida={d.fallida}
+          class:resaltada={d.resaltada}
+          class:activa={d.m.id === seleccionada}
+          role="button"
+          tabindex="0"
+          aria-label={d.descripcion}
+          onclick={() => onseleccion(d.m.id)}
+          onkeydown={(e) => teclaMarca(e, d.m.id)}
+        >
+          <title>{d.descripcion}</title>
+          <line x1={d.px} x2={d.px} y1={PAD.top - 4} y2={PAD.top + plotH} />
+          <rect class="marca-hit" x={d.px - 6} y={14} width="12" height={PAD.top + plotH - 14} />
+          <text x={d.px} y={24} text-anchor={d.px > ancho - 60 ? 'end' : 'middle'}>
+            {d.resaltada ? '▲' : ''}{d.glifo}
+          </text>
+        </g>
+      {/each}
     </svg>
 
     {#if punto}
@@ -175,6 +244,12 @@
           {/each}
         </tbody>
       </table>
+      {#if despliegues.length > 0}
+        <p class="tabla-despliegues">Despliegues en estos 7 días:</p>
+        <ul class="tabla-despliegues">
+          {#each despliegues as d (d.m.id)}<li>{d.glifo} {d.descripcion}</li>{/each}
+        </ul>
+      {/if}
     </div>
   </details>
 {/if}
@@ -242,6 +317,52 @@
     fill: var(--text-mid);
     font-family: 'IBM Plex Mono', monospace;
     font-size: 10.5px;
+  }
+  .marca {
+    outline: none;
+  }
+  .marca.despliegue {
+    cursor: pointer;
+  }
+  .marca.despliegue line {
+    stroke: var(--accent);
+    stroke-dasharray: none;
+    opacity: 0.7;
+  }
+  .marca.despliegue text {
+    fill: var(--accent);
+  }
+  .marca.despliegue.fallida line {
+    stroke: var(--danger);
+    opacity: 0.45;
+  }
+  .marca.despliegue.fallida text {
+    fill: var(--danger);
+  }
+  .marca.despliegue.resaltada line {
+    stroke: var(--danger);
+    stroke-width: 2.5;
+    opacity: 1;
+  }
+  .marca.despliegue.resaltada text {
+    fill: var(--danger);
+    font-weight: 600;
+  }
+  .marca.activa line,
+  .marca.despliegue:focus-visible line {
+    stroke-width: 2.5;
+    opacity: 1;
+  }
+  .marca-hit {
+    fill: transparent;
+  }
+  .tabla-despliegues {
+    margin: 8px 0 0;
+    padding-left: 0;
+    list-style: none;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--text-mid);
   }
   .tooltip {
     position: absolute;

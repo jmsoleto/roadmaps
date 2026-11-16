@@ -49,7 +49,7 @@ describe('datos hasta', () => {
   });
 
   it('sin métricas no hay fecha', () => {
-    const vacia: AppFuente = { id: 'x', nombre: 'X', metricas: [] };
+    const vacia: AppFuente = { id: 'x', nombre: 'X', metricas: [], despliegues: null };
     expect(datosHasta(vacia)).toBeNull();
   });
 });

@@ -8,7 +8,8 @@ import type { FolderDir, PermissionState } from '../folder/fs';
 import { MemoryDir } from '../folder/memory-fs';
 import { HEALTH_FORMAT } from './folder-format';
 import { FuenteConnection, type FuenteDeps } from './fuente/connection.svelte';
-import { linea } from './fuente/fixtures';
+import { linea, lineaDespliegue } from './fuente/fixtures';
+import { healthUi } from './ui.svelte';
 import { datosIniciales, type HealthData, type Observacion } from './model';
 import { HealthStore } from './store.svelte';
 
@@ -266,5 +267,68 @@ describe('Health Hub con la fuente conectada', () => {
     await ctx.conn.desconectar();
     expect(ctx.store.vinculoDe('cex-es')).toBeNull();
     expect(ctx.store.observacionesDe('cex-es')).toEqual([]);
+  });
+});
+
+describe('Health Hub con despliegues en la fuente', () => {
+  /** `colector()` plus deployments for `mya`, and `pagos` with deployments and no metrics. */
+  function conDespliegues() {
+    const raiz = colector();
+    const indice = JSON.parse(raiz.read('index.json')!);
+    indice.apps.mya.deployments = { repo: 'org/deploy', count: 2, months: ['2026-10', '2026-11'] };
+    indice.apps.pagos = {
+      name: 'Pagos',
+      metrics: {},
+      deployments: { repo: null, count: 1, months: ['2026-11'] },
+    };
+    raiz.put('index.json', JSON.stringify(indice));
+    raiz.put('deployments/mya/2026-10.jsonl', `${lineaDespliegue()}\n`);
+    raiz.put(
+      'deployments/mya/2026-11.jsonl',
+      `${lineaDespliegue({ runId: 2, result: 'failure', finishedAt: '2026-11-05T10:00:00Z' })}\n`,
+    );
+    raiz.put('deployments/pagos/2026-11.jsonl', `${lineaDespliegue({ runId: 7 })}\n`);
+    return raiz;
+  }
+
+  let ctx: Awaited<ReturnType<typeof preparar>>;
+  beforeEach(async () => {
+    ctx = await preparar(datosIniciales(ZONA), conDespliegues());
+  });
+
+  it('una aplicación vinculada tiene sus despliegues y sus marcas, en el día de la zona', () => {
+    ctx.store.anadirDesdeFuente('mya');
+    expect(ctx.store.desplieguesDe('mya')!.map((d) => d.runId)).toEqual([2, 41036559302]);
+    expect(ctx.store.marcasDe('mya').map((m) => [m.id, m.dia])).toEqual([
+      ['run-2', '2026-11-05'],
+      ['run-41036559302', '2026-11-03'],
+    ]);
+  });
+
+  it('una aplicación de la fuente sin la clave deployments no tiene despliegues', () => {
+    ctx.store.anadirDesdeFuente('cex-es');
+    expect(ctx.store.desplieguesDe('cex-es')).toBeNull();
+  });
+
+  it('una aplicación con solo despliegues se ofrece y se añade, sin observaciones', () => {
+    expect(ctx.store.disponiblesEnFuente.map((a) => a.id)).toContain('pagos');
+    const app = ctx.store.anadirDesdeFuente('pagos')!;
+    expect(app.nombre).toBe('Pagos');
+    expect(ctx.store.observacionesDe('pagos')).toEqual([]);
+    expect(ctx.store.vinculoDe('pagos')!.leida.series.size).toBe(0);
+    expect(ctx.store.desplieguesDe('pagos')!.map((d) => d.runId)).toEqual([7]);
+  });
+
+  it('cambiar el filtro de fallidos no escribe en ninguna carpeta', async () => {
+    ctx.store.anadirDesdeFuente('mya');
+    await ctx.store.flush();
+    ctx.dir.writes = [];
+    healthUi.ocultarFallidos = true;
+    healthUi.versionSel = 'run-2';
+    healthUi.ocultarFallidos = false;
+    await ctx.store.flush();
+    expect(ctx.dir.writes).toEqual([]);
+    expect(ctx.fuente.writes).toEqual([]);
+    healthUi.reset();
   });
 });

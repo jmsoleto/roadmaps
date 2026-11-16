@@ -6,8 +6,10 @@
  * ```
  * data/
  * ├─ index.json                                what exists; the only file read first
- * └─ series/<app>/<métrica>/<YYYY-MM>.jsonl    one line per collector run:
- *                                              {"run","from","step","v":[counts]}
+ * ├─ series/<app>/<métrica>/<YYYY-MM>.jsonl    one line per collector run:
+ * │                                            {"run","from","step","v":[counts]}
+ * └─ deployments/<app>/<YYYY-MM>.jsonl         one line per state of a deployment run
+ *                                              (read by `despliegues.ts`)
  * ```
  *
  * Every instant is UTC. `v[i]` counts the logs of `[from + i·step, from + (i+1)·step)`.
@@ -32,11 +34,23 @@ export interface MetricaFuente {
   meses: string[];
 }
 
+/** `apps.<app>.deployments`: present only when the application has deployments. */
+export interface DesplieguesFuente {
+  /** The deployments repository, or `null` when the catalogue no longer declares one. */
+  repo: string | null;
+  /** Distinct runs, as the collector counted them. */
+  count: number;
+  /** Months with a file, sorted. Not necessarily consecutive. */
+  meses: string[];
+}
+
 export interface AppFuente {
   id: string;
   nombre: string;
   /** Active metrics only: a removed one is never offered (health-colector, «Aplicaciones y métricas»). */
   metricas: MetricaFuente[];
+  /** `null` when the application has no deployments (health-despliegues). */
+  despliegues: DesplieguesFuente | null;
 }
 
 export type Indice =
@@ -82,20 +96,45 @@ export function leerIndice(texto: string | null): Indice {
   const avisos: string[] = [];
   const apps: AppFuente[] = [];
   for (const [id, app] of Object.entries(raiz.apps)) {
-    if (!ID.test(id) || !isObject(app) || !isObject(app.metrics)) {
+    if (!ID.test(id) || !isObject(app)) {
+      avisos.push(`La aplicación «${id}» de la fuente no se puede leer.`);
+      continue;
+    }
+    let despliegues: DesplieguesFuente | null = null;
+    if (app.deployments !== undefined) {
+      despliegues = leerDesplieguesIndice(app.deployments);
+      if (despliegues === null) avisos.push(`${id}: sus despliegues no se pueden leer`);
+    }
+    // An application with deployments may come without metrics at all.
+    if (!isObject(app.metrics) && !(app.metrics === undefined && despliegues !== null)) {
       avisos.push(`La aplicación «${id}» de la fuente no se puede leer.`);
       continue;
     }
     const metricas: MetricaFuente[] = [];
-    for (const [mid, m] of Object.entries(app.metrics)) {
+    for (const [mid, m] of Object.entries(isObject(app.metrics) ? app.metrics : {})) {
       if (isObject(m) && m.removed === true) continue;
       const leida = leerMetrica(mid, m);
       if (typeof leida === 'string') avisos.push(`${id}/${mid}: ${leida}`);
       else metricas.push(leida);
     }
-    apps.push({ id, nombre: typeof app.name === 'string' && app.name ? app.name : id, metricas });
+    apps.push({
+      id,
+      nombre: typeof app.name === 'string' && app.name ? app.name : id,
+      metricas,
+      despliegues,
+    });
   }
   return { kind: 'ok', apps, avisos };
+}
+
+function leerDesplieguesIndice(d: unknown): DesplieguesFuente | null {
+  if (!isObject(d) || !Array.isArray(d.months)) return null;
+  if (!d.months.every((x) => typeof x === 'string' && MES.test(x))) return null;
+  return {
+    repo: typeof d.repo === 'string' ? d.repo : null,
+    count: Number.isInteger(d.count) && (d.count as number) >= 0 ? (d.count as number) : 0,
+    meses: [...new Set(d.months as string[])].sort(),
+  };
 }
 
 function leerMetrica(id: string, m: unknown): MetricaFuente | string {

@@ -19,8 +19,10 @@ export type Dialogo =
 class HealthUiStore {
   dialogo = $state<Dialogo | null>(null);
   periodo = $state<Periodo>('90');
-  /** The release whose before/after is on screen. */
+  /** The mark on screen: a manual release's id, or `run-<runId>` for a deployment. */
   versionSel = $state<string | null>(null);
+  /** «Ocultar fallidos y cancelados»: hides those deployments from marks and timeline. */
+  ocultarFallidos = $state<boolean>(false);
   bandejaAbierta = $state<boolean>(false);
   /** In the hourly view, errors as a rate of requests instead of counts. */
   verTasa = $state<boolean>(false);
