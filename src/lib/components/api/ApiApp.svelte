@@ -27,6 +27,7 @@
   import ExportDialog from './ExportDialog.svelte';
   import LibraryDialog from './LibraryDialog.svelte';
   import ValueSourcesDialog from './ValueSourcesDialog.svelte';
+  import { isMacLike, isSearchShortcut } from '../../api/keyboard';
 
   let newTitle = $state('');
   let newEl = $state<HTMLInputElement | null>(null);
@@ -52,7 +53,30 @@
   $effect(() => {
     if (apiUi.creating) newEl?.focus();
   });
+
+  const mac = isMacLike(navigator.platform);
+
+  /**
+   * ⌘K / Ctrl+K: to the field search, from anywhere in API Hub (D9).
+   *
+   * On the window, but this component only exists while API Hub is open, so it
+   * cannot act anywhere else. Not while a dialog is up: the focus belongs to it.
+   */
+  function onWindowKeydown(e: KeyboardEvent) {
+    if (!isSearchShortcut(e, mac) || apiUi.anyDialogOpen()) return;
+    const box = document.getElementById('api-field-search');
+    if (!(box instanceof HTMLInputElement)) return;
+    // Some browsers send Ctrl+K to their own search bar.
+    e.preventDefault();
+    const from = document.activeElement;
+    if (from instanceof HTMLElement && from !== box) apiUi.searchReturn = from;
+    box.focus();
+    // What is typed next is a new search, not the end of the old one.
+    box.select();
+  }
 </script>
+
+<svelte:window onkeydown={onWindowKeydown} />
 
 {#if !apiContracts.ready}
   <!-- Not "there is nothing": "we do not know yet". -->

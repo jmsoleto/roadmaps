@@ -215,6 +215,87 @@ class ApiUiStore {
   closeExport(): void {
     this.exporting = false;
   }
+
+  /**
+   * Whether any of API Hub's dialogs is up.
+   *
+   * One question, so that the keyboard shortcut does not have to know the list
+   * — and so that a new dialog joins it here and nowhere else.
+   */
+  anyDialogOpen(): boolean {
+    return (
+      this.creating ||
+      this.deletingId !== null ||
+      this.pasteTargetId !== null ||
+      this.sources ||
+      this.library ||
+      this.exporting
+    );
+  }
+
+  // ---- the field search ----
+
+  /**
+   * What is being searched, and in which contract.
+   *
+   * Session state: reloading into a half-typed search would be a bug. Kept here
+   * rather than in the rail because the rail repaints when the view changes,
+   * and changing the view is exactly what going through the results does.
+   *
+   * Tied to a contract so that switching contracts empties it: the results of
+   * one mean nothing in another.
+   */
+  private search = $state<{ contractId: string; text: string } | null>(null);
+
+  queryFor(contractId: string): string {
+    return this.search?.contractId === contractId ? this.search.text : '';
+  }
+
+  setQuery(contractId: string, text: string): void {
+    this.search = text === '' ? null : { contractId, text };
+    this.chosen = null;
+  }
+
+  /** The result last gone to, marked in the list so the next one is easy to find. */
+  chosen = $state<string | null>(null);
+
+  /**
+   * Where the focus was before ⌘K, to give it back on Esc.
+   *
+   * Not reactive: nothing paints from it, it is only read once.
+   */
+  searchReturn: HTMLElement | null = null;
+
+  /**
+   * The field or parameter that should scroll into view and light up.
+   *
+   * Separate from `focusing` on purpose (D6): going to look at a field is not
+   * going to rewrite it, so the key is neither focused nor selected, and the
+   * focus stays in the search box to carry on through the results.
+   */
+  private revealing = $state<string | null>(null);
+
+  wantReveal(id: string): void {
+    this.revealing = id;
+  }
+
+  /**
+   * Who is waiting to be revealed, readable so a row already on screen notices.
+   *
+   * Unlike the focus after Enter — always a row about to mount — going through
+   * the results lands on rows that are already there, so they must be able to
+   * react to the request rather than only check it when they mount.
+   */
+  get pendingReveal(): string | null {
+    return this.revealing;
+  }
+
+  /** True once, for whoever is `id`. Consuming it clears it. */
+  takeReveal(id: string): boolean {
+    if (this.revealing !== id) return false;
+    this.revealing = null;
+    return true;
+  }
 }
 
 export const apiUi = new ApiUiStore();

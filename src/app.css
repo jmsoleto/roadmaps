@@ -100,3 +100,25 @@ body {
   flex-direction: column;
   height: 100vh;
 }
+
+/* API Hub: a field or parameter that was just gone to, from the search or from
+   «Usado en». Added by hand (`revealable.svelte.ts`), hence global. It fades on
+   its own; with reduced motion it simply appears and goes. */
+.revealed {
+  animation: reveal-fade 1.5s ease-out;
+  border-radius: 5px;
+}
+@keyframes reveal-fade {
+  from {
+    background: var(--tint-selected);
+  }
+  to {
+    background: transparent;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .revealed {
+    animation: none;
+    background: var(--tint-selected);
+  }
+}

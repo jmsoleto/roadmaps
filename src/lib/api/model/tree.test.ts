@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  ancestors,
   cloneWithNewIds,
   copyKey,
   find,
@@ -146,5 +147,26 @@ describe('moving among siblings', () => {
     expect(moveAmongSiblings(siblings, 0, -1)).toBe(false);
     expect(moveAmongSiblings(siblings, 1, 1)).toBe(false);
     expect(siblings.map((s) => s.key)).toEqual(['a', 'b']);
+  });
+});
+
+describe('the fields that hold a field', () => {
+  it('has none for the root', () => {
+    const root = tree();
+    expect(ancestors(root, root.id)).toEqual([]);
+  });
+
+  it('lists them from the root down', () => {
+    const root = tree();
+    const direccion = root.children[1];
+    const piso = newNode('piso', 'object');
+    const letra = newNode('letra');
+    piso.children = [letra];
+    direccion.children.push(piso);
+    expect(ancestors(root, letra.id)?.map((n) => n.id)).toEqual([root.id, direccion.id, piso.id]);
+  });
+
+  it('says null for a field that is not in the tree', () => {
+    expect(ancestors(tree(), 'nod-ninguno')).toBeNull();
   });
 });

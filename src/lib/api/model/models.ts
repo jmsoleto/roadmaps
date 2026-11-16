@@ -8,7 +8,10 @@
  */
 
 import { walk } from './tree';
-import type { ApiNode, Contract } from './types';
+import type { ApiEndpoint, ApiNode, Contract, ContractView, ParamIn } from './types';
+
+/** Somewhere in a contract that can be opened: an endpoint or a model. */
+export type ContractTarget = Exclude<ContractView, null>;
 
 /**
  * `mi modelo raro` → `MiModeloRaro`.
@@ -34,9 +37,35 @@ export interface ContractBody {
   /** Where it is, e.g. `GET /catalogo/productos · 200`. */
   where: string;
   root: ApiNode;
+  /** What to open to see this body: its endpoint, or its model. */
+  target: ContractTarget;
   /** Set when the body *is* a model's own tree. */
   modelId?: string;
 }
+
+/**
+ * How places are named, in one spot.
+ *
+ * The validator, "used in" and the field search all name the same places, and
+ * a request body called `petición` in one list and `request` in another reads
+ * as two different places.
+ */
+export const places = {
+  endpoint: (endpoint: ApiEndpoint): string => `${endpoint.method ?? '?'} ${endpoint.path ?? ''}`,
+  request: (endpoint: ApiEndpoint): string => `${places.endpoint(endpoint)} · petición`,
+  response: (endpoint: ApiEndpoint, code: string): string =>
+    `${places.endpoint(endpoint)} · ${code}`,
+  param: (endpoint: ApiEndpoint, at: ParamIn): string =>
+    `${places.endpoint(endpoint)} · ${PARAM_PLACES[at] ?? at}`,
+  model: (name: string): string => `modelo ${name}`,
+};
+
+/** Where a parameter travels, said the way it is said in a meeting. */
+export const PARAM_PLACES: Record<ParamIn, string> = {
+  query: 'consulta',
+  path: 'ruta',
+  header: 'cabecera',
+};
 
 /**
  * Every body a contract holds: request bodies, response bodies, and models.
@@ -48,15 +77,21 @@ export interface ContractBody {
 export function contractBodies(contract: Contract): ContractBody[] {
   const out: ContractBody[] = [];
   for (const endpoint of contract.endpoints) {
-    const at = `${endpoint.method ?? '?'} ${endpoint.path ?? ''}`;
-    if (endpoint.body) out.push({ where: `${at} · petición`, root: endpoint.body });
+    const target: ContractTarget = { kind: 'endpoint', id: endpoint.id };
+    if (endpoint.body) out.push({ where: places.request(endpoint), root: endpoint.body, target });
     for (const response of endpoint.responses ?? []) {
-      if (response.body) out.push({ where: `${at} · ${response.code}`, root: response.body });
+      if (response.body)
+        out.push({ where: places.response(endpoint, response.code), root: response.body, target });
     }
   }
   for (const model of contract.models) {
     if (model.node)
-      out.push({ where: `modelo ${model.name}`, root: model.node, modelId: model.id });
+      out.push({
+        where: places.model(model.name),
+        root: model.node,
+        target: { kind: 'model', id: model.id },
+        modelId: model.id,
+      });
   }
   return out;
 }
@@ -69,8 +104,16 @@ function pointsAt(node: ApiNode, modelId: string): boolean {
   );
 }
 
+/** One place that uses a model: named, and with somewhere to go. */
+export interface ModelUse {
+  where: string;
+  target: ContractTarget;
+  /** The first field of that body pointing at the model, in tree order. */
+  itemId: string;
+}
+
 /**
- * The places that use a model, named.
+ * The places that use a model, named and reachable.
  *
  * Computed rather than kept as a counter on the model (D8). A stored count
  * would be a second source of truth to maintain on every create, delete,
@@ -80,16 +123,20 @@ function pointsAt(node: ApiNode, modelId: string): boolean {
  *
  * A model does not count itself: one that references itself is recursive, not
  * used by somebody else.
+ *
+ * One entry per body, not per field: «used in `GET /x · 200`» is the statement,
+ * and two references from the same body are still one place. The entry leads
+ * to the first of them, because a link has to lead somewhere.
  */
-export function usesOf(contract: Contract, modelId: string): string[] {
-  const out: string[] = [];
+export function usesOf(contract: Contract, modelId: string): ModelUse[] {
+  const out: ModelUse[] = [];
   for (const body of contractBodies(contract)) {
     if (body.modelId === modelId) continue;
-    let hit = false;
+    let first: string | null = null;
     walk(body.root, (node) => {
-      if (pointsAt(node, modelId)) hit = true;
+      if (first === null && pointsAt(node, modelId)) first = node.id;
     });
-    if (hit) out.push(body.where);
+    if (first !== null) out.push({ where: body.where, target: body.target, itemId: first });
   }
   return out;
 }

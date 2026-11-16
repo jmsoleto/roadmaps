@@ -20,6 +20,7 @@
    */
   import { apiContracts } from '../../api/store.svelte';
   import { apiUi } from '../../api/ui.svelte';
+  import { revealable } from './revealable.svelte';
   import { formatList, parseList } from '../../api/model/csv';
   import { isContainer, isScalar } from '../../api/model/tree';
   import {
@@ -131,7 +132,7 @@
 </script>
 
 <div class="node">
-  <div class="row" style:padding-left="{depth * 14}px">
+  <div class="row" style:padding-left="{depth * 14}px" use:revealable={node.id}>
     {#if container}
       <button
         class="twist"

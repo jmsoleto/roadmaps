@@ -61,3 +61,65 @@ describe('stepping through pages and variants', () => {
     expect(apiUi.step('e3:r1')).toBe(1);
   });
 });
+
+describe('the field to light up', () => {
+  it('is spent once, by whoever was named', () => {
+    apiUi.wantReveal('nod-1');
+    expect(apiUi.takeReveal('nod-2')).toBe(false);
+    expect(apiUi.takeReveal('nod-1')).toBe(true);
+    expect(apiUi.takeReveal('nod-1')).toBe(false);
+  });
+
+  /** Going to look is not going to rewrite: the focus request stays untouched. */
+  it('does not ask for the focus', () => {
+    apiUi.wantReveal('nod-3');
+    expect(apiUi.takeFocus('nod-3')).toBe(false);
+    apiUi.takeReveal('nod-3');
+  });
+});
+
+describe('the field search', () => {
+  it('belongs to the contract it was typed in', () => {
+    apiUi.setQuery('api-1', 'email');
+    expect(apiUi.queryFor('api-1')).toBe('email');
+    expect(apiUi.queryFor('api-2')).toBe('');
+  });
+
+  it('empties when another contract is searched', () => {
+    apiUi.setQuery('api-1', 'email');
+    apiUi.setQuery('api-2', 'id');
+    expect(apiUi.queryFor('api-1')).toBe('');
+    apiUi.setQuery('api-2', '');
+  });
+
+  it('forgets the chosen result when the search changes', () => {
+    apiUi.setQuery('api-1', 'email');
+    apiUi.chosen = 'x';
+    apiUi.setQuery('api-1', 'emai');
+    expect(apiUi.chosen).toBeNull();
+    apiUi.setQuery('api-1', '');
+  });
+});
+
+describe('whether a dialog is up', () => {
+  it('is no while none is', () => {
+    expect(apiUi.anyDialogOpen()).toBe(false);
+  });
+
+  it('covers every dialog', () => {
+    const toggles: [() => void, () => void][] = [
+      [() => apiUi.openCreate(), () => apiUi.closeCreate()],
+      [() => apiUi.askDelete('api-1'), () => apiUi.cancelDelete()],
+      [() => apiUi.openPaste('nod-1'), () => apiUi.closePaste()],
+      [() => apiUi.openSources(), () => apiUi.closeSources()],
+      [() => apiUi.openLibrary(), () => apiUi.closeLibrary()],
+      [() => apiUi.openExport(), () => apiUi.closeExport()],
+    ];
+    for (const [open, close] of toggles) {
+      open();
+      expect(apiUi.anyDialogOpen()).toBe(true);
+      close();
+      expect(apiUi.anyDialogOpen()).toBe(false);
+    }
+  });
+});

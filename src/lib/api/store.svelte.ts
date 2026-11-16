@@ -56,6 +56,7 @@ import { newSeed } from './mock/prng';
 const DEFAULT_MOCK: MockSettings = Object.freeze(newMockSettings(1));
 import { applyItemType, applyType } from './model/coerce';
 import {
+  ancestors,
   cloneWithNewIds,
   copyKey,
   find,
@@ -72,6 +73,8 @@ import {
   uniqueModelName,
   usesOf as usesOfModel,
   contractBodies,
+  type ContractTarget,
+  type ModelUse,
 } from './model/models';
 
 import { createPrefs, type DataSource, type Prefs } from '../store/storage';
@@ -838,7 +841,7 @@ export class ApiContractsStore {
   }
 
   /** Where a model is used, named. Computed on read, never stored (D8). */
-  usesOf(modelId: string): string[] {
+  usesOf(modelId: string): ModelUse[] {
     const contract = this.open;
     return contract ? usesOfModel(contract, modelId) : [];
   }
@@ -1029,6 +1032,31 @@ export class ApiContractsStore {
   setView(view: ContractView): void {
     const contract = this.open;
     if (contract) this.setViewOf(contract.id, view);
+  }
+
+  /**
+   * Open `target` and unfold whatever holds `itemId`, so that it can be seen.
+   *
+   * The one way to go somewhere (D5): the field search and «Usado en» both come
+   * through here, so they cannot disagree about what gets unfolded. Only the
+   * holders are unfolded — never the field itself, nor its siblings — and the
+   * unfolding stays: it is this person's fold, and a field still hidden has not
+   * been found. The contract does not change.
+   *
+   * A parameter, or `null` for a marker nobody declared, has nothing to unfold.
+   * Scrolling to it and lighting it up is the screen's business (`apiUi`).
+   */
+  reveal(target: ContractTarget, itemId: string | null): void {
+    const contract = this.open;
+    if (!contract) return;
+    this.setViewOf(contract.id, target);
+    if (itemId === null) return;
+    for (const { root } of contractBodies(contract)) {
+      const chain = ancestors(root, itemId);
+      if (!chain) continue;
+      for (const holder of chain) this.setCollapsed(holder.id, false);
+      return;
+    }
   }
 
   /** The endpoint being edited, or `null` on the contract's own overview. */

@@ -11,6 +11,7 @@
   import { apiLibrary } from '../../api/library.svelte';
   import { bundledModels } from '../../api/library/bundle';
   import TreeBlock from './TreeBlock.svelte';
+  import { goTo } from '../../api/navigate';
   import type { ApiModel } from '../../api/model/types';
 
   interface Props {
@@ -128,8 +129,12 @@
       </p>
     {:else}
       <ul class="uses">
-        {#each uses as where (where)}
-          <li>{where}</li>
+        <!-- Un enlace, no un texto: saber donde se usa algo sirve de poco si
+             despues hay que ir a buscarlo a mano. Lleva al campo que apunta. -->
+        {#each uses as use (use.where)}
+          <li>
+            <button class="use" onclick={() => goTo(use.target, use.itemId)}>{use.where}</button>
+          </li>
         {/each}
       </ul>
     {/if}
@@ -230,6 +235,22 @@
     font-family: 'IBM Plex Mono', monospace;
     font-size: 12px;
     line-height: 1.7;
+  }
+  .use {
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--text-mid);
+    font: inherit;
+    text-align: left;
+    text-decoration: underline dotted;
+    text-underline-offset: 3px;
+    cursor: pointer;
+  }
+  .use:hover,
+  .use:focus-visible {
+    color: var(--accent);
+    text-decoration-style: solid;
   }
   .btn {
     background: var(--surface-2);

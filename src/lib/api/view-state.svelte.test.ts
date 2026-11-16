@@ -11,6 +11,7 @@ import type { ApiBackend, LoadOutcome } from './storage';
 import type { Prefs } from '../store/storage';
 import type { ApiData } from './model/types';
 import { exportContract } from './io';
+import { newEndpoint, newNode, newParam, rootNode } from './model/factories';
 
 class Browser implements ApiBackend, Prefs {
   doc: ApiData | null = null;
@@ -187,5 +188,91 @@ describe('importar no cambia cómo se mira', () => {
     expect(store.viewOf(imported)).toBeNull();
     expect(browser.prefs.get('api:collapsed-nodes')).toBe(before.get('api:collapsed-nodes'));
     expect(browser.prefs.get('api:views')).toBe(before.get('api:views'));
+  });
+});
+
+describe('ir a un sitio', () => {
+  /** `GET /pedidos · 200` → `data` (array) → `cliente` → `email`, and a model `Cliente`. */
+  async function folded() {
+    const email = newNode('email');
+    const cliente = newNode('cliente', 'object');
+    cliente.children = [email];
+    const hermano = newNode('hermano', 'object');
+    hermano.children = [newNode('x')];
+    const data = newNode('data', 'array');
+    data.itemType = 'object';
+    data.children = [cliente, hermano];
+    const ep = newEndpoint('GET', '/pedidos');
+    const body = ep.responses[0].body!;
+    body.children = [data];
+    const param = newParam();
+    param.name = 'q';
+    const otro = newEndpoint('GET', '/otro');
+    otro.params = [param];
+    const browser = new Browser();
+    browser.doc = {
+      contracts: [
+        {
+          id: 'api-1',
+          title: 'Pedidos',
+          version: '1.0.0',
+          description: '',
+          server: '',
+          colorSlot: 0,
+          models: [{ id: 'mod-cli', name: 'Cliente', description: '', node: rootNode() }],
+          endpoints: [otro, ep],
+        },
+      ],
+    };
+    browser.prefs.set('api:open-id', 'api-1');
+    browser.prefs.set(
+      'api:collapsed-nodes',
+      JSON.stringify([body.id, data.id, cliente.id, hermano.id, email.id]),
+    );
+    const store = await boot(browser);
+    return { browser, store, ep, otro, param, body, data, cliente, hermano, email };
+  }
+
+  it('abre el endpoint y despliega solo lo que contiene al campo', async () => {
+    const f = await folded();
+    f.store.reveal({ kind: 'endpoint', id: f.ep.id }, f.email.id);
+    expect(f.store.openEndpoint?.id).toBe(f.ep.id);
+    expect(f.store.isCollapsed(f.body.id)).toBe(false);
+    expect(f.store.isCollapsed(f.data.id)).toBe(false);
+    expect(f.store.isCollapsed(f.cliente.id)).toBe(false);
+    expect(f.store.isCollapsed(f.hermano.id)).toBe(true);
+    expect(f.store.isCollapsed(f.email.id)).toBe(true);
+  });
+
+  it('el despliegue se queda tras reiniciar', async () => {
+    const f = await folded();
+    f.store.reveal({ kind: 'endpoint', id: f.ep.id }, f.email.id);
+    const again = await boot(f.browser);
+    expect(again.isCollapsed(f.cliente.id)).toBe(false);
+  });
+
+  it('no toca el contrato', async () => {
+    const f = await folded();
+    const saves = f.browser.saves;
+    const before = JSON.stringify(f.store.open);
+    f.store.reveal({ kind: 'endpoint', id: f.ep.id }, f.email.id);
+    await new Promise((r) => setTimeout(r, 300));
+    expect(f.browser.saves).toBe(saves);
+    expect(JSON.stringify(f.store.open)).toBe(before);
+  });
+
+  it('abre un modelo', async () => {
+    const f = await folded();
+    f.store.reveal({ kind: 'model', id: 'mod-cli' }, null);
+    expect(f.store.openModel?.id).toBe('mod-cli');
+  });
+
+  it('un parámetro o un marcador no despliegan nada', async () => {
+    const f = await folded();
+    const before = f.browser.prefs.get('api:collapsed-nodes');
+    f.store.reveal({ kind: 'endpoint', id: f.otro.id }, f.param.id);
+    f.store.reveal({ kind: 'endpoint', id: f.otro.id }, null);
+    expect(f.store.openEndpoint?.id).toBe(f.otro.id);
+    expect(f.browser.prefs.get('api:collapsed-nodes')).toBe(before);
   });
 });

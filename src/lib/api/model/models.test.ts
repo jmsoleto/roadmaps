@@ -71,6 +71,8 @@ describe('naming', () => {
   });
 });
 
+const wheres = (c: Contract, id: string) => usesOf(c, id).map((u) => u.where);
+
 describe('where a model is used', () => {
   it('names each place, once', () => {
     const c = contract({
@@ -80,7 +82,7 @@ describe('where a model is used', () => {
         endpoint('/pedidos', [arrayOf('items', 'mod-pag')]),
       ],
     });
-    expect(usesOf(c, 'mod-pag')).toEqual(['GET /productos · 200', 'GET /pedidos · 200']);
+    expect(wheres(c, 'mod-pag')).toEqual(['GET /productos · 200', 'GET /pedidos · 200']);
   });
 
   it('finds a reference nested deep in a body', () => {
@@ -90,20 +92,42 @@ describe('where a model is used', () => {
       models: [model('mod-pag', 'Paginacion')],
       endpoints: [endpoint('/x', [inner])],
     });
-    expect(usesOf(c, 'mod-pag')).toEqual(['GET /x · 200']);
+    expect(wheres(c, 'mod-pag')).toEqual(['GET /x · 200']);
   });
 
   it('counts a reference from another model', () => {
     const c = contract({
       models: [model('mod-a', 'A', [refTo('p', 'mod-pag')]), model('mod-pag', 'Paginacion')],
     });
-    expect(usesOf(c, 'mod-pag')).toEqual(['modelo A']);
+    expect(wheres(c, 'mod-pag')).toEqual(['modelo A']);
   });
 
   /** Recursive is not the same as used by somebody else. */
   it('does not count a model that references itself', () => {
     const c = contract({ models: [model('mod-cat', 'Categoria', [arrayOf('hijas', 'mod-cat')])] });
     expect(usesOf(c, 'mod-cat')).toEqual([]);
+  });
+
+  /** «Used in» is a link, so each place says where to go. */
+  it('leads to the endpoint and to the first field that points at the model', () => {
+    const inner = newNode('meta', 'object');
+    const first = refTo('paginacion', 'mod-pag');
+    inner.children = [first];
+    const ep = endpoint('/x', [inner, arrayOf('otra', 'mod-pag')]);
+    const c = contract({ models: [model('mod-pag', 'Paginacion')], endpoints: [ep] });
+    expect(usesOf(c, 'mod-pag')).toEqual([
+      { where: 'GET /x · 200', target: { kind: 'endpoint', id: ep.id }, itemId: first.id },
+    ]);
+  });
+
+  it('leads to the model that uses it', () => {
+    const field = refTo('moneda', 'mod-mon');
+    const c = contract({
+      models: [model('mod-pre', 'Precio', [field]), model('mod-mon', 'Moneda')],
+    });
+    expect(usesOf(c, 'mod-mon')).toEqual([
+      { where: 'modelo Precio', target: { kind: 'model', id: 'mod-pre' }, itemId: field.id },
+    ]);
   });
 
   it('reports nothing for a model nobody points at', () => {

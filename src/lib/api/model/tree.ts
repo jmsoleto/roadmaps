@@ -42,6 +42,22 @@ export function find(root: ApiNode, id: string): { node: ApiNode; parent: ApiNod
 }
 
 /**
+ * The nodes that hold `id`, from the root down, or `null` if it is not here.
+ *
+ * What has to be unfolded for a field to be seen. The root counts: a body can
+ * be folded too. The field itself does not: unfolding it would open what it
+ * holds, which nobody asked to see.
+ */
+export function ancestors(root: ApiNode, id: string): ApiNode[] | null {
+  if (root.id === id) return [];
+  for (const child of root.children ?? []) {
+    const below = ancestors(child, id);
+    if (below) return [root, ...below];
+  }
+  return null;
+}
+
+/**
  * Copy a node and everything under it, reissuing every identifier.
  *
  * Reissuing is not tidiness: ids are how the store finds a node to mutate, so a
