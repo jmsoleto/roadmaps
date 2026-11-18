@@ -4,9 +4,9 @@
 
 Import/export en JSON como copia de seguridad e intercambio manual, preservando la integridad referencial. Es el único mecanismo de trasvase que existe: sin servidor, un documento exportado es la única forma de mover algo entre navegadores o de recuperarlo.
 
-Cubre siete documentos: los roadmaps —en el formato actual y en el heredado—, los temas, las decisiones, los contratos de API, la biblioteca de modelos, las fuentes de valores y las áreas de enlaces. Cada uno es independiente: un fichero de decisiones nunca lleva roadmaps ni al revés, y una aplicación que rechaza el documento de otra dice de cuál es —y cuando dos son de la misma aplicación, dice cuál de los dos.
+Cubre ocho documentos: los roadmaps —en el formato actual y en el heredado—, los temas, las decisiones, los contratos de API, la biblioteca de modelos, las fuentes de valores, las áreas de enlaces y Personas Hub. Cada uno es independiente: un fichero de decisiones nunca lleva roadmaps ni al revés, y una aplicación que rechaza el documento de otra dice de cuál es —y cuando dos son de la misma aplicación, dice cuál de los dos.
 
-Lo que un documento abarca lo decide cada aplicación, y no es lo mismo en las cuatro. Roadmaps y API Hub exportan la unidad de trabajo que tienen abierta —un roadmap, un contrato—, Links Hub exporta un área, y Decisions exporta el conjunto entero porque no tiene unidad abierta que exportar. La biblioteca de modelos y las fuentes de valores son el segundo y el tercer documento de API Hub, y existen por el mismo motivo: son lo único que las mueve entre máquinas.
+Lo que un documento abarca lo decide cada aplicación, y no es lo mismo en todas. Roadmaps y API Hub exportan la unidad de trabajo que tienen abierta —un roadmap, un contrato—, Links Hub exporta un área, y Decisions exporta el conjunto entero porque no tiene unidad abierta que exportar. Personas Hub también exporta el conjunto entero, porque sus equipos comparten catálogo y festivos, y solo lo restaura en un Personas Hub vacío. La biblioteca de modelos y las fuentes de valores son el segundo y el tercer documento de API Hub, y existen por el mismo motivo: son lo único que las mueve entre máquinas.
 
 Un documento de decisiones lleva la ficha de cada imagen adjunta pero no su contenido, para que exportar siga siendo algo que se hace. Lo que no puede es callárselo: el manifiesto viaja precisamente para que quien importe vea qué falta.
 
@@ -337,9 +337,9 @@ Un contrato importado que no traiga posición de paleta MUST recibir la que le c
 
 Cuando una aplicación rechaza un documento que pertenece a **otra** aplicación del contenedor, MUST decir de cuál es, en lugar de limitarse a decir que no es el suyo.
 
-Meter el fichero equivocado en la aplicación equivocada es el error más probable de todo el intercambio, y crece con cada aplicación y con cada documento: con cuatro aplicaciones y siete documentos, las combinaciones equivocadas se cuentan por decenas. «No es un documento válido» deja adivinando; «esto es un documento de roadmaps» se corrige en un segundo.
+Meter el fichero equivocado en la aplicación equivocada es el error más probable de todo el intercambio, y crece con cada aplicación y con cada documento: con cinco aplicaciones y ocho documentos, las combinaciones equivocadas se cuentan por decenas. «No es un documento válido» deja adivinando; «esto es un documento de roadmaps» se corrige en un segundo.
 
-Esto MUST valer en las cuatro aplicaciones, y no solo en las que lo tuvieran resuelto. Una aplicación que se incorpora al contenedor con documento propio MUST quedar reconocida por las demás en el mismo cambio que le da el suyo: un formato que unas aplicaciones reconocen y otras no es peor que uno que no reconoce nadie, porque el mensaje que se recibe depende de por dónde se entre. Lo mismo MUST valer para un documento nuevo de una aplicación que ya estaba.
+Esto MUST valer en todas las aplicaciones que importan documentos, y no solo en las que lo tuvieran resuelto. Una aplicación que se incorpora al contenedor con documento propio MUST quedar reconocida por las demás en el mismo cambio que le da el suyo: un formato que unas aplicaciones reconocen y otras no es peor que uno que no reconoce nadie, porque el mensaje que se recibe depende de por dónde se entre. Lo mismo MUST valer para un documento nuevo de una aplicación que ya estaba.
 
 Cuando los dos documentos son **de la misma aplicación**, el rechazo MUST nombrar qué documento es, porque nombrar la aplicación no distingue nada.
 
@@ -372,6 +372,16 @@ Cuando los dos documentos son **de la misma aplicación**, el rechazo MUST nombr
 
 - **WHEN** el usuario intenta importar como contrato un documento de fuentes de valores
 - **THEN** el sistema lo rechaza diciendo que son fuentes de valores, y no que no es un contrato: los dos documentos son de la misma aplicación
+
+#### Scenario: Un documento de Personas Hub en otra aplicación
+
+- **WHEN** el usuario intenta importar en Roadmaps, en Decisions, en API Hub o en Links Hub un documento de Personas Hub
+- **THEN** el sistema lo rechaza indicando que es un documento de Personas Hub
+
+#### Scenario: Un documento de otra aplicación en Personas Hub
+
+- **WHEN** el usuario intenta importar en Personas Hub un documento de roadmaps, de decisiones, de contratos o de enlaces
+- **THEN** el sistema lo rechaza indicando de qué aplicación es en realidad
 
 #### Scenario: Un fichero que no es de nadie
 
@@ -571,3 +581,19 @@ Este es el **séptimo** documento de la familia, y el tercero de API Hub.
 
 - **WHEN** el usuario intenta importar como fuentes un documento de contratos, de biblioteca de modelos o de otra aplicación
 - **THEN** el sistema lo rechaza diciendo qué es en realidad
+
+### Requirement: Exportar e importar Personas Hub
+
+El sistema MUST exportar todo Personas Hub como un único documento JSON, que se declara como de Personas Hub y lleva su propia versión, independiente de cómo se guarde localmente. El documento MUST conservar las referencias entre catálogos, equipos, personas, ausencias y sprints, de forma que al restaurarlo cada sprint calcule la misma capacidad.
+
+Importar MUST restaurar el documento solo en un Personas Hub vacío y MUST NOT mezclarlo con datos existentes. Un documento que no se puede leer entero MUST rechazarse sin dejar nada a medias.
+
+#### Scenario: Ida y vuelta
+
+- **WHEN** el usuario exporta Personas Hub y restaura el fichero en un navegador sin datos de Personas Hub
+- **THEN** los equipos, las personas, las ausencias, los festivos y los sprints son los mismos, y las capacidades coinciden
+
+#### Scenario: Un documento a medias
+
+- **WHEN** el documento importado tiene una ausencia de una persona que no está en el documento
+- **THEN** el sistema lo rechaza entero y no cambia nada
