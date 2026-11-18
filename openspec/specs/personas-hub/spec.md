@@ -1,7 +1,7 @@
 # personas-hub
 
 ## Purpose
-Personas Hub es la aplicación del hub que sustituye al Excel de disponibilidad, capacidad y velocidad por sprint. Este documento cubre lo que mantiene quien lleva el equipo: los catálogos, los equipos, las personas, sus ausencias y los sprints en planificación. También cubre sus pantallas, su tarjeta en la landing y su documento de intercambio.
+Personas Hub es la aplicación del hub que sustituye al Excel de disponibilidad, capacidad y velocidad por sprint. Este documento cubre lo que mantiene quien lleva el equipo: los catálogos, los equipos, las personas, sus ausencias y los sprints. El ciclo de un sprint y sus dos verdades están en `personas-plan-real`. También cubre sus pantallas, su tarjeta en la landing y su documento de intercambio.
 
 ## Requirements
 
@@ -96,7 +96,7 @@ El sistema MUST permitir registrar, editar y borrar ausencias de una persona. Ca
 
 ### Requirement: Sprints en planificación
 
-El sistema MUST permitir crear un sprint de un equipo activo con nombre, fecha de inicio, fecha de fin y porcentaje de reserva para incidencias. Al crearlo, MUST incorporar a todas las personas activas del equipo con su dedicación por defecto. El sistema MUST proponer como nombre el siguiente número de sprint del equipo, como inicio el día laborable siguiente al fin del sprint anterior, como duración dos semanas y como reserva la del sprint anterior (o un 15 % si no lo hay). El sistema MUST permitir quitar e incorporar personas del equipo al sprint, y sustituir para ese sprint la dedicación de cualquiera de ellas. La fecha de fin MUST NOT ser anterior a la de inicio, y la reserva MUST estar entre 0 y 100 %. En este cambio todo sprint está en planificación.
+El sistema MUST permitir crear un sprint de un equipo activo con nombre, fecha de inicio, fecha de fin y porcentaje de reserva para incidencias. Al crearlo, MUST incorporar a todas las personas activas del equipo con su dedicación por defecto. El sistema MUST proponer como nombre el siguiente número de sprint del equipo, como inicio el día laborable siguiente al fin del sprint anterior, como duración dos semanas y como reserva la del sprint anterior (o un 15 % si no lo hay). El sistema MUST permitir quitar e incorporar personas del equipo al sprint, y sustituir para ese sprint la dedicación de cualquiera de ellas. La fecha de fin MUST NOT ser anterior a la de inicio, y la reserva MUST estar entre 0 y 100 %. Quitar o incorporar personas, y cambiar las fechas o la reserva, MUST ser posible solo mientras el sprint está en planificación (`personas-plan-real`).
 
 #### Scenario: Crear un sprint
 
@@ -117,8 +117,8 @@ El sistema MUST permitir crear un sprint de un equipo activo con nombre, fecha d
 
 Personas Hub MUST mostrar a la izquierda sus equipos y el acceso a los catálogos, y a la derecha lo que esté abierto:
 
-- **Un equipo**, con sus sprints (del más reciente al más antiguo, con la capacidad planificable de cada uno), sus personas y sus ausencias.
-- **Un sprint**, con su resumen de capacidad y desglose, sus personas con la dedicación del sprint, y su matriz diaria de disponibilidad.
+- **Un equipo**, con sus sprints (del más reciente al más antiguo, con su estado y la capacidad planificable de cada uno: la del plan si ya está activo o cerrado), sus personas y sus ausencias.
+- **Un sprint**, con su estado y la acción que lo hace avanzar (activar o cerrar), su resumen de capacidad y desglose, sus personas con la dedicación del sprint, su matriz diaria de disponibilidad y, si está activo o cerrado, la comparación entre lo planificado y lo real. En un sprint activo o cerrado, el resumen, el desglose y la matriz MUST poder verse del plan o de lo real.
 - **Un catálogo**: roles y tecnologías, o localidades y festivos.
 
 Desde la matriz de un sprint, el usuario MUST poder registrar una ausencia a una persona en un día sin salir del sprint. Al entrar en la aplicación, MUST abrirse el primer equipo activo. Sin equipos, MUST explicarse qué es un equipo y ofrecer crear el primero. Qué está abierto MUST NOT guardarse con los datos.
@@ -135,7 +135,7 @@ Desde la matriz de un sprint, el usuario MUST poder registrar una ausencia a una
 
 ### Requirement: La tarjeta de Personas Hub en la landing
 
-La tarjeta de Personas Hub MUST mostrar tres cifras: las personas activas, los equipos activos y los sprints en planificación. Su lista MUST titularse «PRÓXIMOS SPRINTS» y mostrar hasta tres sprints que no han terminado, del más próximo al más lejano, cada uno con su capacidad planificable. Elegir una fila MUST abrir ese sprint. Sin sprints pendientes, la lista MUST decirlo. En este cambio Personas Hub MUST NOT aportar avisos.
+La tarjeta de Personas Hub MUST mostrar tres cifras: las personas activas, los sprints activos y los sprints en planificación. Su lista MUST titularse «PRÓXIMOS SPRINTS» y mostrar hasta tres sprints que no han terminado, del más próximo al más lejano, cada uno con su capacidad planificable (la real si está activo) y, si está activo, la marca de que está en curso. Elegir una fila MUST abrir ese sprint. Sin sprints pendientes, la lista MUST decirlo. En este cambio Personas Hub MUST NOT aportar avisos.
 
 #### Scenario: La tarjeta con un sprint por empezar
 
