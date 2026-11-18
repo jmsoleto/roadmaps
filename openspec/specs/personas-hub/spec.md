@@ -49,7 +49,7 @@ El sistema MUST permitir crear, renombrar e inactivar localidades, y mantener pa
 
 ### Requirement: Equipos
 
-El sistema MUST permitir crear y renombrar equipos, con un nombre obligatorio y una descripción opcional. Un equipo con personas o con sprints MUST NOT borrarse: solo se puede inactivar, y un equipo inactivo deja de ofrecerse para sprints nuevos pero conserva todo lo suyo. Un equipo vacío MUST poder borrarse.
+El sistema MUST permitir crear y renombrar equipos, con un nombre obligatorio y una descripción opcional, y fijar en cada equipo sus roles críticos y su umbral de caída de capacidad (`personas-alertas`). Un equipo con personas o con sprints MUST NOT borrarse: solo se puede inactivar, y un equipo inactivo deja de ofrecerse para sprints nuevos pero conserva todo lo suyo. Un equipo vacío MUST poder borrarse.
 
 #### Scenario: Crear el primer equipo
 
@@ -118,7 +118,7 @@ El sistema MUST permitir crear un sprint de un equipo activo con nombre, fecha d
 Personas Hub MUST mostrar a la izquierda sus equipos y el acceso a los catálogos, y a la derecha lo que esté abierto:
 
 - **Un equipo**, con sus sprints (del más reciente al más antiguo, con su estado y la capacidad planificable de cada uno: la del plan si ya está activo o cerrado), sus personas, sus ausencias y su histórico (`personas-historico`).
-- **Un sprint**, con su estado y la acción que lo hace avanzar (activar o cerrar), su resumen de capacidad y desglose, sus personas con la dedicación del sprint, su matriz diaria de disponibilidad, sus resultados por familia, el forecast de Story Points mientras está en planificación y, si está activo o cerrado, la comparación entre lo planificado y lo real. En un sprint activo o cerrado, el resumen, el desglose y la matriz MUST poder verse del plan o de lo real.
+- **Un sprint**, con su estado y la acción que lo hace avanzar (activar o cerrar), su resumen de capacidad y desglose, sus personas con la dedicación del sprint, su matriz diaria de disponibilidad, sus resultados por familia, sus alertas, el forecast de Story Points mientras está en planificación y, si está activo o cerrado, la comparación entre lo planificado y lo real. En un sprint activo o cerrado, el resumen, el desglose y la matriz MUST poder verse del plan o de lo real.
 - **Un catálogo**: roles y tecnologías, o localidades y festivos.
 
 Desde la matriz de un sprint, el usuario MUST poder registrar una ausencia a una persona en un día sin salir del sprint. Al entrar en la aplicación, MUST abrirse el primer equipo activo. Sin equipos, MUST explicarse qué es un equipo y ofrecer crear el primero. Qué está abierto MUST NOT guardarse con los datos.
@@ -135,7 +135,7 @@ Desde la matriz de un sprint, el usuario MUST poder registrar una ausencia a una
 
 ### Requirement: La tarjeta de Personas Hub en la landing
 
-La tarjeta de Personas Hub MUST mostrar tres cifras: las personas activas, los sprints activos y los sprints en planificación. Su lista MUST titularse «PRÓXIMOS SPRINTS» y mostrar hasta tres sprints que no han terminado, del más próximo al más lejano, cada uno con su capacidad planificable (la real si está activo) y, si está activo, la marca de que está en curso. Junto a un sprint en planificación MUST mostrar los SP recomendados por la media de los 3 últimos sprints, si hay histórico. Elegir una fila MUST abrir ese sprint. Sin sprints pendientes, la lista MUST decirlo. En este cambio Personas Hub MUST NOT aportar avisos.
+La tarjeta de Personas Hub MUST mostrar tres cifras: las personas activas, los sprints activos y los sprints en planificación. Su lista MUST titularse «PRÓXIMOS SPRINTS» y mostrar hasta tres sprints que no han terminado, del más próximo al más lejano, cada uno con su capacidad planificable (la real si está activo) y, si está activo, la marca de que está en curso. Junto a un sprint en planificación MUST mostrar los SP recomendados por la media de los 3 últimos sprints, si hay histórico. Elegir una fila MUST abrir ese sprint. Sin sprints pendientes, la lista MUST decirlo. Personas Hub MUST aportar a la tira de avisos las alertas de sus sprints en planificación y activos (`personas-alertas`).
 
 #### Scenario: La tarjeta con un sprint por empezar
 
