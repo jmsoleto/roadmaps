@@ -4,6 +4,10 @@
    *
    * Everything on this screen is read from one `SprintCapacity`, computed by the
    * engine; no figure here is added up by the component (personas-hub, D4).
+   *
+   * Active or closed, the sprint has two: the plan frozen on activation and
+   * reality. A switch chooses which one the summary, the people and the matrix
+   * paint, and «Plan vs real» puts them side by side (personas-plan-real, D7).
    */
   import { personas } from '../../personas/store.svelte';
   import { personasUi, type SprintTab } from '../../personas/ui.svelte';
@@ -14,7 +18,14 @@
     lineValue,
     type Line,
   } from '../../personas/breakdown';
-  import { ABSENCE_LABEL, ABSENCE_MARK, peopleOf, technologyLabel } from '../../personas/model';
+  import {
+    ABSENCE_LABEL,
+    ABSENCE_MARK,
+    SPRINT_STATUS_LABEL,
+    peopleOf,
+    technologyLabel,
+  } from '../../personas/model';
+  import ComparisonView from './ComparisonView.svelte';
   import {
     fmtDay,
     fmtDiscount,
@@ -32,7 +43,49 @@
 
   const sprint = $derived(personas.sprint(sprintId));
   const team = $derived(sprint ? personas.team(sprint.teamId) : null);
-  const c = $derived(sprint ? personas.capacityOf(sprint) : null);
+  const frozen = $derived(sprint !== null && sprint.status !== 'planificacion');
+  /** Which of the two truths is painted; reality by default. */
+  let see = $state<'plan' | 'real'>('real');
+  const plan = $derived(sprint ? personas.planOf(sprint) : null);
+  const c = $derived(
+    sprint ? (see === 'plan' && plan !== null ? plan : personas.capacityOf(sprint)) : null,
+  );
+  /** Whether what is painted can still change: planning, or reality while active. */
+  const live = $derived(
+    sprint !== null &&
+      (sprint.status === 'planificacion' || (sprint.status === 'activo' && see === 'real')),
+  );
+
+  // ---- moving the sprint along ----
+
+  let confirming = $state<'activar' | 'cerrar' | null>(null);
+  let cycleError = $state<string | null>(null);
+
+  function advance() {
+    const out =
+      confirming === 'activar' ? personas.activateSprint(sprintId) : personas.closeSprint(sprintId);
+    cycleError = out.ok ? null : out.error;
+    confirming = null;
+    see = 'real';
+  }
+
+  // ---- adjusting reality ----
+
+  let adjHours = $state('');
+  let adjReason = $state('');
+  let adjError = $state<string | null>(null);
+  $effect(() => {
+    adjHours = sprint?.adjustment ? fmtNumber(sprint.adjustment.hours) : '';
+    adjReason = sprint?.adjustment?.reason ?? '';
+  });
+
+  function saveAdjustment() {
+    const t = adjHours.trim();
+    const hours = t === '' ? 0 : parseNumber(t);
+    if (hours === null) return void (adjError = 'El ajuste debe ser un número de horas.');
+    const out = personas.setAdjustment(sprintId, hours === 0 ? null : { hours, reason: adjReason });
+    adjError = out.ok ? null : out.error;
+  }
 
   // ---- editing the sprint ----
 
@@ -54,6 +107,13 @@
   }
 
   function saveEdit() {
+    if (frozen) {
+      const out = personas.updateSprint(sprintId, { name });
+      if (!out.ok) return void (error = out.error);
+      error = null;
+      editing = false;
+      return;
+    }
     const pct = parseNumber(reserve);
     if (pct === null) return void (error = 'La reserva de incidencias debe ser un número.');
     const s = readDate(start);
@@ -72,7 +132,8 @@
 
   function remove() {
     const teamId = sprint?.teamId;
-    personas.deleteSprint(sprintId);
+    const out = personas.deleteSprint(sprintId);
+    if (!out.ok) return void (error = out.error);
     if (teamId) personasUi.openTeam(teamId, 'sprints');
   }
 
@@ -149,15 +210,21 @@
     {#if editing}
       <div class="form" style="width: 100%">
         <label class="field">Nombre <input bind:value={name} /></label>
-        <label class="field">Inicio <input class="date" type="date" bind:value={start} /></label>
-        <label class="field">Fin <input class="date" type="date" bind:value={end} /></label>
-        <label class="field"
-          >Reserva de incidencias (%) <input
-            class="num"
-            inputmode="decimal"
-            bind:value={reserve}
-          /></label
-        >
+        {#if !frozen}
+          <label class="field">Inicio <input class="date" type="date" bind:value={start} /></label>
+          <label class="field">Fin <input class="date" type="date" bind:value={end} /></label>
+          <label class="field"
+            >Reserva de incidencias (%) <input
+              class="num"
+              inputmode="decimal"
+              bind:value={reserve}
+            /></label
+          >
+        {:else}
+          <p class="hint">
+            Las fechas, la reserva y las personas quedaron en el plan al activarlo.
+          </p>
+        {/if}
         <div class="actions">
           <button class="btn" onclick={() => (editing = false)}>cancelar</button>
           <button class="btn primary" onclick={saveEdit}>guardar</button>
@@ -170,17 +237,35 @@
       >
       <h2>{sprint.name}</h2>
       <span class="sub">{fmtRange(sprint.startDate, sprint.endDate)}</span>
-      <span class="tag accent">en planificación</span>
+      <span class="tag" class:accent={sprint.status !== 'cerrado'}
+        >{SPRINT_STATUS_LABEL[sprint.status]}</span
+      >
       <div class="head-actions">
-        <button class="btn" onclick={startEdit}>editar</button>
-        {#if confirmDelete}
-          <button class="btn danger" onclick={remove}>confirmar borrado</button>
-          <button class="btn" onclick={() => (confirmDelete = false)}>no borrar</button>
+        {#if confirming}
+          <span class="notice">
+            {confirming === 'activar'
+              ? 'El plan quedará congelado tal como está y no se puede deshacer.'
+              : 'Lo real quedará congelado, con su ajuste, y el sprint dejará de cambiar.'}
+          </span>
+          <button class="btn primary" onclick={advance}>{confirming}</button>
+          <button class="btn" onclick={() => (confirming = null)}>cancelar</button>
         {:else}
-          <button class="btn danger" onclick={() => (confirmDelete = true)}>borrar</button>
+          <button class="btn" onclick={startEdit}>editar</button>
+          {#if sprint.status === 'planificacion'}
+            <button class="btn primary" onclick={() => (confirming = 'activar')}>activar</button>
+            {#if confirmDelete}
+              <button class="btn danger" onclick={remove}>confirmar borrado</button>
+              <button class="btn" onclick={() => (confirmDelete = false)}>no borrar</button>
+            {:else}
+              <button class="btn danger" onclick={() => (confirmDelete = true)}>borrar</button>
+            {/if}
+          {:else if sprint.status === 'activo'}
+            <button class="btn primary" onclick={() => (confirming = 'cerrar')}>cerrar</button>
+          {/if}
         {/if}
       </div>
     {/if}
+    {#if cycleError}<p class="error">{cycleError}</p>{/if}
   </header>
 
   <div class="tabs" role="tablist">
@@ -195,6 +280,17 @@
       aria-selected={tab === 'disponibilidad'}
       onclick={() => setTab('disponibilidad')}>Disponibilidad</button
     >
+    {#if frozen}
+      <button role="tab" aria-selected={tab === 'comparacion'} onclick={() => setTab('comparacion')}
+        >Plan vs real</button
+      >
+      {#if tab !== 'comparacion'}
+        <div class="see" role="group" aria-label="qué se muestra">
+          <button aria-pressed={see === 'plan'} onclick={() => (see = 'plan')}>plan</button>
+          <button aria-pressed={see === 'real'} onclick={() => (see = 'real')}>real</button>
+        </div>
+      {/if}
+    {/if}
   </div>
 
   <div class="pane">
@@ -243,6 +339,9 @@
 
         {@render line('theoretical', `${LINE_LABEL.theoretical} · ${c.people.length} personas`)}
         {#each DISCOUNTS as l (l)}{@render line(l, LINE_LABEL[l])}{/each}
+        {#if c.team.adjustment !== 0}
+          {@render line('adjustment', `${LINE_LABEL.adjustment} · ${c.team.adjustmentReason}`)}
+        {/if}
         <hr />
         {@render line('available', LINE_LABEL.available, 'strong')}
         {@render line(
@@ -252,10 +351,38 @@
         <hr class="double" />
         {@render line('planning', 'CAPACIDAD PLANIFICABLE', 'total')}
       </div>
+      {#if sprint.status === 'activo' && see === 'real'}
+        <div class="form">
+          <label class="field"
+            >Ajuste de lo real (h, + o −) <input
+              class="num"
+              inputmode="decimal"
+              bind:value={adjHours}
+              placeholder="−16"
+            /></label
+          >
+          <label class="field" style="flex: 1"
+            >Motivo <input bind:value={adjReason} placeholder="incidencia de pagos" /></label
+          >
+          <div class="actions">
+            <button class="btn" onclick={saveAdjustment}>guardar ajuste</button>
+          </div>
+          {#if adjError}<p class="error">{adjError}</p>{/if}
+        </div>
+      {/if}
       <p class="hint">
-        Cada cifra se abre por persona, y los descuentos por fecha y causa. Mientras el sprint está
-        en planificación, el cálculo sigue a las personas: cualquier ausencia o cambio de dedicación
-        se refleja al momento.
+        Cada cifra se abre por persona, y los descuentos por fecha y causa.
+        {#if sprint.status === 'planificacion'}
+          Mientras el sprint está en planificación, el cálculo sigue a las personas: cualquier
+          ausencia o cambio de dedicación se refleja al momento.
+        {:else if see === 'plan'}
+          Es el plan tal como se congeló al activar: nada de lo que se edite después lo cambia.
+        {:else if sprint.status === 'activo'}
+          Lo real sigue a las personas del plan con sus datos de ahora: una ausencia registrada
+          después de activar cuenta aquí y no en el plan.
+        {:else}
+          Lo real quedó congelado al cerrar.
+        {/if}
       </p>
     {:else if tab === 'personas'}
       <table>
@@ -282,20 +409,26 @@
               <td>{technologyLabel(personas.data.technologies, pc.person.technologyId)}</td>
               <td class="r">{fmtPercent(pc.person.dedication)}</td>
               <td class="r">
-                <input
-                  class="num"
-                  inputmode="decimal"
-                  aria-label="dedicación de {pc.person.name} en este sprint"
-                  placeholder={fmtNumber(pc.person.dedication)}
-                  value={member?.dedication == null ? '' : fmtNumber(member.dedication)}
-                  onchange={(e) => setDedication(pc.person.id, e.currentTarget)}
-                />
+                {#if live}
+                  <input
+                    class="num"
+                    inputmode="decimal"
+                    aria-label="dedicación de {pc.person.name} en este sprint"
+                    placeholder={fmtNumber(pc.person.dedication)}
+                    value={member?.dedication == null ? '' : fmtNumber(member.dedication)}
+                    onchange={(e) => setDedication(pc.person.id, e.currentTarget)}
+                  />
+                {:else}
+                  {fmtPercent(Math.round(pc.dedication * 1e6) / 1e4)}
+                {/if}
               </td>
               <td class="r">{fmtHours(pc.totals.available)}</td>
               <td class="r">
-                <button class="link" onclick={() => personas.removeMember(sprintId, pc.person.id)}
-                  >quitar</button
-                >
+                {#if sprint.status === 'planificacion'}
+                  <button class="link" onclick={() => personas.removeMember(sprintId, pc.person.id)}
+                    >quitar</button
+                  >
+                {/if}
               </td>
             </tr>
           {/each}
@@ -303,10 +436,14 @@
       </table>
       {#if dedicationError}<p class="error">{dedicationError}</p>{/if}
       <p class="hint">
-        Vacío, el sprint usa la dedicación por defecto de la persona. Lo que se escriba aquí vale
-        solo para este sprint.
+        {#if live}
+          Vacío, el sprint usa la dedicación por defecto de la persona. Lo que se escriba aquí vale
+          solo para este sprint{sprint.status === 'activo' ? ', y solo para lo real' : ''}.
+        {:else}
+          Las dedicaciones de {see === 'plan' ? 'el plan' : 'lo real'} quedaron congeladas.
+        {/if}
       </p>
-      {#if outside.length > 0}
+      {#if outside.length > 0 && sprint.status === 'planificacion'}
         <div class="form">
           <span class="sub">Del equipo, fuera de este sprint:</span>
           {#each outside as p (p.id)}
@@ -316,7 +453,7 @@
           {/each}
         </div>
       {/if}
-    {:else}
+    {:else if tab === 'disponibilidad'}
       <div class="matrix-wrap">
         <table class="matrix">
           <thead>
@@ -345,7 +482,7 @@
                       <button
                         title={cellTitle(d, pc.person.name)}
                         aria-label={cellTitle(d, pc.person.name)}
-                        disabled={d.state === 'festivo'}
+                        disabled={!live || d.state === 'festivo'}
                         onclick={() => onCell(d, pc.person.id)}
                       >
                         {#if d.state === 'disponible'}
@@ -372,7 +509,11 @@
         número = horas del día antes de la dedicación · F festivo · V vacaciones · B baja médica · P
         permiso · Fo formación · A asuntos propios · O otra · número con marca = parcial
       </p>
-      <p class="hint">Pulsa un día para registrar una ausencia, o una ausencia para cambiarla.</p>
+      {#if live}
+        <p class="hint">Pulsa un día para registrar una ausencia, o una ausencia para cambiarla.</p>
+      {/if}
+    {:else if tab === 'comparacion' && plan}
+      <ComparisonView {sprint} {plan} real={personas.capacityOf(sprint)} />
     {/if}
   </div>
 {/if}
@@ -529,5 +670,26 @@
   }
   .legend {
     margin: 0;
+  }
+  .see {
+    margin-left: auto;
+    align-self: center;
+    display: inline-flex;
+    border: var(--line-width) solid var(--line);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .see button {
+    border: none;
+    background: none;
+    color: var(--text-dim);
+    font: inherit;
+    font-size: 12px;
+    padding: 4px 12px;
+    cursor: pointer;
+  }
+  .see button[aria-pressed='true'] {
+    background: var(--tint-accent);
+    color: var(--accent);
   }
 </style>

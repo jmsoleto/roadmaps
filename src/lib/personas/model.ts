@@ -105,8 +105,48 @@ export interface Absence {
   comment: string;
 }
 
-/** Only planning exists in this change; activation and closing come next (D3). */
-export type SprintStatus = 'planificacion';
+/** Planning, then active, then closed; never back (personas-plan-real). */
+export type SprintStatus = 'planificacion' | 'activo' | 'cerrado';
+
+export const SPRINT_STATUS_LABEL: Record<SprintStatus, string> = {
+  planificacion: 'en planificación',
+  activo: 'activo',
+  cerrado: 'cerrado',
+};
+
+/** Hours added to (or taken from) the real capacity, with why (personas-plan-real, D3). */
+export interface Adjustment {
+  hours: number;
+  reason: string;
+}
+
+/**
+ * What the engine received when a sprint was frozen (personas-plan-real, D1):
+ * its inputs, not its output, so the breakdown comes back whole.
+ */
+export interface CapacitySnapshot {
+  takenAt: string;
+  startDate: IsoDate;
+  endDate: IsoDate;
+  incidentPercentage: number;
+  /** The dedication already resolved: never `null` here. */
+  members: { personId: string; dedication: number }[];
+  people: Person[];
+  locations: { id: string; name: string; holidays: Holiday[] }[];
+  absences: Absence[];
+  adjustment: Adjustment | null;
+  /** The team figures that were seen, kept as a check. */
+  totals: {
+    theoretical: number;
+    holiday: number;
+    absence: number;
+    dedication: number;
+    adjustment: number;
+    available: number;
+    reserve: number;
+    planning: number;
+  };
+}
 
 export interface SprintMember {
   personId: string;
@@ -124,6 +164,12 @@ export interface Sprint {
   /** Percentage of the available capacity kept for incidents, 0–100. */
   incidentPercentage: number;
   members: SprintMember[];
+  /** Frozen on activation. */
+  plan: CapacitySnapshot | null;
+  /** Frozen on closing. */
+  real: CapacitySnapshot | null;
+  /** Only while active. */
+  adjustment: Adjustment | null;
 }
 
 export interface PersonasData {
@@ -236,7 +282,10 @@ export const newAbsence = (draft: AbsenceDraft): Absence => ({
   comment: draft.comment.trim(),
 });
 
-export type SprintDraft = Omit<Sprint, 'id' | 'status' | 'members'>;
+export type SprintDraft = Omit<
+  Sprint,
+  'id' | 'status' | 'members' | 'plan' | 'real' | 'adjustment'
+>;
 
 export const newSprint = (draft: SprintDraft, members: SprintMember[]): Sprint => ({
   id: uid('sprint'),
@@ -244,6 +293,9 @@ export const newSprint = (draft: SprintDraft, members: SprintMember[]): Sprint =
   name: draft.name.trim(),
   status: 'planificacion',
   members,
+  plan: null,
+  real: null,
+  adjustment: null,
 });
 
 // ---- reading ----

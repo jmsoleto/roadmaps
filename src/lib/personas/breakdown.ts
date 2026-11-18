@@ -13,13 +13,21 @@ import type { DayCause, SprintCapacity } from './capacity';
 import { ABSENCE_LABEL } from './model';
 
 export type Line =
-  'theoretical' | 'holiday' | 'absence' | 'dedication' | 'available' | 'reserve' | 'planning';
+  | 'theoretical'
+  | 'holiday'
+  | 'absence'
+  | 'dedication'
+  | 'adjustment'
+  | 'available'
+  | 'reserve'
+  | 'planning';
 
 export const LINES: readonly Line[] = [
   'theoretical',
   'holiday',
   'absence',
   'dedication',
+  'adjustment',
   'available',
   'reserve',
   'planning',
@@ -30,6 +38,7 @@ export const LINE_LABEL: Record<Line, string> = {
   holiday: 'Festivos',
   absence: 'Ausencias',
   dedication: 'Dedicación',
+  adjustment: 'Ajuste',
   available: 'Disponible',
   reserve: 'Reserva de incidencias',
   planning: 'Planificable',
@@ -41,6 +50,8 @@ export const IS_DISCOUNT: Record<Line, boolean> = {
   holiday: true,
   absence: true,
   dedication: true,
+  // Signed on its own: an adjustment may add hours as well as take them.
+  adjustment: false,
   available: false,
   reserve: true,
   planning: false,
@@ -124,6 +135,15 @@ export function breakdown(c: SprintCapacity, line: Line): Entry[] {
         out.push({ ...base, hours: t.available * (1 - fraction) });
         break;
     }
+  }
+  // The adjustment belongs to nobody: it is one row of its own wherever it
+  // counts, so the lines it moves still add up (personas-plan-real, D3).
+  const adj = c.team.adjustment;
+  if (adj !== 0) {
+    const row = { personId: '', name: `Ajuste · ${c.team.adjustmentReason}` };
+    if (line === 'adjustment' || line === 'available') out.push({ ...row, hours: adj });
+    if (line === 'reserve') out.push({ ...row, hours: adj * fraction });
+    if (line === 'planning') out.push({ ...row, hours: adj * (1 - fraction) });
   }
   return out;
 }

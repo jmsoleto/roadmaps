@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { exportNotice, exportPersonas, ImportError, parsePersonasImport } from './io';
 import { computeCapacity } from './capacity';
+import { takeSnapshot } from './snapshot';
 import { emptyData, type PersonasData } from './model';
 
 const data = (): PersonasData => ({
@@ -46,6 +47,9 @@ const data = (): PersonasData => ({
       startDate: '2026-11-30',
       endDate: '2026-12-11',
       status: 'planificacion',
+      plan: null,
+      real: null,
+      adjustment: null,
       incidentPercentage: 15,
       members: [{ personId: 'p1', dedication: null }],
     },
@@ -65,6 +69,19 @@ describe('el documento de Personas Hub', () => {
     const back = parsePersonasImport(exportPersonas(data()));
     expect(back).toEqual(data());
     expect(capacity(back)).toEqual(capacity(data()));
+  });
+
+  it('un sprint cerrado viaja con su plan y su real', () => {
+    const d = data();
+    const s = d.sprints[0];
+    const active = { ...s, status: 'activo' as const, plan: takeSnapshot(s, d, null) };
+    d.sprints[0] = {
+      ...active,
+      status: 'cerrado',
+      real: takeSnapshot(active, d, { hours: -4, reason: 'x' }),
+      adjustment: null,
+    };
+    expect(parsePersonasImport(exportPersonas(d))).toEqual(d);
   });
 
   it('el aviso dice que lleva datos personales', () => {

@@ -3,12 +3,13 @@
  *
  * Pure, like the other summaries: the data and today in, the card's contract
  * out. No alerts in this change: those are `personas-alertas`, and an invented
- * one would spend the room of a real one.
+ * one would spend the room of a real one. An active sprint shows its real
+ * capacity, marked as running (personas-plan-real).
  */
 
 import type { IsoDate } from '../model/types';
 import type { AppSummary, Row } from '../hub/types';
-import { computeCapacity } from './capacity';
+import { realCapacity } from './snapshot';
 import { fmtHours } from './format';
 import type { PersonasData } from './model';
 
@@ -27,17 +28,12 @@ export function upcomingRows(
     .map((s) => {
       const teamIndex = data.teams.findIndex((t) => t.id === s.teamId);
       const team = data.teams[teamIndex];
-      const { planning } = computeCapacity({
-        sprint: s,
-        people: data.people,
-        locations: data.locations,
-        absences: data.absences,
-      }).team;
+      const { planning } = realCapacity(s, data).team;
       return {
         id: s.id,
         color: slotColor(Math.max(0, teamIndex)),
         label: team ? `${team.name} · ${s.name}` : s.name,
-        meta: fmtHours(planning),
+        meta: s.status === 'activo' ? `en curso · ${fmtHours(planning)}` : fmtHours(planning),
         metaTone: 'neutral' as const,
       };
     });
@@ -51,7 +47,11 @@ export function personasSummary(
   return {
     stats: [
       { value: data.people.filter((p) => p.active).length, label: 'personas', tone: 'neutral' },
-      { value: data.teams.filter((t) => t.active).length, label: 'equipos', tone: 'neutral' },
+      {
+        value: data.sprints.filter((s) => s.status === 'activo').length,
+        label: 'activos',
+        tone: 'neutral',
+      },
       {
         value: data.sprints.filter((s) => s.status === 'planificacion').length,
         label: 'en planificación',

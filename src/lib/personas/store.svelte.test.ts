@@ -228,3 +228,82 @@ describe('guardar', () => {
     expect(b.saved?.teams.map((t) => t.name)).toEqual(['Pagos']);
   });
 });
+
+describe('el ciclo del sprint (personas-plan-real)', () => {
+  function activeSprint() {
+    const ana = value(store.addPerson(draft('Ana')));
+    const s = value(
+      store.addSprint({ ...store.propose(teamId, '2026-11-18'), incidentPercentage: 0 }),
+    );
+    expect(store.activateSprint(s.id).ok).toBe(true);
+    return { ana, s: store.sprint(s.id)! };
+  }
+
+  it('activar congela el plan; después no se cambian fechas, reserva ni personas', () => {
+    const { ana, s } = activeSprint();
+    expect(s.status).toBe('activo');
+    expect(store.planOf(s)!.team.available).toBe(80);
+    expect(store.updateSprint(s.id, { incidentPercentage: 20 }).ok).toBe(false);
+    expect(store.updateSprint(s.id, { name: 'Otro nombre' }).ok).toBe(true);
+    store.removeMember(s.id, ana.id);
+    expect(store.sprint(s.id)!.members).toHaveLength(1);
+    expect(store.deleteSprint(s.id).ok).toBe(false);
+    expect(store.activateSprint(s.id).ok).toBe(false);
+  });
+
+  it('una baja después de activar baja lo real y no el plan', () => {
+    const { ana, s } = activeSprint();
+    value(
+      store.addAbsence({
+        personId: ana.id,
+        type: 'baja',
+        startDate: s.startDate,
+        endDate: s.startDate,
+        hoursPerDay: null,
+        comment: '',
+      }),
+    );
+    expect(store.capacityOf(s).team.available).toBe(72);
+    expect(store.planOf(s)!.team.available).toBe(80);
+  });
+
+  it('el ajuste necesita motivo y solo vale en activo', () => {
+    const { s } = activeSprint();
+    expect(store.setAdjustment(s.id, { hours: -8, reason: ' ' })).toEqual({
+      ok: false,
+      error: 'El ajuste necesita un motivo.',
+    });
+    expect(store.setAdjustment(s.id, { hours: -8, reason: 'incidencia' }).ok).toBe(true);
+    expect(store.capacityOf(s).team.available).toBe(72);
+  });
+
+  it('cerrar congela lo real con su ajuste, y ya nada lo cambia', () => {
+    const { ana, s } = activeSprint();
+    store.setAdjustment(s.id, { hours: -8, reason: 'incidencia' });
+    expect(store.closeSprint(s.id).ok).toBe(true);
+    const closed = store.sprint(s.id)!;
+    expect(closed.status).toBe('cerrado');
+    expect(closed.adjustment).toBe(null);
+    value(
+      store.addAbsence({
+        personId: ana.id,
+        type: 'baja',
+        startDate: s.startDate,
+        endDate: s.endDate,
+        hoursPerDay: null,
+        comment: '',
+      }),
+    );
+    store.updatePerson(ana.id, { hoursPerDay: 4 });
+    expect(store.capacityOf(closed).team.available).toBe(72);
+    expect(store.planOf(closed)!.team.available).toBe(80);
+    expect(store.setMemberDedication(s.id, ana.id, 50).ok).toBe(false);
+    expect(store.setAdjustment(s.id, null).ok).toBe(false);
+  });
+
+  it('en planificación no hay plan ni se puede cerrar', () => {
+    const s = value(store.addSprint(store.propose(teamId, '2026-11-18')));
+    expect(store.planOf(s)).toBe(null);
+    expect(store.closeSprint(s.id).ok).toBe(false);
+  });
+});

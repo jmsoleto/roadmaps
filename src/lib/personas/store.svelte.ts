@@ -16,7 +16,8 @@
 import type { DocBackend, DataSource } from '../folder/doc-backend';
 import type { Unavailability } from '../folder/file-sync';
 import { todayIso } from '../time/timeline';
-import { computeCapacity, type SprintCapacity } from './capacity';
+import type { SprintCapacity } from './capacity';
+import { planCapacity, realCapacity, takeSnapshot } from './snapshot';
 import { mergeHolidays, parseHolidays, pasteNotice, readDate } from './holidays';
 import {
   emptyData,
@@ -63,6 +64,9 @@ export const MSG = {
   partial: 'Las horas de una ausencia parcial deben ser mayores que 0.',
   team: 'El equipo no existe o está inactivo.',
   down: 'Personas Hub no está disponible.',
+  frozen: 'El sprint ya está activo: sus fechas, su reserva y sus personas quedaron en el plan.',
+  closed: 'El sprint está cerrado: ya no cambia.',
+  reason: 'El ajuste necesita un motivo.',
 } as const;
 
 type FolderBackend = DocBackend<PersonasData> & { source: 'folder' };
@@ -168,14 +172,18 @@ export class PersonasStore {
     return this.data.teams.filter((t) => t.active);
   }
 
-  /** The engine over the current data: in planning, a sprint follows its people. */
+  /**
+   * What the sprint is in reality: in planning it follows its people; active,
+   * its plan's people with their data as it is now; closed, frozen
+   * (personas-plan-real, D2).
+   */
   capacityOf(sprint: Sprint): SprintCapacity {
-    return computeCapacity({
-      sprint,
-      people: this.data.people,
-      locations: this.data.locations,
-      absences: this.data.absences,
-    });
+    return realCapacity(sprint, this.data);
+  }
+
+  /** What was planned, frozen on activation; `null` while in planning. */
+  planOf(sprint: Sprint): SprintCapacity | null {
+    return planCapacity(sprint);
   }
 
   absencesOf(personId: string): Absence[] {
@@ -459,6 +467,13 @@ export class PersonasStore {
   updateSprint(id: string, patch: Partial<Omit<SprintDraft, 'teamId'>>): Outcome<null> {
     const sprint = this.sprint(id);
     if (!sprint) return no('No existe.');
+    const frozenKeys = ['startDate', 'endDate', 'incidentPercentage'] as const;
+    if (
+      sprint.status !== 'planificacion' &&
+      frozenKeys.some((k) => patch[k] !== undefined && patch[k] !== sprint[k])
+    ) {
+      return no(MSG.frozen);
+    }
     const problem = this.sprintProblem({
       ...patch,
       startDate: patch.startDate ?? sprint.startDate,
@@ -470,15 +485,86 @@ export class PersonasStore {
     return ok(null);
   }
 
-  deleteSprint(id: string): void {
+  /** Only a sprint in planning is deleted: the others are history. */
+  deleteSprint(id: string): Outcome<null> {
+    const sprint = this.sprint(id);
+    if (!sprint) return no('No existe.');
+    if (sprint.status !== 'planificacion') return no(MSG.frozen);
     this.data.sprints = this.data.sprints.filter((s) => s.id !== id);
     this.schedule();
+    return ok(null);
+  }
+
+  /** Freeze the plan (personas-plan-real). No way back. */
+  activateSprint(id: string, now = new Date()): Outcome<null> {
+    const sprint = this.sprint(id);
+    if (!sprint) return no('No existe.');
+    if (sprint.status !== 'planificacion') return no(MSG.frozen);
+    sprint.plan = takeSnapshot(
+      $state.snapshot(sprint) as Sprint,
+      $state.snapshot(this.data) as PersonasData,
+      null,
+      undefined,
+      now,
+    );
+    sprint.status = 'activo';
+    this.schedule();
+    return ok(null);
+  }
+
+  /** Freeze reality, adjustment included, the way activating froze the plan. */
+  closeSprint(id: string, now = new Date()): Outcome<null> {
+    const sprint = this.sprint(id);
+    if (!sprint) return no('No existe.');
+    if (sprint.status !== 'activo' || !sprint.plan) {
+      return no(sprint.status === 'cerrado' ? MSG.closed : 'Solo se cierra un sprint activo.');
+    }
+    const s = $state.snapshot(sprint) as Sprint;
+    const plan = s.plan!;
+    sprint.real = takeSnapshot(
+      {
+        ...s,
+        startDate: plan.startDate,
+        endDate: plan.endDate,
+        incidentPercentage: plan.incidentPercentage,
+      },
+      $state.snapshot(this.data) as PersonasData,
+      s.adjustment,
+      plan.members.map((m) => m.personId),
+      now,
+    );
+    sprint.adjustment = null;
+    sprint.status = 'cerrado';
+    this.schedule();
+    return ok(null);
+  }
+
+  /** Adjust reality while active: hours, positive or negative, and why. */
+  setAdjustment(id: string, adjustment: { hours: number; reason: string } | null): Outcome<null> {
+    const sprint = this.sprint(id);
+    if (!sprint) return no('No existe.');
+    if (sprint.status !== 'activo') {
+      return no(
+        sprint.status === 'cerrado' ? MSG.closed : 'Solo se ajusta lo real de un sprint activo.',
+      );
+    }
+    if (adjustment !== null) {
+      if (!Number.isFinite(adjustment.hours)) return no('El ajuste debe ser un número de horas.');
+      if (adjustment.reason.trim() === '') return no(MSG.reason);
+    }
+    sprint.adjustment =
+      adjustment === null || adjustment.hours === 0
+        ? null
+        : { hours: adjustment.hours, reason: adjustment.reason.trim() };
+    this.schedule();
+    return ok(null);
   }
 
   addMember(sprintId: string, personId: string): void {
     const sprint = this.sprint(sprintId);
     const person = this.person(personId);
     if (!sprint || !person || person.teamId !== sprint.teamId) return;
+    if (sprint.status !== 'planificacion') return;
     if (sprint.members.some((m) => m.personId === personId)) return;
     sprint.members.push({ personId, dedication: null });
     this.schedule();
@@ -486,7 +572,7 @@ export class PersonasStore {
 
   removeMember(sprintId: string, personId: string): void {
     const sprint = this.sprint(sprintId);
-    if (!sprint) return;
+    if (!sprint || sprint.status !== 'planificacion') return;
     sprint.members = sprint.members.filter((m) => m.personId !== personId);
     this.schedule();
   }
@@ -497,8 +583,10 @@ export class PersonasStore {
     personId: string,
     dedication: number | null,
   ): Outcome<null> {
-    const member = this.sprint(sprintId)?.members.find((m) => m.personId === personId);
-    if (!member) return no('No existe.');
+    const sprint = this.sprint(sprintId);
+    const member = sprint?.members.find((m) => m.personId === personId);
+    if (!sprint || !member) return no('No existe.');
+    if (sprint.status === 'cerrado') return no(MSG.closed);
     if (dedication !== null && !percentOk(dedication)) return no(MSG.dedication);
     member.dedication = dedication;
     this.schedule();

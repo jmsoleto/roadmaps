@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { CATALOG_FILE, ORDER_FILE, PERSONAS_FORMAT, fileFor } from './folder-format';
 import { MARKER_FILE } from '../folder/marker';
 import { emptyData, type PersonasData } from './model';
+import { takeSnapshot } from './snapshot';
 
 const data = (): PersonasData => ({
   ...emptyData(),
@@ -61,6 +62,9 @@ const data = (): PersonasData => ({
       startDate: '2026-12-14',
       endDate: '2026-12-25',
       status: 'planificacion',
+      plan: null,
+      real: null,
+      adjustment: null,
       incidentPercentage: 15,
       members: [{ personId: 'per-1', dedication: null }],
     },
@@ -71,6 +75,9 @@ const data = (): PersonasData => ({
       startDate: '2026-11-30',
       endDate: '2026-12-11',
       status: 'planificacion',
+      plan: null,
+      real: null,
+      adjustment: null,
       incidentPercentage: 20,
       members: [{ personId: 'per-1', dedication: 40 }],
     },
@@ -142,6 +149,29 @@ describe('Personas Hub en la carpeta', () => {
     t2.people[0].id = 'per-1';
     files.set('team-2-bbbbb.json', JSON.stringify(t2));
     expect(PERSONAS_FORMAT.parse(files).kind).toBe('unreadable');
+  });
+
+  it('un sprint activo o cerrado lleva sus snapshots, y cerrar toca solo su fichero', () => {
+    const before = data();
+    const active = {
+      ...before.sprints[1],
+      status: 'activo' as const,
+      plan: takeSnapshot(before.sprints[1], before, null),
+    };
+    before.sprints[1] = active;
+    const after = structuredClone(before);
+    after.sprints[1] = {
+      ...active,
+      status: 'cerrado',
+      real: takeSnapshot(active, before, null),
+      adjustment: null,
+    };
+    const files = PERSONAS_FORMAT.serialize(after);
+    expect(changed(PERSONAS_FORMAT.serialize(before), files)).toEqual(['sprint-1-y.json']);
+    const back = PERSONAS_FORMAT.parse(files);
+    expect(back.kind === 'ok' && back.data.sprints.find((x) => x.id === 'sprint-1-y')).toEqual(
+      after.sprints[1],
+    );
   });
 
   it('una aplicación nueva cuenta como vacía', () => {

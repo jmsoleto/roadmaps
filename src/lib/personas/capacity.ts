@@ -21,7 +21,7 @@
 
 import { addDays, isWeekend } from '../time/timeline';
 import type { IsoDate } from '../model/types';
-import type { Absence, AbsenceType, Location, Person, Sprint } from './model';
+import type { Absence, AbsenceType, Adjustment, Location, Person, Sprint } from './model';
 
 export type DayState = 'finde' | 'disponible' | 'festivo' | 'ausencia' | 'parcial';
 
@@ -59,6 +59,9 @@ export interface PersonCapacity {
 }
 
 export interface TeamCapacity extends Totals {
+  /** The real-capacity adjustment actually applied: 0 outside an active or closed real. */
+  adjustment: number;
+  adjustmentReason: string;
   incidentPercentage: number;
   reserve: number;
   planning: number;
@@ -73,8 +76,10 @@ export interface SprintCapacity {
 export interface CapacityInput {
   sprint: Pick<Sprint, 'startDate' | 'endDate' | 'incidentPercentage' | 'members'>;
   people: readonly Person[];
-  locations: readonly Location[];
+  locations: readonly Pick<Location, 'id' | 'holidays'>[];
   absences: readonly Absence[];
+  /** Hours added after the dedication and before the reserve (personas-plan-real, D3). */
+  adjustment?: Adjustment | null;
 }
 
 /** Every day from start to end, both included. */
@@ -221,15 +226,22 @@ export function computeCapacity(input: CapacityInput): SprintCapacity {
     people.push({ person, dedication, overridden, days, totals });
   }
 
-  const reserve = team.available * (sprint.incidentPercentage / 100);
+  // The adjustment never takes the team below zero; what is applied is what
+  // fits, so the figures still add up (personas-plan-real, D3).
+  const peopleAvailable = team.available;
+  const available = Math.max(0, peopleAvailable + (input.adjustment?.hours ?? 0));
+  const reserve = available * (sprint.incidentPercentage / 100);
   return {
     days: dates.map((date) => ({ date, weekend: weekend.get(date) ?? false })),
     people,
     team: {
       ...team,
+      available,
+      adjustment: available - peopleAvailable,
+      adjustmentReason: input.adjustment?.reason ?? '',
       incidentPercentage: sprint.incidentPercentage,
       reserve,
-      planning: team.available - reserve,
+      planning: available - reserve,
     },
   };
 }

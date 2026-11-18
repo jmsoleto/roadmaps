@@ -7,7 +7,13 @@
    */
   import { personas } from '../../personas/store.svelte';
   import { personasUi, type TeamTab } from '../../personas/ui.svelte';
-  import { sprintsOf, peopleOf, technologyLabel, ABSENCE_LABEL } from '../../personas/model';
+  import {
+    sprintsOf,
+    peopleOf,
+    technologyLabel,
+    ABSENCE_LABEL,
+    SPRINT_STATUS_LABEL,
+  } from '../../personas/model';
   import {
     fmtDay,
     fmtHours,
@@ -192,6 +198,7 @@
             <tr>
               <th>Sprint</th>
               <th>Fechas</th>
+              <th>Estado</th>
               <th class="r">Personas</th>
               <th class="r">Reserva</th>
               <th class="r">Disponible</th>
@@ -200,13 +207,19 @@
           </thead>
           <tbody>
             {#each sprints as s (s.id)}
-              {@const c = personas.capacityOf(s).team}
+              <!-- The plan's figure once it is frozen: what was committed. -->
+              {@const c = (personas.planOf(s) ?? personas.capacityOf(s)).team}
               <tr>
                 <td
                   ><button class="link" onclick={() => personasUi.openSprint(s.id)}>{s.name}</button
                   ></td
                 >
                 <td class="mono">{fmtRange(s.startDate, s.endDate)}</td>
+                <td
+                  ><span class="tag" class:accent={s.status === 'activo'}
+                    >{SPRINT_STATUS_LABEL[s.status]}</span
+                  ></td
+                >
                 <td class="r">{s.members.length}</td>
                 <td class="r">{fmtPercent(s.incidentPercentage)}</td>
                 <td class="r">{fmtHours(c.available)}</td>

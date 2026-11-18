@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { personasSummary } from './summary';
+import { takeSnapshot } from './snapshot';
 import { emptyData, type PersonasData, type Sprint } from './model';
 
 const sprint = (id: string, start: string, end: string): Sprint => ({
@@ -9,6 +10,9 @@ const sprint = (id: string, start: string, end: string): Sprint => ({
   startDate: start,
   endDate: end,
   status: 'planificacion',
+  plan: null,
+  real: null,
+  adjustment: null,
   incidentPercentage: 15,
   members: [{ personId: 'p1', dedication: null }],
 });
@@ -53,9 +57,9 @@ const data = (): PersonasData => ({
 const color = (n: number) => `slot-${n}`;
 
 describe('la tarjeta de Personas Hub', () => {
-  it('cuenta personas y equipos activos, y sprints en planificación', () => {
+  it('cuenta personas activas, sprints activos y sprints en planificación', () => {
     const s = personasSummary(data(), '2026-11-18', color);
-    expect(s.stats.map((x) => x.value)).toEqual([1, 1, 3]);
+    expect(s.stats.map((x) => x.value)).toEqual([1, 0, 3]);
     expect(s.alerts).toEqual([]);
   });
 
@@ -65,6 +69,25 @@ describe('la tarjeta de Personas Hub', () => {
     expect(s.list.rows.map((r) => r.label)).toEqual(['Pagos · Sprint 19', 'Pagos · Sprint 20']);
     // 10 days × 8 h, 15 % kept for incidents.
     expect(s.list.rows[0].meta).toBe('68 h');
+  });
+
+  it('un sprint activo dice que está en curso, con lo real', () => {
+    const d = data();
+    const s19 = d.sprints.find((s) => s.id === 'Sprint 19')!;
+    s19.status = 'activo';
+    s19.plan = takeSnapshot(s19, d, null);
+    d.absences.push({
+      id: 'b',
+      personId: 'p1',
+      type: 'baja',
+      startDate: '2026-12-01',
+      endDate: '2026-12-01',
+      hoursPerDay: null,
+      comment: '',
+    });
+    const s = personasSummary(d, '2026-11-18', color);
+    expect(s.stats[1].value).toBe(1);
+    expect(s.list.rows[0].meta).toBe('en curso · 61,2 h');
   });
 
   it('sin sprints por delante, la lista lo dice', () => {

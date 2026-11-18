@@ -11,7 +11,8 @@
 export function fmtNumber(n: number): string {
   const r = Math.round(n * 10) / 10;
   const v = Object.is(r, -0) || Math.abs(r) < 1e-9 ? 0 : r;
-  return String(v).replace('.', ',');
+  // A real minus sign, as in the discounts: `−16`, not `-16`.
+  return String(v).replace('.', ',').replace('-', '−');
 }
 
 export const fmtHours = (n: number): string => `${fmtNumber(n)} h`;
@@ -25,7 +26,8 @@ export const fmtPercent = (p: number): string => `${String(p).replace('.', ',')}
 
 /** What a person typed for a number, read with either decimal mark. */
 export function parseNumber(text: string): number | null {
-  const t = text.trim().replace(',', '.');
+  // Either minus: the one the keyboard types and the one these screens print.
+  const t = text.trim().replace(',', '.').replace('−', '-');
   if (t === '' || !/^-?\d+(\.\d+)?$/.test(t)) return null;
   return Number(t);
 }
