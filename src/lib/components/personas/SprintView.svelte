@@ -26,6 +26,8 @@
     technologyLabel,
   } from '../../personas/model';
   import ComparisonView from './ComparisonView.svelte';
+  import ResultsView from './ResultsView.svelte';
+  import ForecastPanel from './ForecastPanel.svelte';
   import {
     fmtDay,
     fmtDiscount,
@@ -280,11 +282,14 @@
       aria-selected={tab === 'disponibilidad'}
       onclick={() => setTab('disponibilidad')}>Disponibilidad</button
     >
+    <button role="tab" aria-selected={tab === 'resultados'} onclick={() => setTab('resultados')}
+      >Resultados</button
+    >
     {#if frozen}
       <button role="tab" aria-selected={tab === 'comparacion'} onclick={() => setTab('comparacion')}
         >Plan vs real</button
       >
-      {#if tab !== 'comparacion'}
+      {#if tab !== 'comparacion' && tab !== 'resultados'}
         <div class="see" role="group" aria-label="qué se muestra">
           <button aria-pressed={see === 'plan'} onclick={() => (see = 'plan')}>plan</button>
           <button aria-pressed={see === 'real'} onclick={() => (see = 'real')}>real</button>
@@ -351,6 +356,9 @@
         <hr class="double" />
         {@render line('planning', 'CAPACIDAD PLANIFICABLE', 'total')}
       </div>
+      {#if sprint.status === 'planificacion'}
+        <ForecastPanel {sprint} />
+      {/if}
       {#if sprint.status === 'activo' && see === 'real'}
         <div class="form">
           <label class="field"
@@ -512,6 +520,8 @@
       {#if live}
         <p class="hint">Pulsa un día para registrar una ausencia, o una ausencia para cambiarla.</p>
       {/if}
+    {:else if tab === 'resultados'}
+      <ResultsView {sprint} />
     {:else if tab === 'comparacion' && plan}
       <ComparisonView {sprint} {plan} real={personas.capacityOf(sprint)} />
     {/if}

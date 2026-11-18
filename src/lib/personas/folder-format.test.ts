@@ -65,6 +65,15 @@ const data = (): PersonasData => ({
       plan: null,
       real: null,
       adjustment: null,
+      results: [
+        {
+          familyId: 'tec-app',
+          plannedStories: 6,
+          plannedPoints: 18,
+          completedStories: 0,
+          completedPoints: 0,
+        },
+      ],
       incidentPercentage: 15,
       members: [{ personId: 'per-1', dedication: null }],
     },
@@ -78,6 +87,7 @@ const data = (): PersonasData => ({
       plan: null,
       real: null,
       adjustment: null,
+      results: [],
       incidentPercentage: 20,
       members: [{ personId: 'per-1', dedication: 40 }],
     },
@@ -165,6 +175,7 @@ describe('Personas Hub en la carpeta', () => {
       status: 'cerrado',
       real: takeSnapshot(active, before, null),
       adjustment: null,
+      results: [],
     };
     const files = PERSONAS_FORMAT.serialize(after);
     expect(changed(PERSONAS_FORMAT.serialize(before), files)).toEqual(['sprint-1-y.json']);

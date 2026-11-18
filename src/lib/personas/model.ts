@@ -170,6 +170,16 @@ export interface Sprint {
   real: CapacitySnapshot | null;
   /** Only while active. */
   adjustment: Adjustment | null;
+  /** What was committed and delivered, one row per family used (personas-historico, D1). */
+  results: FamilyResult[];
+}
+
+export interface FamilyResult {
+  familyId: string;
+  plannedStories: number;
+  plannedPoints: number;
+  completedStories: number;
+  completedPoints: number;
 }
 
 export interface PersonasData {
@@ -284,7 +294,7 @@ export const newAbsence = (draft: AbsenceDraft): Absence => ({
 
 export type SprintDraft = Omit<
   Sprint,
-  'id' | 'status' | 'members' | 'plan' | 'real' | 'adjustment'
+  'id' | 'status' | 'members' | 'plan' | 'real' | 'adjustment' | 'results'
 >;
 
 export const newSprint = (draft: SprintDraft, members: SprintMember[]): Sprint => ({
@@ -296,6 +306,7 @@ export const newSprint = (draft: SprintDraft, members: SprintMember[]): Sprint =
   plan: null,
   real: null,
   adjustment: null,
+  results: [],
 });
 
 // ---- reading ----

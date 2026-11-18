@@ -53,6 +53,7 @@ const base = () => ({
       plan: null,
       real: null,
       adjustment: null,
+      results: [],
       incidentPercentage: 15,
       members: [{ personId: 'p1', dedication: null }],
     },

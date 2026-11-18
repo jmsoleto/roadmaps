@@ -49,6 +49,7 @@ function prd(): { data: PersonasData; sprint: Sprint } {
     plan: null,
     real: null,
     adjustment: null,
+    results: [],
   };
   const data: PersonasData = {
     ...emptyData(),
@@ -210,6 +211,7 @@ describe('cerrar', () => {
         sprint.plan!.members.map((m) => m.personId),
       ),
       adjustment: null,
+      results: [],
     };
     const before = realCapacity(closed, data).team;
     data.absences.push({

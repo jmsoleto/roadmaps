@@ -26,6 +26,7 @@ import {
   type AbsenceType,
   type Adjustment,
   type CapacitySnapshot,
+  type FamilyResult,
   type Holiday,
   type Location,
   type PersonasData,
@@ -39,6 +40,13 @@ import {
 } from './model';
 
 export class Inconsistent extends Error {}
+
+const RESULT_KEYS = [
+  'plannedStories',
+  'plannedPoints',
+  'completedStories',
+  'completedPoints',
+] as const;
 
 const TOTAL_KEYS = [
   'theoretical',
@@ -310,6 +318,34 @@ export function normalize(raw: unknown, strict = false): PersonasData {
     return { hours: h, reason: raw.reason };
   }
 
+  const familyIds = new Set(techs.filter((t) => t.parentId === null).map((t) => t.id));
+
+  /** One row per family that exists; counts that are not numbers ≥ 0 refuse it. */
+  function results(raw: unknown): FamilyResult[] {
+    const out: FamilyResult[] = [];
+    for (const r of Array.isArray(raw) ? raw : []) {
+      if (!isObj(r) || typeof r.familyId !== 'string' || !familyIds.has(r.familyId)) {
+        fail('resultado');
+        continue;
+      }
+      if (out.some((x) => x.familyId === r.familyId)) continue;
+      const counts = RESULT_KEYS.map((k) => (r[k] === undefined ? 0 : num(r[k])));
+      if (counts.some((n) => n === null || n < 0)) {
+        fail('resultado');
+        continue;
+      }
+      const [plannedStories, plannedPoints, completedStories, completedPoints] = counts as number[];
+      out.push({
+        familyId: r.familyId,
+        plannedStories,
+        plannedPoints,
+        completedStories,
+        completedPoints,
+      });
+    }
+    return out;
+  }
+
   const sprints = read<Sprint>('sprints', 'sprint', (o) => {
     if (typeof o.teamId !== 'string' || !teamIds.has(o.teamId)) return null;
     if (!isIsoDate(o.startDate) || !isIsoDate(o.endDate) || o.endDate < o.startDate) return null;
@@ -352,6 +388,7 @@ export function normalize(raw: unknown, strict = false): PersonasData {
       plan: status === 'planificacion' ? null : plan,
       real: status === 'cerrado' ? real : null,
       adjustment: status === 'activo' ? adjustment(o.adjustment) : null,
+      results: results(o.results),
     };
   });
 

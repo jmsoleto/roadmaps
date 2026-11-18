@@ -33,6 +33,7 @@ import {
   peopleOf,
   type Absence,
   type AbsenceDraft,
+  type FamilyResult,
   type Location,
   type Person,
   type PersonDraft,
@@ -67,6 +68,7 @@ export const MSG = {
   frozen: 'El sprint ya está activo: sus fechas, su reserva y sus personas quedaron en el plan.',
   closed: 'El sprint está cerrado: ya no cambia.',
   reason: 'El ajuste necesita un motivo.',
+  committed: 'Lo comprometido quedó congelado al activar el sprint.',
 } as const;
 
 type FolderBackend = DocBackend<PersonasData> & { source: 'folder' };
@@ -589,6 +591,66 @@ export class PersonasStore {
     if (sprint.status === 'cerrado') return no(MSG.closed);
     if (dedication !== null && !percentOk(dedication)) return no(MSG.dedication);
     member.dedication = dedication;
+    this.schedule();
+    return ok(null);
+  }
+
+  // ---- results (personas-historico, D3) ----
+
+  /** Give a family a row in a sprint's results; only before it is closed. */
+  addResultFamily(sprintId: string, familyId: string): Outcome<null> {
+    const sprint = this.sprint(sprintId);
+    const family = this.technology(familyId);
+    if (!sprint || !family || family.parentId !== null) return no('No existe.');
+    if (sprint.status === 'cerrado') return no(MSG.closed);
+    if (sprint.results.some((r) => r.familyId === familyId)) return ok(null);
+    sprint.results.push({
+      familyId,
+      plannedStories: 0,
+      plannedPoints: 0,
+      completedStories: 0,
+      completedPoints: 0,
+    });
+    this.schedule();
+    return ok(null);
+  }
+
+  /** Remove a family's row; only in planning, where nothing has been delivered. */
+  removeResultFamily(sprintId: string, familyId: string): Outcome<null> {
+    const sprint = this.sprint(sprintId);
+    if (!sprint) return no('No existe.');
+    if (sprint.status !== 'planificacion') return no(MSG.committed);
+    sprint.results = sprint.results.filter((r) => r.familyId !== familyId);
+    this.schedule();
+    return ok(null);
+  }
+
+  /**
+   * Write committed or delivered figures. Committed only in planning (frozen on
+   * activation), delivered only while active (frozen on closing).
+   */
+  setResult(
+    sprintId: string,
+    familyId: string,
+    patch: Partial<Omit<FamilyResult, 'familyId'>>,
+  ): Outcome<null> {
+    const sprint = this.sprint(sprintId);
+    const row = sprint?.results.find((r) => r.familyId === familyId);
+    if (!sprint || !row) return no('No existe.');
+    const planned = patch.plannedPoints !== undefined || patch.plannedStories !== undefined;
+    const completed = patch.completedPoints !== undefined || patch.completedStories !== undefined;
+    if (planned && sprint.status !== 'planificacion') return no(MSG.committed);
+    if (completed && sprint.status !== 'activo') {
+      return no(
+        sprint.status === 'cerrado' ? MSG.closed : 'Lo terminado se apunta con el sprint activo.',
+      );
+    }
+    for (const v of Object.values(patch)) {
+      if (typeof v !== 'number' || !Number.isFinite(v) || v < 0) {
+        return no('Las historias y los Story Points son números mayores o iguales que 0.');
+      }
+    }
+    Object.assign(row, patch);
     this.schedule();
     return ok(null);
   }

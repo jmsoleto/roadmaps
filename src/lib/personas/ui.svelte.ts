@@ -8,8 +8,8 @@
 
 import { personas, type PersonasStore } from './store.svelte';
 
-export type TeamTab = 'sprints' | 'personas' | 'ausencias';
-export type SprintTab = 'resumen' | 'personas' | 'disponibilidad' | 'comparacion';
+export type TeamTab = 'sprints' | 'personas' | 'ausencias' | 'historico';
+export type SprintTab = 'resumen' | 'personas' | 'disponibilidad' | 'resultados' | 'comparacion';
 export type CatalogTab = 'roles' | 'localidades';
 
 export type View =

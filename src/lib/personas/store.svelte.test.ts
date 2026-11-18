@@ -307,3 +307,34 @@ describe('el ciclo del sprint (personas-plan-real)', () => {
     expect(store.closeSprint(s.id).ok).toBe(false);
   });
 });
+
+describe('resultados por familia (personas-historico)', () => {
+  it('lo comprometido se escribe en planificación y se congela al activar', () => {
+    value(store.addPerson(draft('Ana')));
+    const s = value(store.addSprint(store.propose(teamId, '2026-11-18')));
+    expect(store.addResultFamily(s.id, 'tec-app').ok).toBe(true);
+    expect(store.setResult(s.id, 'tec-app', { plannedPoints: 18, plannedStories: 6 }).ok).toBe(
+      true,
+    );
+    expect(store.setResult(s.id, 'tec-app', { completedPoints: 3 }).ok).toBe(false);
+    expect(store.setResult(s.id, 'tec-app', { plannedPoints: -1 }).ok).toBe(false);
+    store.activateSprint(s.id);
+    expect(store.setResult(s.id, 'tec-app', { plannedPoints: 20 })).toEqual({
+      ok: false,
+      error: 'Lo comprometido quedó congelado al activar el sprint.',
+    });
+    expect(store.setResult(s.id, 'tec-app', { completedPoints: 15.5 }).ok).toBe(true);
+    expect(store.removeResultFamily(s.id, 'tec-app').ok).toBe(false);
+    store.closeSprint(s.id);
+    expect(store.setResult(s.id, 'tec-app', { completedPoints: 16 }).ok).toBe(false);
+    expect(store.sprint(s.id)!.results[0]).toMatchObject({
+      plannedPoints: 18,
+      completedPoints: 15.5,
+    });
+  });
+
+  it('una tecnología que no es familia no tiene fila', () => {
+    const s = value(store.addSprint(store.propose(teamId, '2026-11-18')));
+    expect(store.addResultFamily(s.id, 'tec-app-qa').ok).toBe(false);
+  });
+});

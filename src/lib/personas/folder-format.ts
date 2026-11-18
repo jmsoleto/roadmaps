@@ -78,6 +78,7 @@ const { text } = canonicalizer<Kind>({
       'incidentPercentage',
       'members',
       'adjustment',
+      'results',
       'plan',
       'real',
     ],

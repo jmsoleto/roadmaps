@@ -50,6 +50,7 @@ const data = (): PersonasData => ({
       plan: null,
       real: null,
       adjustment: null,
+      results: [],
       incidentPercentage: 15,
       members: [{ personId: 'p1', dedication: null }],
     },
@@ -80,6 +81,7 @@ describe('el documento de Personas Hub', () => {
       status: 'cerrado',
       real: takeSnapshot(active, d, { hours: -4, reason: 'x' }),
       adjustment: null,
+      results: [],
     };
     expect(parsePersonasImport(exportPersonas(d))).toEqual(d);
   });

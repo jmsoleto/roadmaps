@@ -23,6 +23,7 @@
     parseNumber,
   } from '../../personas/format';
   import { readDate } from '../../personas/holidays';
+  import HistoryView from './HistoryView.svelte';
 
   let { teamId, tab }: { teamId: string; tab: TeamTab } = $props();
 
@@ -151,6 +152,9 @@
     >
     <button role="tab" aria-selected={tab === 'ausencias'} onclick={() => setTab('ausencias')}
       >Ausencias · {absences.length}</button
+    >
+    <button role="tab" aria-selected={tab === 'historico'} onclick={() => setTab('historico')}
+      >Histórico</button
     >
   </div>
 
@@ -283,6 +287,8 @@
           </tbody>
         </table>
       {/if}
+    {:else if tab === 'historico'}
+      <HistoryView {teamId} />
     {:else}
       <div>
         <button

@@ -80,6 +80,7 @@ const seed: PersonasData = {
       plan: null,
       real: null,
       adjustment: null,
+      results: [],
       incidentPercentage: 15,
       members: [{ personId: 'per-1', dedication: null }],
     },

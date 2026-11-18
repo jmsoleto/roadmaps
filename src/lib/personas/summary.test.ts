@@ -13,6 +13,7 @@ const sprint = (id: string, start: string, end: string): Sprint => ({
   plan: null,
   real: null,
   adjustment: null,
+  results: [],
   incidentPercentage: 15,
   members: [{ personId: 'p1', dedication: null }],
 });
@@ -88,6 +89,38 @@ describe('la tarjeta de Personas Hub', () => {
     const s = personasSummary(d, '2026-11-18', color);
     expect(s.stats[1].value).toBe(1);
     expect(s.list.rows[0].meta).toBe('en curso · 61,2 h');
+  });
+
+  it('un sprint en planificación dice los SP recomendados si hay histórico', () => {
+    const d = data();
+    const s18 = d.sprints.find((s) => s.id === 'Sprint 18')!;
+    s18.results = [
+      {
+        familyId: 'tec-app',
+        plannedStories: 3,
+        plannedPoints: 10,
+        completedStories: 3,
+        completedPoints: 8,
+      },
+    ];
+    s18.status = 'activo';
+    s18.plan = takeSnapshot(s18, d, null);
+    s18.status = 'cerrado';
+    s18.real = takeSnapshot(s18, d, null);
+    const s = personasSummary(d, '2026-11-18', color);
+    // 8 SP in 68 h, and the next one has 68 h too.
+    expect(s.list.rows[0].meta).toBe('68 h · ~8 SP');
+  });
+
+  it('un sprint cerrado no está por delante aunque sus fechas no hayan pasado', () => {
+    const d = data();
+    const s19 = d.sprints.find((s) => s.id === 'Sprint 19')!;
+    s19.status = 'activo';
+    s19.plan = takeSnapshot(s19, d, null);
+    s19.status = 'cerrado';
+    s19.real = takeSnapshot(s19, d, null);
+    const s = personasSummary(d, '2026-11-18', color);
+    expect(s.list.rows.map((r) => r.label)).toEqual(['Pagos · Sprint 20']);
   });
 
   it('sin sprints por delante, la lista lo dice', () => {
