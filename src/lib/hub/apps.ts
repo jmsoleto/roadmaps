@@ -32,11 +32,12 @@ export const DECISIONS_ID = 'decisions';
 export const API_ID = 'api';
 export const LINKS_ID = 'links';
 export const HEALTH_ID = 'health';
+export const PERSONAS_ID = 'personas';
 
 /**
  * The registry.
  *
- * The five applications are live. The grid still shows a further state — the
+ * The six applications are live. The grid still shows a further state — the
  * anonymous marker the landing appends — so "more fit here" stays visible
  * without an app having to pretend to be a placeholder.
  */
@@ -94,6 +95,16 @@ export const APPS: readonly AppDefinition[] = [
     state: 'live',
     createLabel: '+ nueva aplicación',
     route: '#/health',
+  },
+  {
+    id: PERSONAS_ID,
+    name: 'Personas Hub',
+    tagline:
+      'La capacidad de cada sprint: festivos, ausencias y dedicación de cada persona, y de dónde sale cada hora.',
+    identity: APP_IDENTITIES.personas,
+    state: 'live',
+    createLabel: '+ nuevo sprint',
+    route: '#/personas',
   },
 ];
 

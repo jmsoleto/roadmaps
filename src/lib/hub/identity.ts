@@ -18,7 +18,8 @@
  */
 
 /** Which mark is carved into the tile. The shapes live in `AppIcon.svelte`. */
-export type AppGlyph = 'roadmaps' | 'decisions' | 'api' | 'links' | 'health' | 'future';
+export type AppGlyph =
+  'roadmaps' | 'decisions' | 'api' | 'links' | 'health' | 'personas' | 'future';
 
 export interface AppIdentity {
   glyph: AppGlyph;
@@ -62,6 +63,7 @@ export const APP_IDENTITIES = {
   api: { glyph: 'api', from: '#FBBF24', to: '#FB7185' },
   links: { glyph: 'links', from: '#4ADE80', to: '#FACC15' },
   health: { glyph: 'health', from: '#FB7185', to: '#F97316' },
+  personas: { glyph: 'personas', from: '#2DD4BF', to: '#818CF8' },
   future: { glyph: 'future', from: '#94A3B8', to: '#CBD5E1' },
 } as const satisfies Record<string, AppIdentity>;
 

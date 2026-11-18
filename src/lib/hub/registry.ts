@@ -12,6 +12,7 @@
 import { roadmapsFolder } from '../store/roadmaps-folder.svelte';
 import { apiFolder } from '../api/folder.svelte';
 import { linksFolder } from '../links/folder.svelte';
+import { personasFolder } from '../personas/folder.svelte';
 import { store } from '../store/app.svelte';
 import { ui } from '../store/ui.svelte';
 import { theme } from '../theme/theme.svelte';
@@ -22,6 +23,7 @@ import {
   DECISIONS_ID,
   HEALTH_ID,
   LINKS_ID,
+  PERSONAS_ID,
   ROADMAPS_ID,
   type AppDefinition,
 } from './apps';
@@ -41,6 +43,15 @@ import { links } from '../links/store.svelte';
 import { linksUi } from '../links/ui.svelte';
 import { linksSummary } from '../links/summary';
 import { areaFilename, exportArea, exportNotice, importNotice, parseAreaImport } from '../links/io';
+import { personas } from '../personas/store.svelte';
+import { personasUi } from '../personas/ui.svelte';
+import { personasSummary } from '../personas/summary';
+import {
+  exportNotice as personasExportNotice,
+  exportPersonas,
+  FILENAME as PERSONAS_FILE,
+  parsePersonasImport,
+} from '../personas/io';
 import { location } from './location.svelte';
 import { roadmapsSummary } from './roadmaps-summary';
 import { usage } from './usage.svelte';
@@ -54,6 +65,7 @@ import ContractSwitcher from '../components/api/ContractSwitcher.svelte';
 import LinksApp from '../components/links/LinksApp.svelte';
 import HealthApp from '../components/health/HealthApp.svelte';
 import HealthSwitcher from '../components/health/HealthSwitcher.svelte';
+import PersonasApp from '../components/personas/PersonasApp.svelte';
 
 /** Roadmaps' own home, run whenever the app is entered by any route. */
 function roadmapsHome(): void {
@@ -107,6 +119,16 @@ function healthHome(): void {
 }
 
 /**
+ * Personas Hub's own home: its first active team, nothing half-filled.
+ *
+ * Back to the default, like Roadmaps and Links: it is opened to plan the next
+ * sprint, and the team is the place that starts from.
+ */
+function personasHome(): void {
+  personasUi.home();
+}
+
+/**
  * Wire the entry hooks.
  *
  * Called from `main.ts` before `location.init()`, so that a session restored
@@ -118,6 +140,7 @@ export function initHub(): void {
   location.onEnter(API_ID, apiHome);
   location.onEnter(LINKS_ID, linksHome);
   location.onEnter(HEALTH_ID, healthHome);
+  location.onEnter(PERSONAS_ID, personasHome);
 }
 
 function roadmapsSummaryNow(): AppSummary | AppUnreadable {
@@ -218,6 +241,31 @@ function linksSummaryNow(): AppSummary | AppUnreadable {
     Date.now(),
     (slot) => theme.slotColor(slot),
   );
+}
+
+function personasSummaryNow(): AppSummary | AppUnreadable {
+  // In the browser Personas Hub is always ready, as Links is. Only a folder can
+  // leave nothing to count yet.
+  if (personas.source === 'folder') {
+    if (!personas.ready) {
+      return { kind: 'unreadable', reason: 'Abriendo la carpeta de los equipos…' };
+    }
+    if (personas.unavailable) {
+      const folder = personasFolder.folderName ?? 'la carpeta';
+      if (personas.unavailable.why?.cause === 'permiso') {
+        return {
+          kind: 'unreadable',
+          reason: `Falta el permiso sobre «${folder}». Concédelo para ver los equipos.`,
+          grant: () => personasFolder.grant(),
+        };
+      }
+      return {
+        kind: 'unreadable',
+        reason: `No se puede leer «${folder}». Entra para ver por qué, reintentar o desconectarla.`,
+      };
+    }
+  }
+  return personasSummary(personas.data, todayIso(), (slot) => theme.slotColor(slot));
 }
 
 function healthSummaryNow(): AppSummary | AppUnreadable {
@@ -404,6 +452,65 @@ function linksActions(): AppAction[] {
         : 'guardar los enlaces en una carpeta (un repo de git)',
       pilot: folderPilot(linksFolder.folderName, links.unavailable !== null),
       run: () => ui.openFolder(LINKS_ID),
+    },
+  ];
+}
+
+/** Open one sprint from the landing; entering first, so naming it wins. */
+function openSprint(id: string): void {
+  location.goApp(PERSONAS_ID);
+  personasUi.openSprint(id);
+}
+
+/** Hand over all of Personas Hub, and say what the file carries (D7). */
+function exportPersonasFile(): string {
+  downloadText(PERSONAS_FILE, exportPersonas(personas.data));
+  return personasExportNotice();
+}
+
+/** Restore a document over an empty Personas Hub, or say why not (D8). */
+function importPersonasFile(text: string): string {
+  const out = personas.restore(parsePersonasImport(text));
+  if (!out.ok) throw new Error(out.error);
+  personasUi.home();
+  const teams = personas.data.teams.length;
+  return `restaurado: ${teams} ${teams === 1 ? 'equipo' : 'equipos'}, ${personas.data.sprints.length} sprints`;
+}
+
+function personasActions(): AppAction[] {
+  const down = personas.down;
+  return [
+    {
+      kind: 'button',
+      label: '+ nuevo sprint',
+      title: 'planificar el siguiente sprint del equipo abierto',
+      disabled: down,
+      run: () => personasUi.startSprint(),
+    },
+    {
+      kind: 'file',
+      label: '↓ importar',
+      title: 'restaurar Personas Hub desde un JSON (solo si está vacío)',
+      disabled: down,
+      accept: JSON_FILES,
+      run: importPersonasFile,
+    },
+    {
+      kind: 'button',
+      label: '↑ exportar',
+      title: 'exportar todo Personas Hub',
+      disabled: down || personas.data.teams.length === 0,
+      run: exportPersonasFile,
+    },
+    // Never disabled: it is also the way out of a folder that cannot be read.
+    {
+      kind: 'button',
+      label: '⧉ carpeta',
+      title: personasFolder.folderName
+        ? `conectado a «${personasFolder.folderName}»`
+        : 'guardar los equipos en una carpeta (un repo de git privado)',
+      pilot: folderPilot(personasFolder.folderName, personas.unavailable !== null),
+      run: () => ui.openFolder(PERSONAS_ID),
     },
   ];
 }
@@ -637,6 +744,21 @@ const BEHAVIOUR: Record<string, Partial<Behaviour>> = {
     context: HealthSwitcher,
     actions: healthActions,
     scope: () => healthFolder.folderName,
+  },
+  [PERSONAS_ID]: {
+    summary: personasSummaryNow,
+    open: () => location.goApp(PERSONAS_ID),
+    create: () => {
+      location.goApp(PERSONAS_ID);
+      personasUi.startSprint();
+    },
+    openRow: openSprint,
+    root: PersonasApp,
+    // No second breadcrumb level: the teams are a column of the screen, as the
+    // areas are in Links Hub. The topbar fills the gap itself.
+    context: null,
+    actions: personasActions,
+    scope: () => personasFolder.folderName,
   },
 };
 

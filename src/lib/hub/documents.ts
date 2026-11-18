@@ -21,11 +21,16 @@
  * for the person on the receiving end.
  */
 
-import { DECISIONS_ID, ROADMAPS_ID, API_ID, LINKS_ID, findApp } from './apps';
+import { DECISIONS_ID, ROADMAPS_ID, API_ID, LINKS_ID, PERSONAS_ID, findApp } from './apps';
 
 /** What a document declares itself to be, or `null` when nothing recognises it. */
 export type DocumentOwner =
-  typeof ROADMAPS_ID | typeof DECISIONS_ID | typeof API_ID | typeof LINKS_ID | null;
+  | typeof ROADMAPS_ID
+  | typeof DECISIONS_ID
+  | typeof API_ID
+  | typeof LINKS_ID
+  | typeof PERSONAS_ID
+  | null;
 
 /**
  * Recognise a parsed JSON.
@@ -45,6 +50,7 @@ export function ownerOf(parsed: unknown): DocumentOwner {
   if (doc.kind === 'tech-lead-hub/api-library') return API_ID;
   if (doc.kind === 'tech-lead-hub/api-value-sources') return API_ID;
   if (doc.kind === 'tech-lead-hub/links') return LINKS_ID;
+  if (doc.kind === 'tech-lead-hub/personas') return PERSONAS_ID;
   return null;
 }
 

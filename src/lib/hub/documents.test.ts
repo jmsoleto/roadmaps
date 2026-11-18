@@ -123,3 +123,24 @@ describe('the value sources, which are API Hub’s third document', () => {
     }
   });
 });
+
+describe('Personas Hub’s document, the sixth application’s', () => {
+  it('recognises it as Personas Hub’s', () => {
+    expect(ownerOf({ kind: 'tech-lead-hub/personas', data: {} })).toBe('personas');
+  });
+
+  it('every other application names it', () => {
+    for (const app of ['roadmaps', 'decisions', 'api', 'links']) {
+      expect(foreignDocumentMessage({ kind: 'tech-lead-hub/personas' }, app)).toBe(
+        'Esto es un documento de Personas Hub, no de esta aplicación.',
+      );
+    }
+  });
+
+  it('and Personas Hub names theirs', () => {
+    expect(foreignDocumentMessage({ kind: 'tech-lead-hub/links' }, 'personas')).toContain(
+      'Links Hub',
+    );
+    expect(foreignDocumentMessage({ rows: [] }, 'personas')).toContain('Roadmaps');
+  });
+});

@@ -1,0 +1,230 @@
+import { beforeEach, describe, expect, it } from 'vitest';
+import { PersonasStore, type Outcome } from './store.svelte';
+import type { PersonasBackend } from './storage';
+import { emptyData, type PersonasData } from './model';
+
+function backend(
+  seed: PersonasData = emptyData(),
+): PersonasBackend & { saved: PersonasData | null } {
+  return {
+    saved: null,
+    load: () => structuredClone(seed),
+    save(data) {
+      this.saved = data;
+    },
+  };
+}
+
+const value = <T>(o: Outcome<T>): T => {
+  if (!o.ok) throw new Error(o.error);
+  return o.value;
+};
+
+let store: PersonasStore;
+let teamId: string;
+let madrid: string;
+
+const draft = (name: string, over = {}) => ({
+  teamId,
+  name,
+  roleId: null,
+  technologyId: 'tec-app-qa',
+  locationId: madrid,
+  hoursPerDay: 8,
+  dedication: 100,
+  ...over,
+});
+
+beforeEach(() => {
+  store = new PersonasStore(backend());
+  store.init();
+  teamId = value(store.addTeam('Pagos')).id;
+  madrid = value(store.addLocation('Madrid')).id;
+});
+
+describe('catálogos', () => {
+  it('un rol en uso no se borra, se inactiva y la persona lo conserva', () => {
+    const qa = value(store.addRole('QA'));
+    const ana = value(store.addPerson(draft('Ana', { roleId: qa.id })));
+    expect(store.deleteRole(qa.id).ok).toBe(false);
+    store.setRoleActive(qa.id, false);
+    expect(store.person(ana.id)!.roleId).toBe(qa.id);
+    const libre = value(store.addRole('Libre'));
+    expect(store.deleteRole(libre.id).ok).toBe(true);
+  });
+
+  it('una tecnología va dentro de una familia, y no dentro de otra tecnología', () => {
+    expect(store.addTechnology('Android', 'tec-app').ok).toBe(true);
+    expect(store.addTechnology('Nieta', 'tec-app-qa').ok).toBe(false);
+    expect(store.deleteTechnology('tec-app').ok).toBe(false);
+  });
+
+  it('un nombre vacío no se guarda', () => {
+    expect(store.addRole('  ')).toEqual({ ok: false, error: 'El nombre no puede estar vacío.' });
+  });
+
+  it('pegar festivos dice lo que ha pasado y no duplica', () => {
+    expect(store.addHoliday(madrid, '08/12/2026', 'Inmaculada').ok).toBe(true);
+    const notice = store.pasteHolidays(madrid, '2026-12-08 Otra\n2026-12-25 Navidad\nbasura');
+    expect(notice).toBe('1 festivo añadido · 1 ya estaba · no se entiende: «basura»');
+    expect(store.location(madrid)!.holidays.map((h) => h.date)).toEqual([
+      '2026-12-08',
+      '2026-12-25',
+    ]);
+  });
+});
+
+describe('equipos y personas', () => {
+  it('un equipo con personas no se borra; uno vacío sí', () => {
+    value(store.addPerson(draft('Ana')));
+    expect(store.deleteTeam(teamId).ok).toBe(false);
+    const vacio = value(store.addTeam('Vacío'));
+    expect(store.deleteTeam(vacio.id).ok).toBe(true);
+  });
+
+  it('rechaza los valores fuera de rango diciendo por qué', () => {
+    expect(store.addPerson(draft('Ana', { dedication: 120 }))).toEqual({
+      ok: false,
+      error: 'La dedicación debe estar entre 0 y 100 %.',
+    });
+    expect(store.addPerson(draft('Ana', { hoursPerDay: 0 })).ok).toBe(false);
+    expect(store.addPerson(draft('Ana', { hoursPerDay: 25 })).ok).toBe(false);
+    expect(store.addPerson(draft('Ana', { dedication: 33.3 })).ok).toBe(true);
+  });
+
+  it('quien está en un sprint se inactiva, no se borra, y no entra en el siguiente', () => {
+    const ana = value(store.addPerson(draft('Ana')));
+    const luis = value(store.addPerson(draft('Luis')));
+    const s1 = value(store.addSprint(store.propose(teamId, '2026-11-18')));
+    expect(store.deletePerson(ana.id).ok).toBe(false);
+    store.setPersonActive(ana.id, false);
+    expect(store.sprint(s1.id)!.members.map((m) => m.personId)).toEqual([ana.id, luis.id]);
+    const s2 = value(store.addSprint(store.propose(teamId, '2026-11-18')));
+    expect(s2.members.map((m) => m.personId)).toEqual([luis.id]);
+  });
+
+  it('borrar a alguien que no está en ningún sprint se lleva sus ausencias', () => {
+    const ana = value(store.addPerson(draft('Ana')));
+    value(
+      store.addAbsence({
+        personId: ana.id,
+        type: 'vacaciones',
+        startDate: '2026-12-01',
+        endDate: '2026-12-02',
+        hoursPerDay: null,
+        comment: '',
+      }),
+    );
+    expect(store.deletePerson(ana.id).ok).toBe(true);
+    expect(store.data.absences).toEqual([]);
+  });
+});
+
+describe('ausencias', () => {
+  it('fechas al revés no se guardan', () => {
+    const ana = value(store.addPerson(draft('Ana')));
+    const out = store.addAbsence({
+      personId: ana.id,
+      type: 'vacaciones',
+      startDate: '2026-12-05',
+      endDate: '2026-12-01',
+      hoursPerDay: null,
+      comment: '',
+    });
+    expect(out).toEqual({
+      ok: false,
+      error: 'La fecha de fin no puede ser anterior a la de inicio.',
+    });
+  });
+
+  it('una parcial necesita horas', () => {
+    const ana = value(store.addPerson(draft('Ana')));
+    expect(
+      store.addAbsence({
+        personId: ana.id,
+        type: 'permiso',
+        startDate: '2026-12-01',
+        endDate: '2026-12-01',
+        hoursPerDay: 0,
+        comment: '',
+      }).ok,
+    ).toBe(false);
+  });
+});
+
+describe('sprints', () => {
+  it('crear un sprint incorpora a las personas activas, con su dedicación por defecto', () => {
+    const people = Array.from({ length: 10 }, (_, i) => value(store.addPerson(draft(`P${i}`))));
+    store.setPersonActive(value(store.addPerson(draft('Baja'))).id, false);
+    const s = value(store.addSprint(store.propose(teamId, '2026-11-18')));
+    expect(s.members).toHaveLength(10);
+    expect(s.members.map((m) => m.personId)).toEqual(people.map((p) => p.id));
+    expect(s.members.every((m) => m.dedication === null)).toBe(true);
+  });
+
+  it('un equipo inactivo no admite sprints nuevos', () => {
+    store.setTeamActive(teamId, false);
+    expect(store.addSprint(store.propose(teamId, '2026-11-18')).ok).toBe(false);
+  });
+
+  it('la reserva y las fechas se validan', () => {
+    const s = value(store.addSprint(store.propose(teamId, '2026-11-18')));
+    expect(store.updateSprint(s.id, { incidentPercentage: 101 }).ok).toBe(false);
+    expect(store.updateSprint(s.id, { endDate: '2026-01-01' }).ok).toBe(false);
+    expect(store.updateSprint(s.id, { incidentPercentage: 20 }).ok).toBe(true);
+  });
+
+  it('quitar a alguien deja de contarlo; la dedicación del sprint no toca la de por defecto', () => {
+    const ana = value(store.addPerson(draft('Ana')));
+    const luis = value(store.addPerson(draft('Luis')));
+    const s = value(
+      store.addSprint({ ...store.propose(teamId, '2026-11-18'), incidentPercentage: 0 }),
+    );
+    expect(store.capacityOf(store.sprint(s.id)!).team.available).toBe(160);
+    store.removeMember(s.id, luis.id);
+    expect(store.capacityOf(store.sprint(s.id)!).team.available).toBe(80);
+    expect(store.person(luis.id)).not.toBe(null);
+    expect(store.setMemberDedication(s.id, ana.id, 50).ok).toBe(true);
+    expect(store.capacityOf(store.sprint(s.id)!).team.available).toBe(40);
+    expect(store.person(ana.id)!.dedication).toBe(100);
+  });
+
+  it('una ausencia nueva cambia la capacidad al momento', () => {
+    const ana = value(store.addPerson(draft('Ana')));
+    const s = value(
+      store.addSprint({ ...store.propose(teamId, '2026-11-18'), incidentPercentage: 0 }),
+    );
+    const before = store.capacityOf(store.sprint(s.id)!).team.available;
+    value(
+      store.addAbsence({
+        personId: ana.id,
+        type: 'vacaciones',
+        startDate: s.startDate,
+        endDate: s.startDate,
+        hoursPerDay: null,
+        comment: '',
+      }),
+    );
+    expect(store.capacityOf(store.sprint(s.id)!).team.available).toBe(before - 8);
+  });
+});
+
+describe('restaurar', () => {
+  it('solo sobre un Personas Hub vacío', () => {
+    const blank = new PersonasStore(backend());
+    blank.init();
+    expect(blank.restore(store.data).ok).toBe(true);
+    expect(store.restore(emptyData()).ok).toBe(false);
+  });
+});
+
+describe('guardar', () => {
+  it('lo que se escribe es la instantánea, no el proxy', () => {
+    const b = backend();
+    const s = new PersonasStore(b);
+    s.init();
+    s.addTeam('Pagos');
+    s.flush();
+    expect(b.saved?.teams.map((t) => t.name)).toEqual(['Pagos']);
+  });
+});

@@ -10,6 +10,8 @@ import { decisions } from './lib/decisions/store.svelte';
 import { apiFolder } from './lib/api/folder.svelte';
 import { links } from './lib/links/store.svelte';
 import { linksFolder } from './lib/links/folder.svelte';
+import { personas } from './lib/personas/store.svelte';
+import { personasFolder } from './lib/personas/folder.svelte';
 import { health } from './lib/health/store.svelte';
 import { healthFolder } from './lib/health/folder.svelte';
 import { healthFuente } from './lib/health/fuente/connection.svelte';
@@ -45,6 +47,14 @@ async function bootstrap() {
   else {
     links.expectFolder();
     void linksFolder.start();
+  }
+
+  // Personas Hub, the same way and for the same reason: synchronous in the
+  // browser, beside the boot only when a folder is remembered.
+  if (personasFolder.startsInBrowser) personas.init();
+  else {
+    personas.expectFolder();
+    void personasFolder.start();
   }
 
   // The IndexedDB stores load **beside** the boot, not inside it.

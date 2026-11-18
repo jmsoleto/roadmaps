@@ -5,6 +5,7 @@
   import { apiLibrary } from './lib/api/library.svelte';
   import { links } from './lib/links/store.svelte';
   import { health } from './lib/health/store.svelte';
+  import { personas } from './lib/personas/store.svelte';
   import { valueSources } from './lib/api/sources/store.svelte';
   import { location } from './lib/hub/location.svelte';
   import { hubApp } from './lib/hub/registry';
@@ -50,9 +51,15 @@
     const flush = (e: BeforeUnloadEvent) => {
       // Read before flushing: the flush itself starts a write, and asking after
       // it would ask every time, even with everything already on disk.
-      const unwritten = [store, apiContracts, apiLibrary, valueSources, links, health].some(
-        (s) => s.source === 'folder' && s.pending,
-      );
+      const unwritten = [
+        store,
+        apiContracts,
+        apiLibrary,
+        valueSources,
+        links,
+        health,
+        personas,
+      ].some((s) => s.source === 'folder' && s.pending);
       void store.flush();
       void apiContracts.flush();
       void apiLibrary.flush();
@@ -61,6 +68,7 @@
       // was lost on close. In the browser its write is synchronous, so it lands.
       void links.flush();
       void health.flush();
+      void personas.flush();
       if (unwritten) {
         e.preventDefault();
         // Older engines read this instead of `preventDefault`.

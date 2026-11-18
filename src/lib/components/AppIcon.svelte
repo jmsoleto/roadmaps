@@ -110,6 +110,26 @@
         stroke-linecap="round"
         stroke-linejoin="round"
       />
+    {:else if identity.glyph === 'personas'}
+      <!-- Two people, the second behind and dimmer: a team. Solid heads and
+           thick shoulders, because thin outlines are what goes first at 18px. -->
+      <circle cx="15.5" cy="7.6" r="2.9" fill={GLYPH_INK} opacity="0.72" />
+      <path
+        d="M11.4 19.2 C11.6 15.4 13.2 13.4 15.5 13.4 C17.8 13.4 19.4 15.4 19.6 19.2"
+        fill="none"
+        stroke={GLYPH_INK}
+        stroke-width="2.8"
+        stroke-linecap="round"
+        opacity="0.72"
+      />
+      <circle cx="9" cy="8.4" r="3.3" fill={GLYPH_INK} />
+      <path
+        d="M3.8 20 C4 15.8 6 13.9 9 13.9 C12 13.9 14 15.8 14.2 20"
+        fill="none"
+        stroke={GLYPH_INK}
+        stroke-width="3"
+        stroke-linecap="round"
+      />
     {:else}
       <path d="M12 4 V20 M4 12 H20" stroke={GLYPH_INK} stroke-width="2.6" stroke-linecap="round" />
     {/if}

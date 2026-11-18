@@ -12,7 +12,9 @@ import type { Unavailability } from '../folder/file-sync';
 import type { UnavailableAction } from '../components/StoreUnavailable.svelte';
 import { roadmapsFolder } from '../store/roadmaps-folder.svelte';
 import { store } from '../store/app.svelte';
-import { API_ID, HEALTH_ID, LINKS_ID, ROADMAPS_ID } from './apps';
+import { API_ID, HEALTH_ID, LINKS_ID, PERSONAS_ID, ROADMAPS_ID } from './apps';
+import { personasFolder } from '../personas/folder.svelte';
+import { personas } from '../personas/store.svelte';
 import { healthFolder } from '../health/folder.svelte';
 import { linksFolder } from '../links/folder.svelte';
 import { links } from '../links/store.svelte';
@@ -82,6 +84,19 @@ const FOLDERS: Record<string, FolderUi> = {
     },
     viewNote:
       'Ojo: con una carpeta conectada, Links puede tener que esperar a la carpeta o pedir permiso al abrirse, también en mitad de una guardia. Sin carpeta abre al instante.',
+  },
+  [PERSONAS_ID]: {
+    connection: personasFolder,
+    title: 'Carpeta de Personas Hub',
+    has: 'equipos',
+    inBrowser: () => {
+      const n = personas.source === 'browser' ? personas.data.teams.length : 0;
+      return { count: n, phrase: n === 1 ? 'el equipo' : `los ${n} equipos` };
+    },
+    // Absences are personal data, sick leave included (D7): said before
+    // connecting, where it can still change which folder is chosen.
+    viewNote:
+      'Ojo: las ausencias de las personas, también las bajas médicas, son datos personales y viajan a la carpeta. Elige la de un repo privado. Tu vista (el equipo y el sprint abiertos) sigue siendo tuya y no va a la carpeta.',
   },
   [HEALTH_ID]: {
     connection: healthFolder,
