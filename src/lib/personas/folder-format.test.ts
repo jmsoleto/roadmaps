@@ -16,8 +16,22 @@ const data = (): PersonasData => ({
     },
   ],
   teams: [
-    { id: 'team-1-aaaaa', name: 'Pagos', description: '', active: true },
-    { id: 'team-2-bbbbb', name: 'Plataforma', description: 'infra', active: true },
+    {
+      id: 'team-1-aaaaa',
+      name: 'Pagos',
+      description: '',
+      active: true,
+      criticalRoleIds: [],
+      dropThreshold: 20,
+    },
+    {
+      id: 'team-2-bbbbb',
+      name: 'Plataforma',
+      description: 'infra',
+      active: true,
+      criticalRoleIds: [],
+      dropThreshold: 20,
+    },
   ],
   people: [
     {

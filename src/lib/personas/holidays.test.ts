@@ -63,7 +63,16 @@ describe('pegar festivos', () => {
 describe('lo que propone un sprint nuevo', () => {
   const withLast = (): PersonasData => ({
     ...emptyData(),
-    teams: [{ id: 't', name: 'Pagos', description: '', active: true }],
+    teams: [
+      {
+        id: 't',
+        name: 'Pagos',
+        description: '',
+        active: true,
+        criticalRoleIds: [],
+        dropThreshold: 20,
+      },
+    ],
     sprints: [
       {
         id: 's17',

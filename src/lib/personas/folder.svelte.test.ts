@@ -55,7 +55,16 @@ class Deps implements FolderDeps {
 
 const seed: PersonasData = {
   ...emptyData(),
-  teams: [{ id: 'team-1-aaaaa', name: 'Pagos', description: '', active: true }],
+  teams: [
+    {
+      id: 'team-1-aaaaa',
+      name: 'Pagos',
+      description: '',
+      active: true,
+      criticalRoleIds: [],
+      dropThreshold: 20,
+    },
+  ],
   people: [
     {
       id: 'per-1',
@@ -133,7 +142,16 @@ describe('Personas Hub en una carpeta', () => {
     const root = new MemoryDir('repo');
     const other: PersonasData = {
       ...emptyData(),
-      teams: [{ id: 'team-9-zzzzz', name: 'Plataforma', description: '', active: true }],
+      teams: [
+        {
+          id: 'team-9-zzzzz',
+          name: 'Plataforma',
+          description: '',
+          active: true,
+          criticalRoleIds: [],
+          dropThreshold: 20,
+        },
+      ],
     };
     for (const [n, t] of PERSONAS_FORMAT.serialize(other)) root.put(`personas/${n}`, t);
     const { store, folder, deps } = await session();

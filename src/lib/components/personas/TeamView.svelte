@@ -39,6 +39,8 @@
 
   // ---- the team itself ----
 
+  let thresholdError = $state<string | null>(null);
+
   let renaming = $state(false);
   let name = $state('');
   let description = $state('');
@@ -234,6 +236,39 @@
         </table>
       {/if}
     {:else if tab === 'personas'}
+      <div class="form">
+        <span class="field">Roles críticos (no pueden quedarse sin nadie)</span>
+        {#each personas.data.roles.filter((r) => r.active || team.criticalRoleIds.includes(r.id)) as r (r.id)}
+          <label class="check"
+            ><input
+              type="checkbox"
+              checked={team.criticalRoleIds.includes(r.id)}
+              onchange={(e) => personas.setCriticalRole(teamId, r.id, e.currentTarget.checked)}
+            />
+            {r.name}</label
+          >
+        {:else}
+          <span class="hint">Aún no hay roles en el catálogo.</span>
+        {/each}
+        <label class="field"
+          >Avisar si la capacidad cae más de (%)
+          <input
+            class="num"
+            inputmode="decimal"
+            value={fmtNumber(team.dropThreshold)}
+            onchange={(e) => {
+              const v = parseNumber(e.currentTarget.value);
+              const out =
+                v === null
+                  ? ({ ok: false, error: 'El umbral debe ser un número.' } as const)
+                  : personas.setDropThreshold(teamId, v);
+              thresholdError = out.ok ? null : out.error;
+              if (!out.ok) e.currentTarget.value = fmtNumber(team.dropThreshold);
+            }}
+          /></label
+        >
+        {#if thresholdError}<p class="error">{thresholdError}</p>{/if}
+      </div>
       <div>
         <button
           class="btn primary"

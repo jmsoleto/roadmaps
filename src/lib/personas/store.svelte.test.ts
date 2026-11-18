@@ -338,3 +338,17 @@ describe('resultados por familia (personas-historico)', () => {
     expect(store.addResultFamily(s.id, 'tec-app-qa').ok).toBe(false);
   });
 });
+
+describe('configuración de alertas del equipo (personas-alertas)', () => {
+  it('marca roles críticos y valida el umbral', () => {
+    const qa = value(store.addRole('QA'));
+    store.setCriticalRole(teamId, qa.id, true);
+    store.setCriticalRole(teamId, qa.id, true);
+    expect(store.team(teamId)!.criticalRoleIds).toEqual([qa.id]);
+    store.setCriticalRole(teamId, qa.id, false);
+    expect(store.team(teamId)!.criticalRoleIds).toEqual([]);
+    expect(store.team(teamId)!.dropThreshold).toBe(20);
+    expect(store.setDropThreshold(teamId, 120).ok).toBe(false);
+    expect(store.setDropThreshold(teamId, 12.5).ok).toBe(true);
+  });
+});

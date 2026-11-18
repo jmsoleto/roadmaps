@@ -21,8 +21,22 @@ const sprint = (id: string, start: string, end: string): Sprint => ({
 const data = (): PersonasData => ({
   ...emptyData(),
   teams: [
-    { id: 't1', name: 'Pagos', description: '', active: true },
-    { id: 't2', name: 'Viejo', description: '', active: false },
+    {
+      id: 't1',
+      name: 'Pagos',
+      description: '',
+      active: true,
+      criticalRoleIds: [],
+      dropThreshold: 20,
+    },
+    {
+      id: 't2',
+      name: 'Viejo',
+      description: '',
+      active: false,
+      criticalRoleIds: [],
+      dropThreshold: 20,
+    },
   ],
   people: [
     {
@@ -61,7 +75,6 @@ describe('la tarjeta de Personas Hub', () => {
   it('cuenta personas activas, sprints activos y sprints en planificación', () => {
     const s = personasSummary(data(), '2026-11-18', color);
     expect(s.stats.map((x) => x.value)).toEqual([1, 0, 3]);
-    expect(s.alerts).toEqual([]);
   });
 
   it('lista los sprints que no han terminado, del más próximo, con su capacidad', () => {
@@ -121,6 +134,25 @@ describe('la tarjeta de Personas Hub', () => {
     s19.real = takeSnapshot(s19, d, null);
     const s = personasSummary(d, '2026-11-18', color);
     expect(s.list.rows.map((r) => r.label)).toEqual(['Pagos · Sprint 20']);
+  });
+
+  it('las alertas de los sprints abiertos llegan a la landing con su origen', () => {
+    const d = data();
+    d.roles = [{ id: 'qa', name: 'QA', active: true }];
+    d.people[0].roleId = 'qa';
+    d.teams[0].criticalRoleIds = ['qa'];
+    d.absences.push({
+      id: 'v',
+      personId: 'p1',
+      type: 'vacaciones',
+      startDate: '2026-12-01',
+      endDate: '2026-12-01',
+      hoursPerDay: null,
+      comment: '',
+    });
+    const alerts = personasSummary(d, '2026-11-18', color).alerts;
+    const one = alerts.find((a) => a.text === 'No hay disponibilidad QA el 1 de diciembre.')!;
+    expect(one).toMatchObject({ tone: 'danger', source: 'Personas · Pagos · Sprint 19' });
   });
 
   it('sin sprints por delante, la lista lo dice', () => {

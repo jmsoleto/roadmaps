@@ -65,7 +65,16 @@ function prd(): { data: PersonasData; sprint: Sprint } {
       },
       { id: 'x', name: 'Otra', active: true, holidays: [] },
     ],
-    teams: [{ id: 't', name: 'Pagos', description: '', active: true }],
+    teams: [
+      {
+        id: 't',
+        name: 'Pagos',
+        description: '',
+        active: true,
+        criticalRoleIds: [],
+        dropThreshold: 20,
+      },
+    ],
     people,
     absences: [
       {

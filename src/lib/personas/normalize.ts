@@ -19,6 +19,7 @@ import { isIsoDate } from '../time/timeline';
 import {
   ABSENCE_TYPES,
   DEFAULT_DEDICATION,
+  DEFAULT_DROP_THRESHOLD,
   DEFAULT_HOURS,
   DEFAULT_INCIDENTS,
   emptyData,
@@ -155,12 +156,29 @@ export function normalize(raw: unknown, strict = false): PersonasData {
     return { id: o.id as string, name: str(o.name), active: bool(o.active), holidays };
   });
 
-  const teams = read<Team>('teams', 'equipo', (o) => ({
-    id: o.id as string,
-    name: str(o.name),
-    description: str(o.description),
-    active: bool(o.active),
-  }));
+  const roleIdsForTeams = new Set(roles.map((r) => r.id));
+  const teams = read<Team>('teams', 'equipo', (o) => {
+    const threshold = num(o.dropThreshold);
+    if (o.dropThreshold !== undefined && (threshold === null || !percentOk(threshold))) {
+      fail('umbral');
+    }
+    const critical = Array.isArray(o.criticalRoleIds) ? o.criticalRoleIds : [];
+    const criticalRoleIds = [
+      ...new Set(
+        critical.filter((id): id is string => typeof id === 'string' && roleIdsForTeams.has(id)),
+      ),
+    ];
+    if (criticalRoleIds.length !== critical.length) fail('rol crítico');
+    return {
+      id: o.id as string,
+      name: str(o.name),
+      description: str(o.description),
+      active: bool(o.active),
+      criticalRoleIds,
+      dropThreshold:
+        threshold !== null && percentOk(threshold) ? threshold : DEFAULT_DROP_THRESHOLD,
+    };
+  });
   const teamIds = new Set(teams.map((t) => t.id));
   const ref = (ids: Set<string>, v: unknown): string | null =>
     typeof v === 'string' && ids.has(v) ? v : null;

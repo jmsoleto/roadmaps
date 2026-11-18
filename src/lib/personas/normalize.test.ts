@@ -17,7 +17,16 @@ const base = () => ({
       ],
     },
   ],
-  teams: [{ id: 't1', name: 'Pagos', description: '', active: true }],
+  teams: [
+    {
+      id: 't1',
+      name: 'Pagos',
+      description: '',
+      active: true,
+      criticalRoleIds: [],
+      dropThreshold: 20,
+    },
+  ],
   people: [
     {
       id: 'p1',
@@ -137,7 +146,14 @@ describe('leer lo guardado', () => {
 
   it('un id repetido se queda con el primero', () => {
     const raw = base();
-    raw.teams.push({ id: 't1', name: 'Otro', description: '', active: true });
+    raw.teams.push({
+      id: 't1',
+      name: 'Otro',
+      description: '',
+      active: true,
+      criticalRoleIds: [],
+      dropThreshold: 20,
+    });
     expect(normalize(raw).teams.map((t) => t.name)).toEqual(['Pagos']);
   });
 

@@ -336,6 +336,24 @@ export class PersonasStore {
     this.schedule();
     return ok(null);
   }
+  /** Mark or unmark a role as critical for a team (DP-05; personas-alertas). */
+  setCriticalRole(teamId: string, roleId: string, critical: boolean): void {
+    const team = this.team(teamId);
+    if (!team || !this.role(roleId)) return;
+    const rest = team.criticalRoleIds.filter((id) => id !== roleId);
+    team.criticalRoleIds = critical ? [...rest, roleId] : rest;
+    this.schedule();
+  }
+
+  setDropThreshold(teamId: string, threshold: number): Outcome<null> {
+    const team = this.team(teamId);
+    if (!team) return no('No existe.');
+    if (!percentOk(threshold)) return no('El umbral debe estar entre 0 y 100 %.');
+    team.dropThreshold = threshold;
+    this.schedule();
+    return ok(null);
+  }
+
   setTeamActive(id: string, active: boolean): void {
     this.setActive(this.team(id), active);
   }

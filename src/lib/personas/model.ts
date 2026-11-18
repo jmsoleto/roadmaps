@@ -46,6 +46,10 @@ export interface Team {
   name: string;
   description: string;
   active: boolean;
+  /** Roles this team cannot be left without (DP-05; personas-alertas). */
+  criticalRoleIds: string[];
+  /** A drop in plannable capacity above this percentage is flagged. */
+  dropThreshold: number;
 }
 
 export interface Person {
@@ -247,6 +251,7 @@ export function isBlank(data: PersonasData): boolean {
 export const DEFAULT_HOURS = 8;
 export const DEFAULT_DEDICATION = 100;
 export const DEFAULT_INCIDENTS = 15;
+export const DEFAULT_DROP_THRESHOLD = 20;
 
 export const newRole = (name: string): Role => ({
   id: uid('rol'),
@@ -273,6 +278,8 @@ export const newTeam = (name: string, description = ''): Team => ({
   name: name.trim(),
   description: description.trim(),
   active: true,
+  criticalRoleIds: [],
+  dropThreshold: DEFAULT_DROP_THRESHOLD,
 });
 
 export type PersonDraft = Omit<Person, 'id' | 'active'>;

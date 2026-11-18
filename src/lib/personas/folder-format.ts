@@ -56,7 +56,16 @@ const { text } = canonicalizer<Kind>({
     technology: ['id', 'name', 'parentId', 'active'],
     location: ['id', 'name', 'active', 'holidays'],
     holiday: ['date', 'name'],
-    team: ['id', 'name', 'description', 'active', 'people', 'absences'],
+    team: [
+      'id',
+      'name',
+      'description',
+      'active',
+      'criticalRoleIds',
+      'dropThreshold',
+      'people',
+      'absences',
+    ],
     person: [
       'id',
       'name',

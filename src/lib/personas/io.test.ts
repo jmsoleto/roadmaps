@@ -14,7 +14,16 @@ const data = (): PersonasData => ({
       holidays: [{ date: '2026-12-08', name: 'Inmaculada' }],
     },
   ],
-  teams: [{ id: 't1', name: 'Pagos', description: '', active: true }],
+  teams: [
+    {
+      id: 't1',
+      name: 'Pagos',
+      description: '',
+      active: true,
+      criticalRoleIds: [],
+      dropThreshold: 20,
+    },
+  ],
   people: [
     {
       id: 'p1',

@@ -2,13 +2,13 @@
  * What Personas Hub reports to the landing (personas-hub, «La tarjeta…»).
  *
  * Pure, like the other summaries: the data and today in, the card's contract
- * out. No alerts in this change: those are `personas-alertas`, and an invented
- * one would spend the room of a real one. An active sprint shows its real
+ * out. Its alerts are those of the sprints still open (`personas-alertas`). An active sprint shows its real
  * capacity, marked as running (personas-plan-real).
  */
 
 import type { IsoDate } from '../model/types';
-import type { AppSummary, Row } from '../hub/types';
+import type { Alert, AppSummary, Row, Tone } from '../hub/types';
+import { sprintAlerts, type Severity } from './alerts';
 import { realCapacity } from './snapshot';
 import { forecast } from './delivery';
 import { fmtHours } from './format';
@@ -51,6 +51,27 @@ export function upcomingRows(
   );
 }
 
+const TONE: Record<Severity, Tone> = { critical: 'danger', warn: 'warn', info: 'neutral' };
+
+/**
+ * The alerts of the sprints that can still be acted on — in planning or
+ * active — for the landing's strip, each saying whose it is
+ * (personas-alertas, D4).
+ */
+export function landingAlerts(data: PersonasData): Alert[] {
+  return data.sprints
+    .filter((s) => s.status !== 'cerrado')
+    .flatMap((s) => {
+      const team = data.teams.find((t) => t.id === s.teamId)?.name ?? '';
+      return sprintAlerts(s, data).map((a) => ({
+        id: `${s.id}:${a.id}`,
+        text: a.message,
+        source: `Personas · ${team} · ${s.name}`,
+        tone: TONE[a.severity],
+      }));
+    });
+}
+
 export function personasSummary(
   data: PersonasData,
   today: IsoDate,
@@ -75,6 +96,6 @@ export function personasSummary(
       rows: upcomingRows(data, today, slotColor),
       emptyLabel: 'ningún sprint por delante',
     },
-    alerts: [],
+    alerts: landingAlerts(data),
   };
 }

@@ -28,6 +28,13 @@
   import ComparisonView from './ComparisonView.svelte';
   import ResultsView from './ResultsView.svelte';
   import ForecastPanel from './ForecastPanel.svelte';
+  import AlertsView from './AlertsView.svelte';
+  import {
+    sprintAlerts,
+    SEVERITY_LABEL,
+    SEVERITY_MARK,
+    type Severity,
+  } from '../../personas/alerts';
   import {
     fmtDay,
     fmtDiscount,
@@ -56,6 +63,15 @@
   const live = $derived(
     sprint !== null &&
       (sprint.status === 'planificacion' || (sprint.status === 'activo' && see === 'real')),
+  );
+
+  // ---- alerts (personas-alertas) ----
+
+  const alerts = $derived(sprint ? sprintAlerts(sprint, personas.data) : []);
+  const alertCounts = $derived(
+    (['critical', 'warn', 'info'] as Severity[])
+      .map((sev) => ({ sev, n: alerts.filter((a) => a.severity === sev).length }))
+      .filter((x) => x.n > 0),
   );
 
   // ---- moving the sprint along ----
@@ -285,11 +301,16 @@
     <button role="tab" aria-selected={tab === 'resultados'} onclick={() => setTab('resultados')}
       >Resultados</button
     >
+    {#if sprint.status !== 'cerrado'}
+      <button role="tab" aria-selected={tab === 'alertas'} onclick={() => setTab('alertas')}
+        >Alertas · {alerts.length}</button
+      >
+    {/if}
     {#if frozen}
       <button role="tab" aria-selected={tab === 'comparacion'} onclick={() => setTab('comparacion')}
         >Plan vs real</button
       >
-      {#if tab !== 'comparacion' && tab !== 'resultados'}
+      {#if tab !== 'comparacion' && tab !== 'resultados' && tab !== 'alertas'}
         <div class="see" role="group" aria-label="qué se muestra">
           <button aria-pressed={see === 'plan'} onclick={() => (see = 'plan')}>plan</button>
           <button aria-pressed={see === 'real'} onclick={() => (see = 'real')}>real</button>
@@ -358,6 +379,22 @@
       </div>
       {#if sprint.status === 'planificacion'}
         <ForecastPanel {sprint} />
+      {/if}
+      {#if alertCounts.length > 0}
+        <button class="alert-count" onclick={() => setTab('alertas')}>
+          Alertas:
+          {#each alertCounts as x, i (x.sev)}{i > 0 ? ' · ' : ''}<span class={x.sev}
+              ><span aria-hidden="true">{SEVERITY_MARK[x.sev]}</span>
+              {x.n}
+              {x.sev === 'warn'
+                ? x.n === 1
+                  ? 'aviso'
+                  : 'avisos'
+                : x.n === 1
+                  ? SEVERITY_LABEL[x.sev]
+                  : `${SEVERITY_LABEL[x.sev]}s`}</span
+            >{/each}
+        </button>
       {/if}
       {#if sprint.status === 'activo' && see === 'real'}
         <div class="form">
@@ -520,6 +557,8 @@
       {#if live}
         <p class="hint">Pulsa un día para registrar una ausencia, o una ausencia para cambiarla.</p>
       {/if}
+    {:else if tab === 'alertas'}
+      <AlertsView {alerts} />
     {:else if tab === 'resultados'}
       <ResultsView {sprint} />
     {:else if tab === 'comparacion' && plan}
@@ -680,6 +719,22 @@
   }
   .legend {
     margin: 0;
+  }
+  .alert-count {
+    align-self: flex-start;
+    border: var(--line-width) solid var(--line);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--text-mid);
+    font: inherit;
+    padding: 7px 12px;
+    cursor: pointer;
+  }
+  .alert-count .critical {
+    color: var(--danger);
+  }
+  .alert-count .warn {
+    color: var(--accent);
   }
   .see {
     margin-left: auto;
