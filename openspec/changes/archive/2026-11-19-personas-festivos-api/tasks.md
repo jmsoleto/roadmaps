@@ -30,4 +30,4 @@
 ## 6. Despliegue
 
 - [x] 6.1 En `.github/workflows/pages.yml`, pasar `VITE_FESTIVOS_PROXY: ${{ vars.FESTIVOS_PROXY }}` al paso de build. Verificar que el workflow sigue siendo YAML válido y que el build funciona sin la variable
-- [ ] 6.2 Desplegar el Worker desde la cuenta del usuario (`npx wrangler login` y `npx wrangler deploy`; pedírselo al usuario), crear la variable de repositorio `FESTIVOS_PROXY` y publicar. Verificar con `curl -H "Origin: <origen de Pages>"` que la ruta de Madrid 2026 devuelve la cabecera CORS y que `fiscal.json` da 404, y después importar desde la app publicada
+- [x] 6.2 Desplegar el Worker desde la cuenta del usuario (`npx wrangler login` y `npx wrangler deploy`; pedírselo al usuario), crear la variable de repositorio `FESTIVOS_PROXY` y publicar. Verificar con `curl -H "Origin: <origen de Pages>"` que la ruta de Madrid 2026 devuelve la cabecera CORS y que `fiscal.json` da 404, y después importar desde la app publicada
