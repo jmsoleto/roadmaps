@@ -1,0 +1,95 @@
+{
+  "schemaVersion": 1,
+  "year": 2026,
+  "calendarType": "laboral",
+  "scope": "municipio",
+  "region": {
+    "code": "MAD",
+    "slug": "mad",
+    "name": "Comunidad de Madrid"
+  },
+  "province": {
+    "code": "28",
+    "slug": "madrid",
+    "name": "Madrid"
+  },
+  "municipality": {
+    "ine": "28079",
+    "slug": "madrid",
+    "name": "Madrid"
+  },
+  "holidays": {
+    "calendar": [
+      {
+        "date": "2026-01-01",
+        "name": "Año Nuevo",
+        "scope": "nacional"
+      },
+      {
+        "date": "2026-01-06",
+        "name": "Epifanía del Señor",
+        "scope": "nacional"
+      },
+      {
+        "date": "2026-04-02",
+        "name": "Jueves Santo",
+        "scope": "nacional"
+      },
+      {
+        "date": "2026-04-03",
+        "name": "Viernes Santo",
+        "scope": "nacional"
+      },
+      {
+        "date": "2026-05-01",
+        "name": "Fiesta del Trabajo",
+        "scope": "nacional"
+      },
+      {
+        "date": "2026-05-02",
+        "name": "Fiesta de la Comunidad de Madrid",
+        "scope": "autonomico"
+      },
+      {
+        "date": "2026-05-15",
+        "name": "Fiesta local",
+        "scope": "local"
+      },
+      {
+        "date": "2026-08-15",
+        "name": "Asunción de la Virgen",
+        "scope": "nacional"
+      },
+      {
+        "date": "2026-10-12",
+        "name": "Fiesta Nacional de España",
+        "scope": "nacional"
+      },
+      {
+        "date": "2026-11-02",
+        "name": "Día siguiente a Todos los Santos",
+        "scope": "nacional"
+      },
+      {
+        "date": "2026-11-09",
+        "name": "Fiesta local",
+        "scope": "local"
+      },
+      {
+        "date": "2026-12-07",
+        "name": "Lunes siguiente al Día de la Constitución Española",
+        "scope": "nacional"
+      },
+      {
+        "date": "2026-12-08",
+        "name": "Inmaculada Concepción",
+        "scope": "nacional"
+      },
+      {
+        "date": "2026-12-25",
+        "name": "Natividad del Señor",
+        "scope": "nacional"
+      }
+    ]
+  }
+}

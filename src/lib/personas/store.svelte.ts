@@ -18,6 +18,7 @@ import type { Unavailability } from '../folder/file-sync';
 import { todayIso } from '../time/timeline';
 import type { SprintCapacity } from './capacity';
 import { planCapacity, realCapacity, takeSnapshot } from './snapshot';
+import { festivosClient, type Client } from './festivos-api';
 import { mergeHolidays, parseHolidays, pasteNotice, readDate } from './holidays';
 import {
   emptyData,
@@ -35,6 +36,7 @@ import {
   type AbsenceDraft,
   type FamilyResult,
   type Location,
+  type Municipality,
   type Person,
   type PersonDraft,
   type PersonasData,
@@ -313,6 +315,44 @@ export class PersonasStore {
       this.schedule();
     }
     return pasteNotice(out.added, out.repeated, rejected);
+  }
+
+  /** Link a location to a municipality, or unlink it with `null`. Its holidays stay. */
+  setLocationMunicipality(locationId: string, m: Municipality | null): void {
+    const loc = this.location(locationId);
+    if (!loc) return;
+    if (m === null) delete loc.municipality;
+    else loc.municipality = { ...m };
+    this.schedule();
+  }
+
+  /**
+   * Import a year of the linked municipality's holidays (personas-festivos-api, D6):
+   * the same merge as a paste, so nothing already there is duplicated or renamed.
+   * Returns the sentence the screen shows; on any failure nothing changes.
+   */
+  async importHolidays(
+    locationId: string,
+    year: number,
+    client: Client = festivosClient(),
+  ): Promise<string> {
+    const muni = this.location(locationId)?.municipality;
+    if (!muni) return '';
+    const r = await client.holidays(year, muni);
+    if (!r.ok) {
+      return r.error === 'no-publicado'
+        ? `Los festivos de ${year} todavía no están publicados.`
+        : 'No se pudieron importar los festivos. Inténtalo más tarde.';
+    }
+    // The location may have gone, or changed municipality, while the answer came.
+    const loc = this.location(locationId);
+    if (!loc?.municipality || loc.municipality.ine !== muni.ine) return '';
+    const out = mergeHolidays(loc.holidays, r.value);
+    if (out.added > 0) {
+      loc.holidays = out.holidays;
+      this.schedule();
+    }
+    return pasteNotice(out.added, out.repeated, []);
   }
 
   removeHoliday(locationId: string, date: string): void {

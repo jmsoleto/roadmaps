@@ -42,6 +42,7 @@ type Kind =
   | 'role'
   | 'technology'
   | 'location'
+  | 'municipality'
   | 'holiday'
   | 'team'
   | 'person'
@@ -54,7 +55,8 @@ const { text } = canonicalizer<Kind>({
     catalog: ['roles', 'technologies', 'locations'],
     role: ['id', 'name', 'active'],
     technology: ['id', 'name', 'parentId', 'active'],
-    location: ['id', 'name', 'active', 'holidays'],
+    location: ['id', 'name', 'active', 'municipality', 'holidays'],
+    municipality: ['name', 'ine', 'slug', 'province', 'provinceName', 'ccaa', 'ccaaName'],
     holiday: ['date', 'name'],
     team: [
       'id',
@@ -95,7 +97,7 @@ const { text } = canonicalizer<Kind>({
   },
   holds: {
     catalog: { roles: 'role', technologies: 'technology', locations: 'location' },
-    location: { holidays: 'holiday' },
+    location: { holidays: 'holiday', municipality: 'municipality' },
     team: { people: 'person', absences: 'absence' },
     sprint: { members: 'member' },
   },

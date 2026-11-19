@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { PersonasStore, type Outcome } from './store.svelte';
 import type { PersonasBackend } from './storage';
-import { emptyData, type PersonasData } from './model';
+import { emptyData, type Holiday, type Municipality, type PersonasData } from './model';
+import type { Client, FestivosResult } from './festivos-api';
 
 function backend(
   seed: PersonasData = emptyData(),
@@ -350,5 +351,93 @@ describe('configuración de alertas del equipo (personas-alertas)', () => {
     expect(store.team(teamId)!.dropThreshold).toBe(20);
     expect(store.setDropThreshold(teamId, 120).ok).toBe(false);
     expect(store.setDropThreshold(teamId, 12.5).ok).toBe(true);
+  });
+});
+
+describe('importar festivos del calendario público', () => {
+  const MUNI: Municipality = {
+    ccaa: 'mad',
+    province: 'madrid',
+    slug: 'madrid',
+    ine: '28079',
+    name: 'Madrid',
+    provinceName: 'Madrid',
+    ccaaName: 'Comunidad de Madrid',
+  };
+  const DAYS: Holiday[] = Array.from({ length: 14 }, (_, i) => ({
+    date: `2026-${String(i < 12 ? i + 1 : 12).padStart(2, '0')}-${i < 12 ? '10' : i === 12 ? '08' : '25'}`,
+    name: `Festivo ${i + 1}`,
+  }));
+  const client = (r: FestivosResult<Holiday[]>, before?: () => void): Client => ({
+    communities: () => Promise.reject(new Error('no')),
+    provinces: () => Promise.reject(new Error('no')),
+    municipalities: () => Promise.reject(new Error('no')),
+    holidays: async () => {
+      before?.();
+      return r;
+    },
+  });
+  const dates = () => store.location(madrid)!.holidays.map((h) => h.date);
+
+  it('vincular y desvincular; desvincular no borra festivos', () => {
+    store.setLocationMunicipality(madrid, MUNI);
+    expect(store.location(madrid)!.municipality).toEqual(MUNI);
+    value(store.addHoliday(madrid, '2026-12-08', 'Inmaculada'));
+    store.setLocationMunicipality(madrid, null);
+    expect(store.location(madrid)).not.toHaveProperty('municipality');
+    expect(dates()).toEqual(['2026-12-08']);
+  });
+
+  it('sin vínculo no hace nada', async () => {
+    expect(await store.importHolidays(madrid, 2026, client({ ok: true, value: DAYS }))).toBe('');
+    expect(dates()).toEqual([]);
+  });
+
+  it('en una localidad vacía añade los catorce', async () => {
+    store.setLocationMunicipality(madrid, MUNI);
+    const notice = await store.importHolidays(madrid, 2026, client({ ok: true, value: DAYS }));
+    expect(notice).toBe('14 festivos añadidos');
+    expect(dates()).toHaveLength(14);
+  });
+
+  it('respeta un festivo ya puesto, con su nombre, y una segunda vez no añade nada', async () => {
+    store.setLocationMunicipality(madrid, MUNI);
+    value(store.addHoliday(madrid, '2026-12-08', 'Mi Inmaculada'));
+    const c = client({ ok: true, value: DAYS });
+    expect(await store.importHolidays(madrid, 2026, c)).toBe('13 festivos añadidos · 1 ya estaba');
+    expect(store.location(madrid)!.holidays.find((h) => h.date === '2026-12-08')!.name).toBe(
+      'Mi Inmaculada',
+    );
+    expect(await store.importHolidays(madrid, 2026, c)).toBe('0 festivos añadidos · 14 ya estaban');
+  });
+
+  it('un año no publicado o un fallo lo dicen y no cambian nada', async () => {
+    store.setLocationMunicipality(madrid, MUNI);
+    expect(
+      await store.importHolidays(madrid, 2028, client({ ok: false, error: 'no-publicado' })),
+    ).toBe('Los festivos de 2028 todavía no están publicados.');
+    expect(await store.importHolidays(madrid, 2026, client({ ok: false, error: 'fallo' }))).toBe(
+      'No se pudieron importar los festivos. Inténtalo más tarde.',
+    );
+    expect(dates()).toEqual([]);
+  });
+
+  it('si la localidad se desvincula o cambia de municipio mientras llega la respuesta, no se toca', async () => {
+    store.setLocationMunicipality(madrid, MUNI);
+    const unlink = client({ ok: true, value: DAYS }, () =>
+      store.setLocationMunicipality(madrid, null),
+    );
+    expect(await store.importHolidays(madrid, 2026, unlink)).toBe('');
+    store.setLocationMunicipality(madrid, MUNI);
+    const other = client({ ok: true, value: DAYS }, () =>
+      store.setLocationMunicipality(madrid, {
+        ...MUNI,
+        slug: 'getafe',
+        ine: '28065',
+        name: 'Getafe',
+      }),
+    );
+    expect(await store.importHolidays(madrid, 2026, other)).toBe('');
+    expect(dates()).toEqual([]);
   });
 });

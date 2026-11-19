@@ -9,7 +9,7 @@
     "build:pages": "BASE_PATH=/roadmaps/ npm run build",
     "preview": "vite preview",
     "preview:pages": "BASE_PATH=/roadmaps/ vite preview",
-    "check": "svelte-check --tsconfig ./tsconfig.json",
+    "check": "svelte-check --tsconfig ./tsconfig.json && tsc -p workers/festivos-proxy",
     "lint": "prettier --check . && eslint .",
     "format": "prettier --write .",
     "test": "vitest run",

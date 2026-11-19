@@ -114,4 +114,20 @@ describe('el documento de Personas Hub', () => {
       'no es un documento de Personas Hub',
     );
   });
+
+  describe('el municipio en el documento', () => {
+    it('el vínculo viaja con los datos', () => {
+      const d = data();
+      d.locations[0].municipality = {
+        ccaa: 'mad',
+        province: 'madrid',
+        slug: 'madrid',
+        ine: '28079',
+        name: 'Madrid',
+        provinceName: 'Madrid',
+        ccaaName: 'Comunidad de Madrid',
+      };
+      expect(parsePersonasImport(exportPersonas(d))).toEqual(d);
+    });
+  });
 });

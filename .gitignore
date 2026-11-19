@@ -18,3 +18,4 @@ dev-dist/
 
 # Playwright MCP session artefacts
 .playwright-mcp/
+.wrangler/

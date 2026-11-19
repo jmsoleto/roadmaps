@@ -33,12 +33,31 @@ export interface Holiday {
   name: string;
 }
 
+/**
+ * The municipality a location takes its holidays from, as calendariosnacionales.com
+ * names it (personas-festivos-api, D5). The slugs build the URL; `ine` and
+ * `name` let it be shown without the network, and identify it if the slugs
+ * ever change.
+ */
+export interface Municipality {
+  ccaa: string;
+  province: string;
+  slug: string;
+  ine: string;
+  name: string;
+  /** The province and community, as they are shown next to the name. */
+  provinceName: string;
+  ccaaName: string;
+}
+
 /** A working calendar. Its holidays have no identity of their own: a date. */
 export interface Location {
   id: string;
   name: string;
   active: boolean;
   holidays: Holiday[];
+  /** Absent until the location is linked: data from before the link reads as it was. */
+  municipality?: Municipality;
 }
 
 export interface Team {

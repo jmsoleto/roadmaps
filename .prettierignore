@@ -4,4 +4,4 @@ coverage/
 openspec/
 .claude/
 package-lock.json
-.playwright-mcp/
+.playwright-mcp/.wrangler/

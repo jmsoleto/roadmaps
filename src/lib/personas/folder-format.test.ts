@@ -208,4 +208,32 @@ describe('Personas Hub en la carpeta', () => {
     expect(fileFor('team-', 'equipo con espacios')).toMatch(/^team-x[0-9a-f]+\.json$/);
     expect(fileFor('team-', 'team-1-aaaaa')).toBe('team-1-aaaaa.json');
   });
+
+  describe('el municipio de una localidad en la carpeta', () => {
+    it('va y vuelve con la localidad, en el catálogo', () => {
+      const d = data();
+      d.locations[0].municipality = {
+        ccaa: 'mad',
+        province: 'madrid',
+        slug: 'madrid',
+        ine: '28079',
+        name: 'Madrid',
+        provinceName: 'Madrid',
+        ccaaName: 'Comunidad de Madrid',
+      };
+      const files = PERSONAS_FORMAT.serialize(d);
+      expect(files.get(CATALOG_FILE)).toContain('"ine": "28079"');
+      const back = PERSONAS_FORMAT.parse(files);
+      expect(back.kind).toBe('ok');
+      if (back.kind !== 'ok') return;
+      expect(back.data.locations[0].municipality).toEqual(d.locations[0].municipality);
+    });
+
+    it('una carpeta sin el campo se sigue leyendo', () => {
+      const back = PERSONAS_FORMAT.parse(PERSONAS_FORMAT.serialize(data()));
+      expect(back.kind).toBe('ok');
+      if (back.kind !== 'ok') return;
+      expect(back.data.locations[0]).not.toHaveProperty('municipality');
+    });
+  });
 });

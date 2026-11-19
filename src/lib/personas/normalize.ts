@@ -30,6 +30,7 @@ import {
   type FamilyResult,
   type Holiday,
   type Location,
+  type Municipality,
   type PersonasData,
   type Person,
   type Role,
@@ -68,6 +69,26 @@ const bool = (v: unknown, fallback = true): boolean => (typeof v === 'boolean' ?
 const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 const hasId = (v: unknown): v is Obj & { id: string } =>
   isObj(v) && typeof v.id === 'string' && v.id !== '';
+
+const SLUG = /^[a-z0-9-]+$/;
+
+/** A municipality link, or `null` when any part of it is missing or could not build a URL. */
+function municipality(v: unknown): Municipality | null {
+  if (!isObj(v)) return null;
+  const slugs = [v.ccaa, v.province, v.slug];
+  const texts = [v.ine, v.name, v.provinceName, v.ccaaName];
+  if (!slugs.every((x) => typeof x === 'string' && SLUG.test(x))) return null;
+  if (!texts.every((x) => typeof x === 'string' && x !== '')) return null;
+  return {
+    ccaa: v.ccaa as string,
+    province: v.province as string,
+    slug: v.slug as string,
+    ine: v.ine as string,
+    name: v.name as string,
+    provinceName: v.provinceName as string,
+    ccaaName: v.ccaaName as string,
+  };
+}
 
 // ---- ranges, shared with the store's validation ----
 
@@ -153,7 +174,18 @@ export function normalize(raw: unknown, strict = false): PersonasData {
       holidays.push({ date: h.date, name: str(h.name, 'Festivo') });
     }
     holidays.sort((a, b) => (a.date < b.date ? -1 : 1));
-    return { id: o.id as string, name: str(o.name), active: bool(o.active), holidays };
+    const loc: Location = {
+      id: o.id as string,
+      name: str(o.name),
+      active: bool(o.active),
+      holidays,
+    };
+    if (o.municipality !== undefined && o.municipality !== null) {
+      const m = municipality(o.municipality);
+      if (m) loc.municipality = m;
+      else fail('municipio');
+    }
+    return loc;
   });
 
   const roleIdsForTeams = new Set(roles.map((r) => r.id));

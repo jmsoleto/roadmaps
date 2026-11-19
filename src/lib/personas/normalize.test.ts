@@ -184,4 +184,41 @@ describe('leer en modo estricto (importar)', () => {
   it('lo que no es un documento se rechaza', () => {
     expect(() => normalize(null, true)).toThrow(Inconsistent);
   });
+
+  describe('el municipio de una localidad', () => {
+    const MADRID = {
+      ccaa: 'mad',
+      province: 'madrid',
+      slug: 'madrid',
+      ine: '28079',
+      name: 'Madrid',
+      provinceName: 'Madrid',
+      ccaaName: 'Comunidad de Madrid',
+    };
+    const withMuni = (m: unknown) => {
+      const raw = base();
+      (raw.locations[0] as Record<string, unknown>).municipality = m;
+      return raw;
+    };
+
+    it('sin municipio, la localidad se lee como siempre', () => {
+      expect(normalize(base()).locations[0]).not.toHaveProperty('municipality');
+    });
+
+    it('un municipio válido se conserva', () => {
+      expect(normalize(withMuni(MADRID)).locations[0].municipality).toEqual(MADRID);
+      expect(normalize(withMuni(MADRID), true).locations[0].municipality).toEqual(MADRID);
+    });
+
+    it('uno incompleto o que no forma una URL se descarta, y al importar se rechaza', () => {
+      for (const bad of [{ ...MADRID, ine: '' }, { ...MADRID, slug: '../x' }, 'Madrid', 42]) {
+        expect(normalize(withMuni(bad)).locations[0]).not.toHaveProperty('municipality');
+        expect(() => normalize(withMuni(bad), true)).toThrow(Inconsistent);
+      }
+    });
+
+    it('null cuenta como sin municipio', () => {
+      expect(normalize(withMuni(null), true).locations[0]).not.toHaveProperty('municipality');
+    });
+  });
 });

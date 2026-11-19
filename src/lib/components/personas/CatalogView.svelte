@@ -8,6 +8,8 @@
   import { personas, type Outcome } from '../../personas/store.svelte';
   import { personasUi, type CatalogTab } from '../../personas/ui.svelte';
   import { fmtDay, fmtWeekday } from '../../personas/format';
+  import { festivosEnabled } from '../../personas/festivos-api';
+  import MunicipalityImport from './MunicipalityImport.svelte';
 
   let { tab }: { tab: CatalogTab } = $props();
 
@@ -269,6 +271,9 @@
           <h3>Festivos de {location.name}</h3>
           {#if years.length > 0}
             <p class="sub">{years.map(([y, n]) => `${y}: ${n}`).join(' · ')}</p>
+          {/if}
+          {#if festivosEnabled}
+            {#key location.id}<MunicipalityImport {location} />{/key}
           {/if}
           <div class="add">
             <input class="date" type="date" bind:value={hDate} aria-label="fecha del festivo" />

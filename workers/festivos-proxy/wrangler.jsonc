@@ -1,0 +1,13 @@
+{
+  // The proxy in front of calendariosnacionales.com (personas-festivos-api).
+  "$schema": "https://unpkg.com/wrangler@4/config-schema.json",
+  "name": "festivos-proxy",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-05-01",
+  "workers_dev": true,
+  "vars": {
+    // Who may read the responses from a browser: GitHub Pages, `npm run dev`
+    // and `npm run preview`.
+    "ALLOWED_ORIGINS": "https://jmsoleto.github.io,http://localhost:1420,http://localhost:4173",
+  },
+}

@@ -36,6 +36,8 @@ jobs:
         # Pages serves this repo from https://<user>.github.io/roadmaps/
         env:
           BASE_PATH: /${{ github.event.repository.name }}/
+          # The festivos proxy (workers/festivos-proxy). Unset: no holiday import.
+          VITE_FESTIVOS_PROXY: ${{ vars.FESTIVOS_PROXY }}
         run: npm run build
 
       - uses: actions/configure-pages@v5
